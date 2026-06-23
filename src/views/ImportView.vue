@@ -13,6 +13,7 @@
     >
       <div class="drop-icon">📂</div>
       <p>Перетягніть CSV файл сюди або натисніть для вибору</p>
+      <p class="drop-format">Формат: <code>Игрок,Координаты,Очки,Копья,Мечи,Топоры,Лазы,ЛК,ТК,Тараны,Каты,Пал,Двор</code></p>
       <input ref="fileInput" type="file" accept=".csv,text/csv" class="hidden-input" @change="onFileChange" />
     </div>
 
@@ -22,7 +23,7 @@
       <textarea
         v-model="csvText"
         class="csv-textarea"
-        placeholder="Вставте CSV тут..."
+        placeholder="Игрок,Координаты,Очки,Копья,Мечи,Топоры,Лазы,ЛК,ТК,Тараны,Каты,Пал,Двор&#10;8Taras8,494|564,9289,13096,3156,0,581,0,0,4,0,0,1&#10;SomePlayer,510|549,4120,0,0,6200,0,0,0,120,0,1,3"
         rows="6"
       ></textarea>
       <div class="btn-row">
@@ -33,6 +34,42 @@
 
     <!-- Error -->
     <div v-if="error" class="status-msg status-err">{{ error }}</div>
+
+    <!-- Pal-off import -->
+    <section class="panel">
+      <button class="collapse-toggle" @click="palOffImportOpen = !palOffImportOpen">
+        <span>
+          Імпорт пал-оффів
+          <span v-if="palOffImportApplied" class="tower-count-badge">{{ palOffImportApplied }} гравців</span>
+        </span>
+        <span class="collapse-icon">{{ palOffImportOpen ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="palOffImportOpen" class="mt">
+        <p class="drop-format" style="margin-bottom:0.5rem">
+          Формат: <code>Гравець,кількість</code> — по одному рядку на гравця
+        </p>
+        <textarea
+          v-model="palOffText"
+          class="csv-textarea"
+          rows="6"
+          placeholder="Онмайн,5&#10;AnotherPlayer,3"
+        ></textarea>
+        <div v-if="palOffError" class="status-msg status-err">{{ palOffError }}</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" @click="applyPalOffImport">Застосувати</button>
+          <button class="btn btn-secondary" @click="palOffText = ''; palOffError = ''; palOffImportApplied = 0">Очистити</button>
+        </div>
+        <table v-if="planStore.playerData.some(pd => pd.offPaladins > 0)" class="mini-table" style="margin-top:1rem">
+          <thead><tr><th>Гравець</th><th>Пал-оффів</th></tr></thead>
+          <tbody>
+            <tr v-for="pd in planStore.playerData.filter(pd => pd.offPaladins > 0)" :key="pd.player">
+              <td class="player-name">{{ pd.player }}</td>
+              <td class="num num-hi">{{ pd.offPaladins }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
     <!-- Stats -->
     <section v-if="statsVisible" class="panel">
@@ -67,8 +104,12 @@
           <span class="stat-label">Паравозів</span>
         </div>
         <div class="stat-card stat-card--gold">
-          <span class="stat-num">{{ totals.knights }}</span>
-          <span class="stat-label">Паладинів</span>
+          <span class="stat-num">{{ planStore.playerData.reduce((s, pd) => s + pd.offPaladins, 0) }}</span>
+          <span class="stat-label">Офф-палів</span>
+        </div>
+        <div class="stat-card stat-card--teal">
+          <span class="stat-num">{{ totals.catapults }}</span>
+          <span class="stat-label">Кат</span>
         </div>
       </div>
 
@@ -81,8 +122,9 @@
             <th title="Сел з топорами ≥ 5 000">Фулл офф</th>
             <th title="Сел з топорами 2 000–4 999">Пів-офф</th>
             <th title="Сел з топорами 1 000–1 999">Міні офф</th>
-            <th title="Дворяни з CSV. Редагується вручну">Двори</th>
+            <th title="Катапульти з CSV">Кати</th>
             <th title="Паладини з CSV. Редагується вручну">Пал-Офф</th>
+            <th title="Дворяни з CSV. Редагується вручну">Двори</th>
             <th title="1 паровоз = 5 дворів (від редагованого значення)">Паравози</th>
           </tr>
         </thead>
@@ -92,24 +134,7 @@
             <td class="num" :class="{ 'num-hi': p.fullOff > 0 }">{{ p.fullOff }}</td>
             <td class="num" :class="{ 'num-mid': p.halfOff > 0 }">{{ p.halfOff }}</td>
             <td class="num">{{ p.smallOff }}</td>
-            <td>
-              <div class="input-wrap">
-                <input
-                  type="number"
-                  min="0"
-                  :class="['inline-input', { 'input-edited': planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv }]"
-                  :value="planStore.getPlayerData(p.player).totalNobles"
-                  :title="planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv ? `З CSV: ${p.snobsCsv}` : ''"
-                  @change="planStore.setPlayerData(p.player, { totalNobles: +($event.target as HTMLInputElement).value })"
-                />
-                <span
-                  v-if="planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv"
-                  class="csv-hint"
-                  :title="`Відновити значення з CSV (${p.snobsCsv})`"
-                  @click="planStore.setPlayerData(p.player, { totalNobles: p.snobsCsv })"
-                >{{ p.snobsCsv }}</span>
-              </div>
-            </td>
+            <td class="num" :class="{ 'num-hi': p.catapultsCsv > 0 }">{{ p.catapultsCsv }}</td>
             <td>
               <div class="input-wrap">
                 <input
@@ -126,6 +151,24 @@
                   :title="`Відновити значення з CSV (${p.knightsCsv})`"
                   @click="planStore.setPlayerData(p.player, { offPaladins: p.knightsCsv })"
                 >{{ p.knightsCsv }}</span>
+              </div>
+            </td>
+            <td>
+              <div class="input-wrap">
+                <input
+                  type="number"
+                  min="0"
+                  :class="['inline-input', { 'input-edited': planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv }]"
+                  :value="planStore.getPlayerData(p.player).totalNobles"
+                  :title="planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv ? `З CSV: ${p.snobsCsv}` : ''"
+                  @change="planStore.setPlayerData(p.player, { totalNobles: +($event.target as HTMLInputElement).value })"
+                />
+                <span
+                  v-if="planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv"
+                  class="csv-hint"
+                  :title="`Відновити значення з CSV (${p.snobsCsv})`"
+                  @click="planStore.setPlayerData(p.player, { totalNobles: p.snobsCsv })"
+                >{{ p.snobsCsv }}</span>
               </div>
             </td>
             <td class="num num-trains">
@@ -198,25 +241,47 @@ const error = ref('')
 const statsVisible = ref(villagesStore.villages.length > 0)
 const villagesOpen = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const palOffImportOpen = ref(false)
+const palOffText = ref('')
+const palOffError = ref('')
+const palOffImportApplied = ref(0)
+
+function applyPalOffImport(): void {
+  palOffError.value = ''
+  const lines = palOffText.value.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (!lines.length) { palOffError.value = 'Введіть хоча б один рядок'; return }
+  let applied = 0
+  for (const line of lines) {
+    const comma = line.lastIndexOf(',')
+    if (comma === -1) { palOffError.value = `Невірний формат: "${line}"`; return }
+    const player = line.slice(0, comma).trim()
+    const count = parseInt(line.slice(comma + 1).trim(), 10)
+    if (!player || isNaN(count) || count < 0) { palOffError.value = `Невірний рядок: "${line}"`; return }
+    planStore.setPlayerData(player, { offPaladins: count })
+    applied++
+  }
+  palOffImportApplied.value = applied
+}
 
 interface PlayerStat {
   player: string
-  fullOff: number    // villages with axe >= 5000
-  halfOff: number    // villages with 2000 <= axe < 5000
-  smallOff: number   // villages with 1000 <= axe < 2000
-  snobsCsv: number   // total snobs from CSV
-  knightsCsv: number // total paladins from CSV
+  fullOff: number
+  halfOff: number
+  smallOff: number
+  snobsCsv: number
+  knightsCsv: number
+  catapultsCsv: number
 }
 
 const totals = computed(() => {
-  let fullOff = 0, halfOff = 0, smallOff = 0, snobs = 0, knights = 0
+  let fullOff = 0, halfOff = 0, smallOff = 0, snobs = 0, catapults = 0
   for (const v of villagesStore.villages) {
     const axe = v.troops.axe
     if (axe >= 5000)      fullOff++
     else if (axe >= 2000) halfOff++
     else if (axe >= 1000) smallOff++
-    snobs   += v.troops.snob
-    knights += v.troops.knight
+    snobs      += v.troops.snob
+    catapults  += v.troops.catapult
   }
   const snobsEdited = allPlayers.value.reduce(
     (sum, p) => sum + planStore.getPlayerData(p.player).totalNobles, 0
@@ -224,7 +289,7 @@ const totals = computed(() => {
   const trains = allPlayers.value.reduce(
     (sum, p) => sum + Math.floor(planStore.getPlayerData(p.player).totalNobles / 5), 0
   )
-  return { fullOff, halfOff, smallOff, snobs: snobsEdited, knights, trains }
+  return { fullOff, halfOff, smallOff, snobs: snobsEdited, trains, catapults }
 })
 
 const allPlayers = computed<PlayerStat[]>(() => {
@@ -232,7 +297,7 @@ const allPlayers = computed<PlayerStat[]>(() => {
   for (const v of villagesStore.villages) {
     let s = map.get(v.player)
     if (!s) {
-      s = { player: v.player, fullOff: 0, halfOff: 0, smallOff: 0, snobsCsv: 0, knightsCsv: 0 }
+      s = { player: v.player, fullOff: 0, halfOff: 0, smallOff: 0, snobsCsv: 0, knightsCsv: 0, catapultsCsv: 0 }
       map.set(v.player, s)
     }
     const axe = v.troops.axe
@@ -241,6 +306,7 @@ const allPlayers = computed<PlayerStat[]>(() => {
     else if (axe >= 1000)  s.smallOff++
     s.snobsCsv += v.troops.snob
     s.knightsCsv += v.troops.knight
+    s.catapultsCsv += v.troops.catapult
   }
   return [...map.values()].sort((a, b) => b.fullOff - a.fullOff)
 })
@@ -249,7 +315,7 @@ const allPlayers = computed<PlayerStat[]>(() => {
 function prefillMissing() {
   for (const p of allPlayers.value) {
     if (!planStore.playerDataMap.get(p.player)) {
-      planStore.setPlayerData(p.player, { totalNobles: p.snobsCsv, offPaladins: p.knightsCsv })
+      planStore.setPlayerData(p.player, { totalNobles: p.snobsCsv })
     }
   }
 }
@@ -257,7 +323,7 @@ function prefillMissing() {
 // On fresh CSV parse: fill all players from CSV (overrides previous data for this import)
 function prefillAll() {
   for (const p of allPlayers.value) {
-    planStore.setPlayerData(p.player, { totalNobles: p.snobsCsv, offPaladins: p.knightsCsv })
+    planStore.setPlayerData(p.player, { totalNobles: p.snobsCsv })
   }
 }
 
@@ -372,6 +438,20 @@ h3 {
 .drop-zone p {
   color: #a0a0b0;
   margin: 0;
+}
+
+.drop-format {
+  font-size: 0.72rem;
+  margin-top: 0.5rem !important;
+  color: #5a5a7a !important;
+}
+
+.drop-format code {
+  background: rgba(15, 52, 96, 0.6);
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  color: #7a7aaa;
+  font-size: 0.7rem;
 }
 
 .hidden-input {

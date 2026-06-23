@@ -1,0 +1,26 @@
+// ============================================================================
+// Design tokens — auto-imported into every .scss file via vite.config.ts
+// ============================================================================
+
+// Accent palette
+$accent:       #e94560;
+$green:        #4ecca3;
+$orange:       #f5a623;
+$purple:       #a78bfa;
+
+// Backgrounds
+$bg-page:      #16213e;
+$bg-panel:     #1a1a2e;
+$bg-deep:      #0d1b2e;
+
+// Borders
+$border:       #0f3460;
+
+// Text
+$text:         #e0e0e0;
+$text-md:      #c8c8d4;
+$text-dim:     #a0a0b0;
+$text-faint:   #6a6a8a;
+
+// Alpha helpers — used for muted backgrounds and borders
+@function a($color, $alpha) { @return rgba($color, $alpha); }

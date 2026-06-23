@@ -50,6 +50,15 @@ export function calcWatchtower(
   return { color, icon }
 }
 
+export interface WatchtowerVillage {
+  id: string
+  coords: string
+  x: number
+  y: number
+  player: string
+  level: number  // 0–20; equals detection radius in fields
+}
+
 // ---------------------------------------------------------------------------
 // Core types
 // ---------------------------------------------------------------------------
@@ -63,8 +72,10 @@ export interface Target {
   y: number
   arrivalTime: Date
   villageId?: number
-  watchtowerLevel: number
+  enemyPlayer?: string   // owner player name (auto-filled from village map or manual)
+  enemyAllyTag?: string  // owner tribe tag
   label?: string
+  palOffCount?: number   // how many paladin-offs to send to this target
 }
 
 export interface Attack {
@@ -123,7 +134,6 @@ export interface NobleCompositionConfig {
 }
 
 export interface MassConfig {
-  paladinOffsPerTarget: number
   regularOffsPerTarget: number
   splitOff: boolean
   nobleTrainSize: number
@@ -137,7 +147,6 @@ export interface MassConfig {
 }
 
 export const DEFAULT_MASS_CONFIG: MassConfig = {
-  paladinOffsPerTarget: 0,
   regularOffsPerTarget: 3,
   splitOff: false,
   nobleTrainSize: 4,
@@ -285,6 +294,8 @@ function buildNobleComposition(
 const LS_TARGETS = 'vp_targets'
 const LS_PLAYER_DATA = 'vp_player_data'
 const LS_MASS_CONFIG = 'vp_mass_config'
+const LS_WATCHTOWER = 'vp_watchtower'
+const LS_SPAM_NOBLE_TARGETS = 'vp_spam_noble_targets'
 
 function loadTargets(): Target[] {
   try {
@@ -313,6 +324,25 @@ function loadMassConfig(): MassConfig {
   return { ...DEFAULT_MASS_CONFIG }
 }
 
+function loadWatchtowerVillages(): WatchtowerVillage[] {
+  try {
+    const raw = localStorage.getItem(LS_WATCHTOWER)
+    if (raw) return JSON.parse(raw) as WatchtowerVillage[]
+  } catch { /* ignore */ }
+  return []
+}
+
+function loadSpamNobleTargets(): Target[] {
+  try {
+    const raw = localStorage.getItem(LS_SPAM_NOBLE_TARGETS)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Array<Omit<Target, 'arrivalTime'> & { arrivalTime: string }>
+      return parsed.map((t) => ({ ...t, arrivalTime: new Date(t.arrivalTime) }))
+    }
+  } catch { /* ignore */ }
+  return []
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -323,8 +353,10 @@ export const usePlanStore = defineStore('plan', () => {
 
   // Persisted state
   const targets = ref<Target[]>(loadTargets())
+  const spamNobleTargets = ref<Target[]>(loadSpamNobleTargets())
   const playerData = ref<PlayerData[]>(loadPlayerData())
   const massConfig = ref<MassConfig>(loadMassConfig())
+  const watchtowerVillages = ref<WatchtowerVillage[]>(loadWatchtowerVillages())
 
   // Generated (not persisted)
   const attacks = ref<Attack[]>([])
@@ -347,6 +379,14 @@ export const usePlanStore = defineStore('plan', () => {
     localStorage.setItem(LS_MASS_CONFIG, JSON.stringify(massConfig.value))
   }
 
+  function saveWatchtowerVillages() {
+    localStorage.setItem(LS_WATCHTOWER, JSON.stringify(watchtowerVillages.value))
+  }
+
+  function saveSpamNobleTargets() {
+    localStorage.setItem(LS_SPAM_NOBLE_TARGETS, JSON.stringify(spamNobleTargets.value))
+  }
+
   // ---------------------------------------------------------------------------
   // Targets CRUD
   // ---------------------------------------------------------------------------
@@ -360,9 +400,15 @@ export const usePlanStore = defineStore('plan', () => {
       x: xy.x,
       y: xy.y,
       arrivalTime,
-      watchtowerLevel: 0,
       ...options,
     }
+    targets.value.push(t)
+    saveTargets()
+    return t
+  }
+
+  function addEmptyTarget(arrivalTime: Date): Target {
+    const t: Target = { id: genId(), coords: '', x: 0, y: 0, arrivalTime }
     targets.value.push(t)
     saveTargets()
     return t
@@ -383,6 +429,47 @@ export const usePlanStore = defineStore('plan', () => {
       if (xy) { t.x = xy.x; t.y = xy.y }
     }
     saveTargets()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Spam noble targets CRUD
+  // ---------------------------------------------------------------------------
+
+  function addEmptySpamNobleTarget(arrivalTime: Date): Target {
+    const t: Target = { id: genId(), coords: '', x: 0, y: 0, arrivalTime }
+    spamNobleTargets.value.push(t)
+    saveSpamNobleTargets()
+    return t
+  }
+
+  function addSpamNobleTarget(coords: string, arrivalTime: Date): Target | null {
+    const xy = coordsToXY(coords)
+    if (!xy) return null
+    const t: Target = { id: genId(), coords, x: xy.x, y: xy.y, arrivalTime }
+    spamNobleTargets.value.push(t)
+    saveSpamNobleTargets()
+    return t
+  }
+
+  function updateSpamNobleTarget(id: string, patch: Partial<Omit<Target, 'id'>>) {
+    const t = spamNobleTargets.value.find((t) => t.id === id)
+    if (!t) return
+    Object.assign(t, patch)
+    if (patch.coords) {
+      const xy = coordsToXY(patch.coords)
+      if (xy) { t.x = xy.x; t.y = xy.y }
+    }
+    saveSpamNobleTargets()
+  }
+
+  function removeSpamNobleTarget(id: string) {
+    spamNobleTargets.value = spamNobleTargets.value.filter((t) => t.id !== id)
+    saveSpamNobleTargets()
+  }
+
+  function clearSpamNobleTargets() {
+    spamNobleTargets.value = []
+    saveSpamNobleTargets()
   }
 
   // ---------------------------------------------------------------------------
@@ -417,6 +504,63 @@ export const usePlanStore = defineStore('plan', () => {
   function updateMassConfig(patch: Partial<MassConfig>) {
     massConfig.value = { ...massConfig.value, ...patch }
     saveMassConfig()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Watchtower villages
+  // ---------------------------------------------------------------------------
+
+  function importWatchtowerVillages(entries: Array<{ coords: string; player: string; level: number }>) {
+    const newVillages: WatchtowerVillage[] = entries.map((e) => {
+      const m = e.coords.match(/^(\d+)\|(\d+)$/)
+      return {
+        id: genId(),
+        coords: e.coords,
+        x: m ? parseInt(m[1], 10) : 0,
+        y: m ? parseInt(m[2], 10) : 0,
+        player: e.player,
+        level: Math.max(0, Math.min(20, e.level)),
+      }
+    })
+    watchtowerVillages.value.push(...newVillages)
+    saveWatchtowerVillages()
+  }
+
+  function addWatchtowerVillage(coords = '', player = '', level = 20): WatchtowerVillage {
+    const m = coords.match(/^(\d+)\|(\d+)$/)
+    const wt: WatchtowerVillage = {
+      id: genId(), coords,
+      x: m ? parseInt(m[1], 10) : 0,
+      y: m ? parseInt(m[2], 10) : 0,
+      player,
+      level: Math.max(0, Math.min(20, level)),
+    }
+    watchtowerVillages.value.push(wt)
+    saveWatchtowerVillages()
+    return wt
+  }
+
+  function updateWatchtowerVillage(id: string, patch: Partial<Omit<WatchtowerVillage, 'id'>>) {
+    const wt = watchtowerVillages.value.find((w) => w.id === id)
+    if (!wt) return
+    if (patch.coords !== undefined) {
+      wt.coords = patch.coords
+      const m = patch.coords.match(/^(\d+)\|(\d+)$/)
+      if (m) { wt.x = parseInt(m[1], 10); wt.y = parseInt(m[2], 10) }
+    }
+    if (patch.player !== undefined) wt.player = patch.player
+    if (patch.level !== undefined) wt.level = Math.max(0, Math.min(20, patch.level))
+    saveWatchtowerVillages()
+  }
+
+  function removeWatchtowerVillage(id: string) {
+    watchtowerVillages.value = watchtowerVillages.value.filter((w) => w.id !== id)
+    saveWatchtowerVillages()
+  }
+
+  function clearWatchtowerVillages() {
+    watchtowerVillages.value = []
+    saveWatchtowerVillages()
   }
 
   // ---------------------------------------------------------------------------
@@ -475,9 +619,13 @@ export const usePlanStore = defineStore('plan', () => {
         if (isInNightWindow(arrivalTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_ARRIVAL')
         if (isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_SEND')
       }
-      if (settings.watchtowerEnabled && target.watchtowerLevel > 0) {
-        // Simplified: if target has a tower, all attacks get the warning (radius check is V1)
-        warnings.push('WATCHTOWER_HIT')
+      if (settings.watchtowerEnabled && watchtowerVillages.value.length > 0) {
+        const hit = watchtowerVillages.value.some((wt) => {
+          if (wt.level <= 0) return false
+          const d = calcDistance({ x: village.x, y: village.y }, { x: wt.x, y: wt.y }, settings.mapSize)
+          return d <= wt.level
+        })
+        if (hit) warnings.push('WATCHTOWER_HIT')
       }
 
       result.push({
@@ -508,7 +656,7 @@ export const usePlanStore = defineStore('plan', () => {
       )
 
       // ---- Paladin offs ----
-      let paladinOffsLeft = config.paladinOffsPerTarget
+      let paladinOffsLeft = target.palOffCount ?? 0
       for (const v of byDist) {
         if (paladinOffsLeft <= 0) break
         const avail = pool.get(v.coords)!
@@ -682,6 +830,19 @@ export const usePlanStore = defineStore('plan', () => {
     if (row) row.excluded = !row.excluded
   }
 
+  function clearTargets(): void {
+    targets.value = []
+    attacks.value = []
+    noblePlacements.value = []
+    paladinPlacements.value = []
+    saveTargets()
+  }
+
+  function clearSpamNobleTargetsAndSave(): void {
+    spamNobleTargets.value = []
+    saveSpamNobleTargets()
+  }
+
   function resetGenerated(): void {
     attacks.value = []
     noblePlacements.value = []
@@ -690,12 +851,16 @@ export const usePlanStore = defineStore('plan', () => {
 
   function resetAll(): void {
     targets.value = []
+    spamNobleTargets.value = []
     playerData.value = []
     massConfig.value = { ...DEFAULT_MASS_CONFIG }
+    watchtowerVillages.value = []
     resetGenerated()
     saveTargets()
+    saveSpamNobleTargets()
     savePlayerData()
     saveMassConfig()
+    saveWatchtowerVillages()
   }
 
   // ---------------------------------------------------------------------------
@@ -725,13 +890,16 @@ export const usePlanStore = defineStore('plan', () => {
   return {
     // State
     targets,
+    spamNobleTargets,
     playerData,
     massConfig,
+    watchtowerVillages,
     attacks,
     noblePlacements,
     paladinPlacements,
     // Targets
     addTarget,
+    addEmptyTarget,
     removeTarget,
     updateTarget,
     // Player data
@@ -740,9 +908,22 @@ export const usePlanStore = defineStore('plan', () => {
     playerDataMap,
     // Config
     updateMassConfig,
+    // Watchtower villages
+    importWatchtowerVillages,
+    addWatchtowerVillage,
+    updateWatchtowerVillage,
+    removeWatchtowerVillage,
+    clearWatchtowerVillages,
+    // Spam noble targets
+    addEmptySpamNobleTarget,
+    addSpamNobleTarget,
+    updateSpamNobleTarget,
+    removeSpamNobleTarget,
+    clearSpamNobleTargets: clearSpamNobleTargetsAndSave,
     // Plan
     generate,
     toggleExclude,
+    clearTargets,
     resetGenerated,
     resetAll,
     // Computed

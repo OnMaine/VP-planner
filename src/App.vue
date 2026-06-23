@@ -34,7 +34,7 @@ const hasWorld = computed(() => Boolean(worldStore.settings.worldCode))
 const hasVillages = computed(() => villagesStore.villages.length > 0)
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 #app-layout {
   min-height: 100vh;
   display: flex;
@@ -42,56 +42,52 @@ const hasVillages = computed(() => villagesStore.villages.length > 0)
 }
 
 .app-header {
-  background: #1a1a2e;
+  background: $bg-panel;
   padding: 0 1.5rem;
   height: 52px;
   display: flex;
   align-items: center;
   gap: 2rem;
-  border-bottom: 2px solid #e94560;
+  border-bottom: 2px solid $accent;
   flex-shrink: 0;
+
+  nav {
+    display: flex;
+    gap: 1.5rem;
+
+    a {
+      color: $text-md;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: color 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+
+      &.router-link-active { color: $accent; }
+    }
+  }
 }
 
 .brand {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #e94560;
+  color: $accent;
   white-space: nowrap;
-}
-
-.app-header nav {
-  display: flex;
-  gap: 1.5rem;
-}
-
-.app-header nav a {
-  color: #c8c8d4;
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 0.95rem;
-  transition: color 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.app-header nav a.router-link-active {
-  color: #e94560;
 }
 
 .badge {
   font-size: 0.65rem;
   line-height: 1;
-}
 
-.badge-warn {
-  color: #f5a623;
+  &-warn { color: $orange; }
 }
 
 .app-main {
   padding: 1.5rem;
   flex: 1;
-  background: #16213e;
-  color: #e0e0e0;
+  background: $bg-page;
+  color: $text;
 }
 </style>
