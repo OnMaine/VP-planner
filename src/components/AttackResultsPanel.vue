@@ -98,10 +98,14 @@
                   </td>
                   <td class="nowrap">
                     <span :class="['wt-icon', `wt-${atk.watchtowerColor}`]">
-                      {{ atk.watchtowerIcon === 'snob' ? '👑' : '⚔️' }}
+                      <img :src="atk.watchtowerIcon === 'snob' ? UNIT_ICONS.snob : UNIT_ICONS.axe" class="unit-icon-xs" />
                     </span>
                     <span class="units-count">{{ atk.totalUnits.toLocaleString() }}</span>
-                    <span class="units-detail">{{ formatComposition(atk.composition) }}</span>
+                    <span class="units-detail">
+                      <span v-for="p in compParts(atk.composition)" :key="p.key" class="comp-unit">
+                        <img :src="p.icon" class="unit-icon-xs" :title="p.key" />{{ p.count.toLocaleString() }}
+                      </span>
+                    </span>
                   </td>
                   <td>
                     <span
@@ -128,6 +132,7 @@ import { ref } from 'vue'
 import { usePlanStore } from '@/stores/planStore'
 import type { Attack, AttackType, WarningCode, AttackComposition } from '@/stores/planStore'
 import { useDateFormat } from '@/composables/useDateFormat'
+import { UNIT_ICONS } from '@/utils/unitIcons'
 
 const planStore = usePlanStore()
 const { formatDT } = useDateFormat()
@@ -218,20 +223,13 @@ function warnBadgeClass(code: WarningCode): string {
   }
 }
 
-function formatComposition(c: AttackComposition): string {
-  const parts: Array<[keyof AttackComposition, string]> = [
-    ['axe',      'Топ'],
-    ['light',    'ЛК'],
-    ['heavy',    'ТК'],
-    ['ram',      'Тар'],
-    ['snob',     'Двр'],
-    ['spear',    'Коп'],
-    ['sword',    'Меч'],
-    ['spy',      'Лаз'],
-    ['catapult', 'Кат'],
-    ['knight',   'Пал'],
+function compParts(c: AttackComposition): Array<{ key: string; icon: string; count: number }> {
+  const order: Array<keyof AttackComposition> = [
+    'axe', 'light', 'heavy', 'ram', 'spear', 'sword', 'spy', 'catapult', 'knight', 'snob',
   ]
-  return parts.filter(([key]) => c[key] > 0).map(([key, lbl]) => `${lbl}:${c[key].toLocaleString()}`).join(' ')
+  return order
+    .filter((key) => c[key] > 0)
+    .map((key) => ({ key, icon: UNIT_ICONS[key], count: c[key] }))
 }
 </script>
 
@@ -285,13 +283,15 @@ $yellow:       #f0c040;
 .warn-orange { background: a($orange,  0.2);  color: $orange;  border: 1px solid a($orange,  0.4); }
 .warn-yellow { background: a($yellow,  0.18); color: $yellow;  border: 1px solid a($yellow,  0.38); }
 
-// Watchtower icons
-.wt-icon   { margin-right: 0.25rem; font-size: 0.9rem; }
-.wt-green  { color: $green; }
-.wt-orange { color: $orange; }
-.wt-red    { color: $accent; }
+// Watchtower indicator
+.wt-icon         { display: inline-flex; align-items: center; margin-right: 0.25rem; }
+.wt-green  img   { filter: brightness(0) saturate(100%) invert(70%) sepia(60%) saturate(400%) hue-rotate(115deg); }
+.wt-orange img   { filter: brightness(0) saturate(100%) invert(75%) sepia(60%) saturate(600%) hue-rotate(10deg); }
+.wt-red    img   { filter: brightness(0) saturate(100%) invert(35%) sepia(80%) saturate(600%) hue-rotate(320deg); }
 
-// Units
+// Units composition
 .units-count  { font-weight: 700; color: $text; margin-right: 0.35rem; }
-.units-detail { color: #7a7a9a; font-size: 0.72rem; }
+.units-detail { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 6px; }
+.comp-unit    { display: inline-flex; align-items: center; gap: 2px; color: #7a7a9a; font-size: 0.72rem; }
+.unit-icon-xs { width: 13px; height: 13px; image-rendering: pixelated; }
 </style>

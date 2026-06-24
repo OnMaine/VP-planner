@@ -51,6 +51,7 @@
 
       <div class="unit-times-row" v-if="worldStore.settings.worldCode">
         <span v-for="(label, key) in UNIT_LABELS" :key="key" class="unit-chip">
+          <img :src="UNIT_ICONS[key]" class="unit-chip-img" :alt="label" />
           <span class="unit-chip-name">{{ label }}</span>
           <span class="unit-chip-val">{{ worldStore.settings.unitTimes[key] }}с</span>
         </span>
@@ -131,7 +132,9 @@
         <h3>Час юнітів (секунд/клітинку)</h3>
         <div class="form-grid">
           <label v-for="(label, key) in UNIT_LABELS" :key="key">
-            {{ label }}
+            <span class="unit-form-label">
+              <img :src="UNIT_ICONS[key]" class="unit-icon-sm" :alt="label" />{{ label }}
+            </span>
             <input v-model.number="form.unitTimes[key]" type="number" min="1" class="input" />
           </label>
         </div>
@@ -148,6 +151,7 @@ import { ref, reactive, watch, computed } from 'vue'
 import { useWorldStore } from '@/stores/worldStore'
 import { KNOWN_WORLDS } from '@/stores/worldStore'
 import type { UnitTimes } from '@/stores/worldStore'
+import { UNIT_ICONS } from '@/utils/unitIcons'
 
 const worldStore = useWorldStore()
 
@@ -301,8 +305,12 @@ function saveManual() {
   padding: 0.25rem 0.5rem;
   min-width: 48px;
 }
+.unit-chip-img  { width: 18px; height: 18px; image-rendering: pixelated; }
 .unit-chip-name { font-size: 0.7rem; color: #8888a8; }
 .unit-chip-val  { font-size: 0.8rem; color: $text; font-weight: 600; }
+
+.unit-form-label { display: inline-flex; align-items: center; gap: 5px; }
+.unit-icon-sm    { width: 16px; height: 16px; image-rendering: pixelated; }
 
 // Fetch row
 .row { display: flex; gap: 0.75rem; align-items: center; }

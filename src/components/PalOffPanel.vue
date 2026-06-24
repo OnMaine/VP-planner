@@ -1,7 +1,8 @@
 <template>
   <section class="panel">
     <button class="collapse-toggle" @click="open = !open">
-      <span>
+      <span class="panel-title-row">
+        <img :src="knightIcon" class="knight-icon" />
         Пал-оффи
         <span v-if="totalAssigned > 0" class="tower-count-badge">{{ totalAssigned }} призначено</span>
       </span>
@@ -85,6 +86,8 @@
 import { ref, computed } from 'vue'
 import { usePlanStore } from '@/stores/planStore'
 import { usePlayerResolution } from '@/composables/usePlayerResolution'
+import { UNIT_ICONS } from '@/utils/unitIcons'
+const knightIcon = UNIT_ICONS.knight
 
 const planStore = usePlanStore()
 const { resolveTargetPlayer } = usePlayerResolution()
@@ -153,6 +156,9 @@ function applyBulk(): void {
 .paloff-layout { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
 .paloff-troops { flex: 0 0 220px; min-width: 180px; }
 .paloff-assign { flex: 1 1 400px; min-width: 300px; }
+
+.panel-title-row { display: inline-flex; align-items: center; gap: 6px; }
+.knight-icon { width: 16px; height: 16px; image-rendering: pixelated; }
 
 .tfoot-row td {
   background: $border;

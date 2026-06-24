@@ -192,16 +192,16 @@
               <th>Гравець</th>
               <th>Координати</th>
               <th>Очки</th>
-              <th>Копья</th>
-              <th>Мечи</th>
-              <th>Топоры</th>
-              <th>Лазы</th>
-              <th>ЛК</th>
-              <th>ТК</th>
-              <th>Тараны</th>
-              <th>Каты</th>
-              <th>Пал</th>
-              <th>Двор</th>
+              <th title="Копья"><img :src="UNIT_ICONS.spear"    class="th-unit-icon" /></th>
+              <th title="Мечи"><img :src="UNIT_ICONS.sword"    class="th-unit-icon" /></th>
+              <th title="Топоры"><img :src="UNIT_ICONS.axe"   class="th-unit-icon" /></th>
+              <th title="Лазы"><img :src="UNIT_ICONS.spy"     class="th-unit-icon" /></th>
+              <th title="ЛК"><img :src="UNIT_ICONS.light"     class="th-unit-icon" /></th>
+              <th title="ТК"><img :src="UNIT_ICONS.heavy"     class="th-unit-icon" /></th>
+              <th title="Тараны"><img :src="UNIT_ICONS.ram"   class="th-unit-icon" /></th>
+              <th title="Каты"><img :src="UNIT_ICONS.catapult" class="th-unit-icon" /></th>
+              <th title="Пал"><img :src="UNIT_ICONS.knight"   class="th-unit-icon" /></th>
+              <th title="Двор"><img :src="UNIT_ICONS.snob"    class="th-unit-icon" /></th>
             </tr>
           </thead>
           <tbody>
@@ -231,6 +231,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { usePlanStore } from '@/stores/planStore'
+import { UNIT_ICONS } from '@/utils/unitIcons'
 
 const villagesStore = useVillagesStore()
 const planStore = usePlanStore()
@@ -498,4 +499,6 @@ function clearAll() {
   text-align: center;
   &:focus { outline: none; border-color: $accent; }
 }
+
+.th-unit-icon { width: 16px; height: 16px; image-rendering: pixelated; display: block; margin: 0 auto; }
 </style>

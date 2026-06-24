@@ -87,10 +87,10 @@
                     @change="onCoordsChange(t.id, ($event.target as HTMLInputElement).value)"
                   />
                   <span v-if="towerCoordsSet.has(t.coords)" class="tower-badge" :title="`Вежа рівень ${targetTowerLevel(t.coords)}`">
-                    🗼{{ targetTowerLevel(t.coords) }}
+                    <img :src="watchtowerIcon" class="tower-icon" />{{ targetTowerLevel(t.coords) }}
                   </span>
                   <span v-if="(t.palOffCount ?? 0) > 0" class="paloff-badge" :title="`Пал-оффів: ${t.palOffCount}`">
-                    ♞{{ t.palOffCount }}
+                    <img :src="knightIcon" class="knight-icon" />{{ t.palOffCount }}
                   </span>
                 </div>
               </td>
@@ -136,6 +136,8 @@ import { useCoordInput } from '@/composables/useCoordInput'
 import { usePlayerResolution } from '@/composables/usePlayerResolution'
 import { useTargetGroups } from '@/composables/useTargetGroups'
 import type { GroupBy } from '@/composables/useTargetGroups'
+import { UNIT_ICONS, watchtowerIcon } from '@/utils/unitIcons'
+const knightIcon = UNIT_ICONS.knight
 
 const planStore = usePlanStore()
 const enemyStore = useEnemyDataStore()
@@ -269,6 +271,17 @@ function onTargetFile(event: Event): void {
 .row-has-paloff { background: a($green,  0.07) !important; border-left: 2px solid a($green,  0.45); }
 
 .coords-cell  { display: flex; align-items: center; gap: 0.4rem; }
-.tower-badge  { font-size: 0.72rem; color: $orange; white-space: nowrap; cursor: default; }
-.paloff-badge { font-size: 0.72rem; color: $green;  white-space: nowrap; cursor: default; margin-left: 2px; }
+.tower-badge  { display: inline-flex; align-items: center; gap: 2px; font-size: 0.72rem; color: $orange; white-space: nowrap; cursor: default; }
+.tower-icon   { width: 14px; height: 14px; image-rendering: pixelated; }
+.paloff-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.72rem;
+  color: $green;
+  white-space: nowrap;
+  cursor: default;
+  margin-left: 2px;
+}
+.knight-icon { width: 14px; height: 14px; image-rendering: pixelated; }
 </style>

@@ -2,7 +2,8 @@
   <section class="panel">
     <div class="section-header">
       <button class="collapse-toggle" @click="open = !open">
-        <span>
+        <span class="panel-title-row">
+          <img :src="watchtowerIcon" class="section-icon" />
           Башти ворога
           <span v-if="planStore.watchtowerVillages.length" class="tower-count-badge">
             {{ planStore.watchtowerVillages.length }}
@@ -113,6 +114,7 @@ import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useCoordInput } from '@/composables/useCoordInput'
 import { usePlayerResolution } from '@/composables/usePlayerResolution'
 import type { WatchtowerVillage } from '@/stores/planStore'
+import { watchtowerIcon } from '@/utils/unitIcons'
 
 const planStore = usePlanStore()
 const enemyStore = useEnemyDataStore()
@@ -220,4 +222,7 @@ function onTowerFile(event: Event): void {
 }
 .tower-group-player { font-weight: 700; color: $text; font-size: 0.85rem; }
 .tower-group-count  { color: $text-faint; font-size: 0.75rem; }
+
+.panel-title-row { display: inline-flex; align-items: center; gap: 6px; }
+.section-icon    { width: 18px; height: 18px; image-rendering: pixelated; }
 </style>
