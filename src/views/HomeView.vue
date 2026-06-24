@@ -20,7 +20,7 @@
       </RouterLink>
       <RouterLink to="/presets" class="card">
         <span class="card-icon">📁</span>
-        <h2>Пресеты атак</h2>
+        <h2>Пресеты войск</h2>
         <p>Сохранённые конфигурации для быстрого применения</p>
       </RouterLink>
     </div>

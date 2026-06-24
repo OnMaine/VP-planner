@@ -2,16 +2,25 @@
   <section class="panel">
     <div class="stats-header-row">
       <h2>Статистика</h2>
-      <div class="cat-settings">
-        <span class="cat-settings-label">Кат. отряд:</span>
-        <label class="cat-settings-field">
-          мин
-          <input v-model.number="catMinSize" type="number" min="1" class="inline-input cat-input" />
-        </label>
-        <label class="cat-settings-field">
-          макс
-          <input v-model.number="catMaxSize" type="number" min="1" class="inline-input cat-input" />
-        </label>
+      <div class="settings-bar">
+        <div class="settings-group">
+          <span class="sg-label">Топоры</span>
+          <label class="sg-field">фулл <input v-model.number="presetsStore.fullOffMinAxe"  type="number" min="1" class="inline-input sg-input" /></label>
+          <label class="sg-field">med  <input v-model.number="presetsStore.halfOffMinAxe"  type="number" min="1" class="inline-input sg-input" /></label>
+          <label class="sg-field">мини <input v-model.number="presetsStore.smallOffMinAxe" type="number" min="1" class="inline-input sg-input" /></label>
+        </div>
+        <div class="settings-group">
+          <span class="sg-label">Пробой</span>
+          <label class="sg-field">тар. <input v-model.number="presetsStore.breachMinRams" type="number" min="1" class="inline-input sg-input" /></label>
+        </div>
+        <div class="settings-group">
+          <label class="sg-checkbox">
+            <input v-model="presetsStore.catSplitSquads" type="checkbox" />
+            Кат. отряды
+          </label>
+          <label class="sg-field">мин <input v-model.number="presetsStore.catMinSize" type="number" min="1" class="inline-input sg-input" /></label>
+          <label v-if="presetsStore.catSplitSquads" class="sg-field">макс <input v-model.number="presetsStore.catMaxSize" type="number" min="1" class="inline-input sg-input" /></label>
+        </div>
       </div>
     </div>
 
@@ -34,11 +43,11 @@
       </div>
       <div class="stat-card stat-card--orange">
         <span class="stat-num">{{ totals.halfOff }}</span>
-        <span class="stat-label">Пол-офф</span>
+        <span class="stat-label">Медиум офф</span>
       </div>
       <div class="stat-card stat-card--yellow">
         <span class="stat-num">{{ totals.smallOff }}</span>
-        <span class="stat-label">Мини офф</span>
+        <span class="stat-label">Мини</span>
       </div>
       <div class="stat-card stat-card--purple">
         <span class="stat-num">{{ totals.snobs }}</span>
@@ -66,10 +75,10 @@
         <thead>
           <tr>
             <th>Игрок</th>
-            <th title="Деревень с топорами ≥ 5 000 и таранами ≥ 750 (не входит в фулл офф)">Пробой</th>
-            <th title="Деревень с топорами ≥ 5 000 (без пробойных)">Фулл офф</th>
-            <th title="Деревень с топорами 2 000–4 999">Пол-офф</th>
-            <th title="Деревень с топорами 1 000–1 999">Мини офф</th>
+            <th :title="`топоры ≥ ${presetsStore.fullOffMinAxe} и тараны ≥ ${presetsStore.breachMinRams}`">Пробой</th>
+            <th :title="`топоры ≥ ${presetsStore.fullOffMinAxe} (без пробойных)`">Фулл офф</th>
+            <th :title="`топоры ${presetsStore.halfOffMinAxe}–${presetsStore.fullOffMinAxe - 1}`">Медиум офф</th>
+            <th :title="`топоры ${presetsStore.smallOffMinAxe}–${presetsStore.halfOffMinAxe - 1}`">Мини</th>
             <th>
               Каты
               <span class="th-info-icon" @mouseenter="showThTooltip('cats', $event)" @mouseleave="hideThTooltip">ⓘ</span>
@@ -242,12 +251,16 @@
         <div class="ftt-row"><span class="ftt-lbl">Формат</span><span class="ftt-val">отряды (кат)</span></div>
         <div class="ftt-sep"></div>
         <div class="ftt-hint">
-          Число — количество кат. отрядов из этой деревни.<br/>
-          В скобках — общее количество кат.<br/>
-          <br/>
-          Мин. отряд: <strong>{{ catMinSize }}</strong> кат — меньше не считается.<br/>
-          Макс. отряд: <strong>{{ catMaxSize }}</strong> кат — больше делится.<br/>
-          Изменить можно над таблицей.
+          <template v-if="presetsStore.catSplitSquads">
+            Деление по отрядам включено.<br/>
+            Мин. отряд: <strong>{{ presetsStore.catMinSize }}</strong> кат — меньше не считается.<br/>
+            Макс. отряд: <strong>{{ presetsStore.catMaxSize }}</strong> кат — больше делится.<br/>
+            Эскорт: <strong>{{ 1000 - presetsStore.catMaxSize }}</strong> юн. (1000 − макс кат).
+          </template>
+          <template v-else>
+            Деление отключено — все каты деревни считаются<br/>
+            <strong>одним отрядом</strong> без учёта лимитов.
+          </template>
         </div>
       </template>
       <template v-else-if="thTooltip.id === 'trains'">
@@ -263,27 +276,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { usePlanStore } from '@/stores/planStore'
+import { usePresetsStore } from '@/stores/presetsStore'
 import { UNIT_ICONS } from '@/utils/unitIcons'
 
 const villagesStore = useVillagesStore()
 const planStore = usePlanStore()
-
-// Catapult squad settings (persisted locally)
-function lsNum(key: string, def: number): number {
-  const v = parseInt(localStorage.getItem(key) ?? '', 10)
-  return isNaN(v) ? def : v
-}
-const catMinSize = ref(lsNum('vp_cat_min', 50))
-const catMaxSize = ref(lsNum('vp_cat_max', 200))
-watch(catMinSize, (v) => localStorage.setItem('vp_cat_min', String(v)))
-watch(catMaxSize, (v) => localStorage.setItem('vp_cat_max', String(v)))
+const presetsStore = usePresetsStore()
 
 function catSquads(cats: number): number {
-  if (cats < catMinSize.value) return 0
-  return Math.ceil(cats / catMaxSize.value)
+  if (cats < presetsStore.catMinSize) return 0
+  if (!presetsStore.catSplitSquads) return 1
+  return Math.ceil(cats / presetsStore.catMaxSize)
 }
 function catSquadsForPlayer(player: string): number {
   return villagesStore.villages
@@ -322,10 +328,10 @@ const allPlayers = computed<PlayerStat[]>(() => {
     }
     const axe = v.troops.axe
     const ram = v.troops.ram
-    if (axe >= 5000 && ram >= 750) s.breakOff++
-    else if (axe >= 5000)          s.fullOff++
-    else if (axe >= 2000)          s.halfOff++
-    else if (axe >= 1000)          s.smallOff++
+    if (axe >= presetsStore.fullOffMinAxe && ram >= presetsStore.breachMinRams) s.breakOff++
+    else if (axe >= presetsStore.fullOffMinAxe)                                s.fullOff++
+    else if (axe >= presetsStore.halfOffMinAxe)                                s.halfOff++
+    else if (axe >= presetsStore.smallOffMinAxe)                               s.smallOff++
     s.snobsCsv     += v.troops.snob
     s.knightsCsv   += v.troops.knight
     s.catapultsCsv += v.troops.catapult
@@ -338,10 +344,10 @@ const totals = computed(() => {
   for (const v of villagesStore.villages) {
     const axe = v.troops.axe
     const ram = v.troops.ram
-    if (axe >= 5000 && ram >= 750) breakOff++
-    else if (axe >= 5000)          fullOff++
-    else if (axe >= 2000)          halfOff++
-    else if (axe >= 1000)          smallOff++
+    if (axe >= presetsStore.fullOffMinAxe && ram >= presetsStore.breachMinRams) breakOff++
+    else if (axe >= presetsStore.fullOffMinAxe)                                fullOff++
+    else if (axe >= presetsStore.halfOffMinAxe)                                halfOff++
+    else if (axe >= presetsStore.smallOffMinAxe)                               smallOff++
     catapults += v.troops.catapult
   }
   const catSquadsTotal = villagesStore.villages.reduce((sum, v) => sum + catSquads(v.troops.catapult), 0)
@@ -372,21 +378,68 @@ defineExpose({ prefillAll })
 // Stats header
 .stats-header-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
   h2 { margin: 0; }
 }
 
-.cat-settings       { display: flex; align-items: center; gap: 0.6rem; font-size: 0.8rem; }
-.cat-settings-label { color: $text-faint; white-space: nowrap; }
-.cat-settings-field { display: flex; align-items: center; gap: 0.3rem; color: $text-dim; }
-.cat-input          { width: 56px !important; }
+.settings-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+
+.settings-group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem 0.45rem;
+  background: a($bg-deep, 0.6);
+  border: 1px solid $border;
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  flex-wrap: wrap;
+}
+
+.sg-label {
+  color: $text-faint;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  margin-right: 0.1rem;
+}
+
+.sg-field {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: $text-dim;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.sg-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: $text-dim;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-right: 0.15rem;
+}
+
+.sg-input { width: 68px !important; }
 
 // Stat cards
-.stats-grid { display: flex; gap: 1.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
 
 .stat-card {
   background: $bg-page;

@@ -2,6 +2,7 @@
   <div class="planner-view">
     <h1>Планер атак</h1>
 
+    <MassCompositionPanel />
     <MassConfigPanel />
     <EnemyMapPanel />
     <TargetsTable />
@@ -25,6 +26,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { usePlanStore } from '@/stores/planStore'
+import MassCompositionPanel from '@/components/MassCompositionPanel.vue'
 import MassConfigPanel from '@/components/MassConfigPanel.vue'
 import EnemyMapPanel from '@/components/EnemyMapPanel.vue'
 import TargetsTable from '@/components/TargetsTable.vue'

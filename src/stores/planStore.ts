@@ -288,6 +288,16 @@ function buildNobleComposition(
 }
 
 // ---------------------------------------------------------------------------
+// Mass slots — preset-based recipe per target
+// ---------------------------------------------------------------------------
+
+export interface MassSlot {
+  id: string
+  presetId: string
+  count: number  // how many attacks of this type per target
+}
+
+// ---------------------------------------------------------------------------
 // localStorage helpers
 // ---------------------------------------------------------------------------
 
@@ -296,6 +306,7 @@ const LS_PLAYER_DATA = 'vp_player_data'
 const LS_MASS_CONFIG = 'vp_mass_config'
 const LS_WATCHTOWER = 'vp_watchtower'
 const LS_SPAM_NOBLE_TARGETS = 'vp_spam_noble_targets'
+const LS_MASS_SLOTS = 'vp_mass_slots'
 
 function loadTargets(): Target[] {
   try {
@@ -343,6 +354,14 @@ function loadSpamNobleTargets(): Target[] {
   return []
 }
 
+function loadMassSlots(): MassSlot[] {
+  try {
+    const raw = localStorage.getItem(LS_MASS_SLOTS)
+    if (raw) return JSON.parse(raw) as MassSlot[]
+  } catch { /* ignore */ }
+  return []
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -356,6 +375,7 @@ export const usePlanStore = defineStore('plan', () => {
   const spamNobleTargets = ref<Target[]>(loadSpamNobleTargets())
   const playerData = ref<PlayerData[]>(loadPlayerData())
   const massConfig = ref<MassConfig>(loadMassConfig())
+  const massSlots = ref<MassSlot[]>(loadMassSlots())
   const watchtowerVillages = ref<WatchtowerVillage[]>(loadWatchtowerVillages())
 
   // Generated (not persisted)
@@ -377,6 +397,10 @@ export const usePlanStore = defineStore('plan', () => {
 
   function saveMassConfig() {
     localStorage.setItem(LS_MASS_CONFIG, JSON.stringify(massConfig.value))
+  }
+
+  function saveMassSlots() {
+    localStorage.setItem(LS_MASS_SLOTS, JSON.stringify(massSlots.value))
   }
 
   function saveWatchtowerVillages() {
@@ -504,6 +528,27 @@ export const usePlanStore = defineStore('plan', () => {
   function updateMassConfig(patch: Partial<MassConfig>) {
     massConfig.value = { ...massConfig.value, ...patch }
     saveMassConfig()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mass slots (preset-based recipe)
+  // ---------------------------------------------------------------------------
+
+  function addMassSlot(presetId: string, count = 1): void {
+    massSlots.value.push({ id: genId(), presetId, count })
+    saveMassSlots()
+  }
+
+  function removeMassSlot(id: string): void {
+    massSlots.value = massSlots.value.filter((s) => s.id !== id)
+    saveMassSlots()
+  }
+
+  function updateMassSlot(id: string, patch: Partial<Omit<MassSlot, 'id'>>): void {
+    const slot = massSlots.value.find((s) => s.id === id)
+    if (!slot) return
+    Object.assign(slot, patch)
+    saveMassSlots()
   }
 
   // ---------------------------------------------------------------------------
@@ -908,6 +953,11 @@ export const usePlanStore = defineStore('plan', () => {
     playerDataMap,
     // Config
     updateMassConfig,
+    // Mass slots
+    massSlots,
+    addMassSlot,
+    removeMassSlot,
+    updateMassSlot,
     // Watchtower villages
     importWatchtowerVillages,
     addWatchtowerVillage,
