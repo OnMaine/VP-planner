@@ -750,7 +750,7 @@ export const usePlanStore = defineStore('plan', () => {
             composition: emptyComposition(), speedUnit: 'snob',
             totalUnits: 0, watchtowerColor: 'green', watchtowerIcon: 'snob',
             distance: dist, travelSeconds: 0, arrivalTime, sendTime: arrivalTime,
-            warnings: ['SNOB_TOO_FAR'], excluded: true, label: 'Двір (далеко)',
+            warnings: ['SNOB_TOO_FAR'], excluded: true, label: 'Двор (далеко)',
           })
           continue
         }
@@ -807,7 +807,7 @@ export const usePlanStore = defineStore('plan', () => {
           if (comp.snob === 0) continue
 
           avail.snob -= comp.snob
-          pushAttack('spam_noble', v, target, comp, arrivalTime, 'Спам-двір')
+          pushAttack('spam_noble', v, target, comp, arrivalTime, 'Спам-двор')
           spamNoblesLeft--
         }
       }

@@ -70,7 +70,7 @@ export const useVillagesStore = defineStore('villages', () => {
     const pointsIdx = headers.indexOf('Очки')
 
     if (playerIdx === -1 || coordsIdx === -1) {
-      throw new Error('CSV не містить обов\'язкових колонок "Игрок" або "Координаты"')
+      throw new Error('CSV не содержит обязательных колонок "Игрок" или "Координаты"')
     }
 
     // Map troop column indices

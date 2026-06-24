@@ -149,7 +149,7 @@ export const useEnemyDataStore = defineStore('enemyData', () => {
     try {
       const text = await readFileText(file)
       const parsed = parseVillages(text)
-      if (!parsed.length) { loadError.value = 'Файл порожній або неправильний формат'; return 0 }
+      if (!parsed.length) { loadError.value = 'Файл пустой или неверный формат'; return 0 }
       villages.value = parsed
       return parsed.length
     } catch (e) {
@@ -166,7 +166,7 @@ export const useEnemyDataStore = defineStore('enemyData', () => {
     try {
       const text = await readFileText(file)
       const parsed = parsePlayers(text)
-      if (!parsed.length) { loadError.value = 'Файл порожній або неправильний формат'; return 0 }
+      if (!parsed.length) { loadError.value = 'Файл пустой или неверный формат'; return 0 }
       players.value = parsed
       return parsed.length
     } catch (e) {
@@ -183,7 +183,7 @@ export const useEnemyDataStore = defineStore('enemyData', () => {
     try {
       const text = await readFileText(file)
       const parsed = parseAllies(text)
-      if (!parsed.length) { loadError.value = 'Файл порожній або неправильний формат'; return 0 }
+      if (!parsed.length) { loadError.value = 'Файл пустой или неверный формат'; return 0 }
       allies.value = parsed
       return parsed.length
     } catch (e) {

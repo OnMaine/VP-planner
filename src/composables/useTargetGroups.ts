@@ -34,21 +34,21 @@ export function useTargetGroups(groupBy: Ref<GroupBy>, towerCoordsSet: Ref<Set<s
       const info = enemyStore.lookupCoords(t.coords)
 
       if (by === 'player') {
-        const name = info?.player?.name ?? t.enemyPlayer ?? '(невідомо)'
+        const name = info?.player?.name ?? t.enemyPlayer ?? '(неизвестно)'
         const ally = info?.ally?.tag ?? t.enemyAllyTag ?? ''
         addTo(name, name, ally ? `[${ally}]` : undefined, t)
       } else if (by === 'tribe') {
-        const ally = info?.ally?.tag ?? t.enemyAllyTag ?? '(без племені)'
+        const ally = info?.ally?.tag ?? t.enemyAllyTag ?? '(без племени)'
         addTo(ally, ally, undefined, t)
       } else if (by === 'arrival') {
         const d = t.arrivalTime
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-        const label = d.toLocaleDateString('uk-UA', { day: '2-digit', month: 'long', year: 'numeric' })
+        const label = d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })
         addTo(key, label, undefined, t)
       } else if (by === 'tower') {
         const hasTower = towerCoordsSet.value.has(t.coords)
         const key = hasTower ? 'tower' : 'no_tower'
-        const label = hasTower ? 'З вежею' : 'Без вежі'
+        const label = hasTower ? 'С башней' : 'Без башни'
         addTo(key, label, undefined, t)
       }
     }
