@@ -256,60 +256,23 @@ function saveManual() {
 }
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .settings-view {
   max-width: 900px;
   margin: 0 auto;
 }
 
-h1 {
-  color: #e94560;
-  margin-bottom: 1.5rem;
-}
+// Panel accent override
+.panel-summary { border-color: $accent; }
 
-h2 {
-  color: #c8c8d4;
-  font-size: 1.1rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid #0f3460;
-  padding-bottom: 0.5rem;
-}
+// Summary block
+.summary-grid { display: flex; flex-wrap: wrap; gap: 1rem 2rem; margin-bottom: 1rem; }
 
-h3 {
-  color: #c8c8d4;
-  font-size: 0.95rem;
-  margin: 1rem 0 0.5rem;
-}
-
-.panel {
-  background: #1a1a2e;
-  border: 1px solid #0f3460;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.panel-summary {
-  border-color: #e94560;
-}
-
-/* Summary */
-.summary-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem 2rem;
-  margin-bottom: 1rem;
-}
-
-.summary-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
+.summary-item { display: flex; flex-direction: column; gap: 0.2rem; }
 
 .summary-label {
   font-size: 0.75rem;
-  color: #6a6a8a;
+  color: $text-faint;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -317,179 +280,60 @@ h3 {
 .summary-value {
   font-size: 1rem;
   font-weight: 600;
-  color: #e0e0e0;
+  color: $text;
+  &.highlight { color: $accent; font-size: 1.15rem; }
 }
 
-.summary-value.highlight {
-  color: #e94560;
-  font-size: 1.15rem;
-}
-
-.text-ok { color: #f5a623; }
+.text-ok  { color: $orange; }
 .text-dim { color: #555570; }
 
-.no-settings {
-  color: #6a6a8a;
-  font-style: italic;
-  font-size: 0.9rem;
-}
+.no-settings { color: $text-faint; font-style: italic; font-size: 0.9rem; }
 
-.unit-times-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.75rem;
-}
+// Unit chips
+.unit-times-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem; }
 
 .unit-chip {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: #0f3460;
+  background: $border;
   border-radius: 4px;
   padding: 0.25rem 0.5rem;
   min-width: 48px;
 }
+.unit-chip-name { font-size: 0.7rem; color: #8888a8; }
+.unit-chip-val  { font-size: 0.8rem; color: $text; font-weight: 600; }
 
-.unit-chip-name {
-  font-size: 0.7rem;
-  color: #8888a8;
-}
+// Fetch row
+.row { display: flex; gap: 0.75rem; align-items: center; }
 
-.unit-chip-val {
-  font-size: 0.8rem;
-  color: #e0e0e0;
-  font-weight: 600;
-}
+// Collapse body
+.collapse-body { margin-top: 1rem; border-top: 1px solid $border; padding-top: 1rem; }
 
-/* Fetch row */
-.row {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-/* Collapsible */
-.collapse-toggle {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: none;
-  border: none;
-  color: #c8c8d4;
-  font-size: 1.05rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-  transition: color 0.2s;
-}
-
-.collapse-toggle:hover {
-  color: #e94560;
-}
-
-.collapse-icon {
-  font-size: 0.75rem;
-  color: #6a6a8a;
-}
-
-.collapse-body {
-  margin-top: 1rem;
-  border-top: 1px solid #0f3460;
-  padding-top: 1rem;
-}
-
-/* Form */
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 0.75rem;
-}
+// Form
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
 
 label {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.85rem;
-  color: #a0a0b0;
+  color: $text-dim;
 }
 
-.checkbox-label {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.5rem;
-  color: #e0e0e0;
-  font-size: 0.9rem;
-}
+.checkbox-label { flex-direction: row; align-items: center; gap: 0.5rem; color: $text; font-size: 0.9rem; }
 
-.input {
-  background: #16213e;
-  border: 1px solid #0f3460;
-  border-radius: 4px;
-  color: #e0e0e0;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.9rem;
-  width: 100%;
-}
+// Wider padding for this view's inputs
+.input { padding: 0.4rem 0.6rem; font-size: 0.9rem; width: 100%; }
 
-.input:focus {
-  outline: none;
-  border-color: #e94560;
-}
+// Disabled state
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-primary:hover:not(:disabled)  { opacity: 0.85; }
+.btn-secondary:hover:not(:disabled) { opacity: 0.85; }
 
-.btn {
-  padding: 0.5rem 1.25rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: opacity 0.2s;
-  white-space: nowrap;
-}
+// status-msg margin override (shared uses margin-bottom, here we need margin-top)
+.status-msg { margin-top: 0.75rem; margin-bottom: 0; }
 
-.btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.btn-primary {
-  background: #e94560;
-  color: #fff;
-}
-
-.btn-primary:hover:not(:disabled) {
-  opacity: 0.85;
-}
-
-.btn-secondary {
-  background: #0f3460;
-  color: #c8c8d4;
-  border: 1px solid #1a4a80;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #1a4a80;
-}
-
-.mt {
-  margin-top: 1rem;
-}
-
-.status-msg {
-  margin-top: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.9rem;
-}
-
-.status-ok {
-  background: rgba(0, 200, 100, 0.15);
-  color: #4ecca3;
-}
-
-.status-err {
-  background: rgba(233, 69, 96, 0.15);
-  color: #e94560;
-}
+// status-ok is unique to this view
+.status-ok { background: rgba(0, 200, 100, 0.15); color: $green; }
 </style>

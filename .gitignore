@@ -18,3 +18,10 @@ dist-ssr/
 .DS_Store
 .idea/
 .vscode/
+
+data.csv
+
+player.txt
+village.txt
+ally.txt
+tz.docx

@@ -388,156 +388,62 @@ function clearAll() {
 }
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .import-view {
   max-width: 1100px;
   margin: 0 auto;
 }
 
-h1 {
-  color: #e94560;
-  margin-bottom: 1.5rem;
-}
-
-h2 {
-  color: #c8c8d4;
-  font-size: 1.1rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid #0f3460;
-  padding-bottom: 0.5rem;
-}
-
-h3 {
-  color: #c8c8d4;
-  font-size: 0.95rem;
-  margin: 1rem 0 0.5rem;
-}
-
+// Drop zone
 .drop-zone {
-  border: 2px dashed #0f3460;
+  border: 2px dashed $border;
   border-radius: 10px;
   padding: 3rem 1rem;
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
   margin-bottom: 1.5rem;
-  background: #1a1a2e;
+  background: $bg-panel;
+
+  &:hover, &.drag-over { border-color: $accent; background: a($accent, 0.05); }
+
+  p { color: $text-dim; margin: 0; }
 }
 
-.drop-zone:hover,
-.drop-zone.drag-over {
-  border-color: #e94560;
-  background: rgba(233, 69, 96, 0.05);
-}
-
-.drop-icon {
-  font-size: 3rem;
-  margin-bottom: 0.5rem;
-}
-
-.drop-zone p {
-  color: #a0a0b0;
-  margin: 0;
-}
+.drop-icon { font-size: 3rem; margin-bottom: 0.5rem; }
 
 .drop-format {
   font-size: 0.72rem;
   margin-top: 0.5rem !important;
   color: #5a5a7a !important;
+
+  code { background: a($border, 0.6); padding: 0.1rem 0.35rem; border-radius: 3px; color: #7a7aaa; font-size: 0.7rem; }
 }
 
-.drop-format code {
-  background: rgba(15, 52, 96, 0.6);
-  padding: 0.1rem 0.35rem;
-  border-radius: 3px;
-  color: #7a7aaa;
-  font-size: 0.7rem;
-}
-
-.hidden-input {
-  display: none;
-}
-
-.panel {
-  background: #1a1a2e;
-  border: 1px solid #0f3460;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
+// CSV textarea
 .csv-textarea {
   width: 100%;
-  background: #16213e;
-  border: 1px solid #0f3460;
+  background: $bg-page;
+  border: 1px solid $border;
   border-radius: 4px;
-  color: #e0e0e0;
+  color: $text;
   padding: 0.6rem;
   font-family: monospace;
   font-size: 0.8rem;
   resize: vertical;
   box-sizing: border-box;
+  &:focus { outline: none; border-color: $accent; }
 }
 
-.csv-textarea:focus {
-  outline: none;
-  border-color: #e94560;
-}
+// btn-row margin override (base layout comes from shared)
+.btn-row { margin-top: 0.75rem; }
 
-.btn-row {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-.btn {
-  padding: 0.5rem 1.25rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.btn-primary {
-  background: #e94560;
-  color: #fff;
-}
-
-.btn-primary:hover {
-  opacity: 0.85;
-}
-
-.btn-secondary {
-  background: #0f3460;
-  color: #e0e0e0;
-}
-
-.btn-secondary:hover {
-  opacity: 0.85;
-}
-
-.status-msg {
-  margin-bottom: 1rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.9rem;
-}
-
-.status-err {
-  background: rgba(233, 69, 96, 0.15);
-  color: #e94560;
-}
-
-.stats-grid {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 1rem;
-}
+// Stats
+.stats-grid { display: flex; gap: 1.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
 
 .stat-card {
-  background: #16213e;
-  border: 1px solid #0f3460;
+  background: $bg-page;
+  border: 1px solid $border;
   border-radius: 8px;
   padding: 0.6rem 1rem;
   display: flex;
@@ -547,143 +453,49 @@ h3 {
   min-width: 72px;
 }
 
-.stat-num {
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: #e94560;
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 0.72rem;
-  color: #a0a0b0;
-  white-space: nowrap;
-}
+.stat-num   { font-size: 1.35rem; font-weight: 700; color: $accent; line-height: 1.2; }
+.stat-label { font-size: 0.72rem; color: $text-dim; white-space: nowrap; }
 
 .stat-card--blue .stat-num   { color: #5b9bd5; }
-.stat-card--red .stat-num    { color: #e94560; }
-.stat-card--orange .stat-num { color: #b85c4a; }
-.stat-card--yellow .stat-num { color: #6abf7b; }
-.stat-card--purple .stat-num { color: #a78bfa; }
-.stat-card--teal .stat-num   { color: #4ecca3; }
+.stat-card--red .stat-num    { color: $accent; }
+.stat-card--purple .stat-num { color: $purple; }
+.stat-card--teal .stat-num   { color: $green; }
 .stat-card--gold .stat-num   { color: #f0c040; }
+.stat-card--green .stat-num  { color: #6abf7b; }
 
-.preview-wrap {
-  overflow-x: auto;
+// Players table
+.players-table {
+  .player-name { white-space: nowrap; }
+  .num        { text-align: center; color: #8888a8; }
+  .num-hi     { color: $accent;  font-weight: 700; }
+  .num-mid    { color: $orange;  font-weight: 600; }
+  .num-trains { color: $green;   font-weight: 700; }
 }
 
-.mini-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8rem;
-}
+// Inline edit
+.input-wrap { display: flex; align-items: center; gap: 0.3rem; }
 
-.mini-table th,
-.mini-table td {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid #0f3460;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.mini-table th {
-  background: #0f3460;
-  color: #e0e0e0;
-}
-
-.mini-table tbody tr:nth-child(even) {
-  background: rgba(15, 52, 96, 0.2);
-}
-
-.players-table .player-name {
-  white-space: nowrap;
-}
-
-.players-table .num {
-  text-align: center;
-  color: #8888a8;
-}
-
-.players-table .num-hi {
-  color: #e94560;
-  font-weight: 700;
-}
-
-.players-table .num-mid {
-  color: #f5a623;
-  font-weight: 600;
-}
-
-.players-table .num-trains {
-  color: #4ecca3;
-  font-weight: 700;
-}
-
-.input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.input-edited {
-  border-color: #f5a623 !important;
-  color: #f5a623;
-}
+.input-edited { border-color: $orange !important; color: $orange; }
 
 .csv-hint {
   font-size: 0.7rem;
-  color: #6a6a8a;
+  color: $text-faint;
   cursor: pointer;
   white-space: nowrap;
   text-decoration: underline dotted;
   transition: color 0.15s;
-}
-
-.csv-hint:hover {
-  color: #e94560;
+  &:hover { color: $accent; }
 }
 
 .inline-input {
   width: 60px;
-  background: #16213e;
-  border: 1px solid #0f3460;
+  background: $bg-page;
+  border: 1px solid $border;
   border-radius: 3px;
-  color: #e0e0e0;
+  color: $text;
   padding: 0.2rem 0.4rem;
   font-size: 0.8rem;
   text-align: center;
-}
-
-.inline-input:focus {
-  outline: none;
-  border-color: #e94560;
-}
-
-.collapse-toggle {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: none;
-  border: none;
-  color: #c8c8d4;
-  font-size: 1.05rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-  transition: color 0.2s;
-}
-
-.collapse-toggle:hover {
-  color: #e94560;
-}
-
-.collapse-icon {
-  font-size: 0.75rem;
-  color: #6a6a8a;
-}
-
-.mt {
-  margin-top: 1rem;
+  &:focus { outline: none; border-color: $accent; }
 }
 </style>

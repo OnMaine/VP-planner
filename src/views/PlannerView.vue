@@ -58,11 +58,9 @@ function onGenerate(): void {
 }
 
 .generate-stat {
-  color: #a0a0b0;
+  color: $text-dim;
   font-size: 0.95rem;
-}
 
-.generate-stat strong {
-  color: #e0e0e0;
+  strong { color: $text; }
 }
 </style>
