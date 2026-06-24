@@ -1,28 +1,28 @@
 <template>
   <section class="panel">
     <div class="section-header">
-      <h2>Цілі</h2>
+      <h2>Цели</h2>
       <button
         v-if="planStore.targets.length"
         class="btn btn-danger btn-sm"
-        @click="confirm('Очистити всі цілі?') && planStore.clearTargets()"
-      >Очистити</button>
+        @click="confirm('Очистить все цели?') && planStore.clearTargets()"
+      >Очистить</button>
     </div>
 
     <div class="add-targets-bar">
-      <button class="btn btn-primary" @click="addEmptyTarget">+ Вручну</button>
+      <button class="btn btn-primary" @click="addEmptyTarget">+ Вручную</button>
       <button class="btn btn-secondary" @click="bulkOpen = !bulkOpen">
-        {{ bulkOpen ? '▲' : '▼' }} Масова вставка
+        {{ bulkOpen ? '▲' : '▼' }} Массовая вставка
       </button>
       <label class="btn btn-secondary file-btn">
-        Завантажити файл
+        Загрузить файл
         <input ref="fileInput" type="file" accept=".txt,.csv" class="hidden-input" @change="onTargetFile" />
       </label>
-      <span class="fmt-tip">ⓘ<span class="fmt-tip-body">Один рядок = одна ціль<br><code>500|500</code><br><code>501|501</code></span></span>
+      <span class="fmt-tip">ⓘ<span class="fmt-tip-body">Одна строка = одна цель<br><code>500|500</code><br><code>501|501</code></span></span>
     </div>
 
     <div class="sort-bar">
-      <span class="sort-label">Групувати:</span>
+      <span class="sort-label">Группировать:</span>
       <button
         v-for="opt in groupByOptions" :key="opt.value"
         :class="['btn', 'btn-sm', groupBy === opt.value ? 'btn-active' : 'btn-secondary']"
@@ -31,25 +31,25 @@
       <div class="sort-bar-sep"></div>
       <label class="col-toggle">
         <input type="checkbox" v-model="showLabel" />
-        Мітки
+        Метки
       </label>
       <span v-if="planStore.targets.length" class="target-count" style="margin-left:auto">
-        {{ planStore.targets.length }} цілей
+        {{ planStore.targets.length }} целей
       </span>
     </div>
 
     <div v-if="bulkOpen" class="bulk-panel">
       <p class="bulk-hint">
-        Координати цілей — по одній або кілька через пробіл/кому/новий рядок: <code>500|500</code>
+        Координаты целей — по одной или несколько через пробел/запятую/новую строку: <code>500|500</code>
       </p>
       <div class="bulk-row">
         <textarea v-model="bulkText" class="bulk-textarea" rows="4" placeholder="500|500&#10;501|501&#10;502|502 503|503" />
         <div class="bulk-time">
           <label>
-            Дата і час прильоту
+            Дата и время прилёта
             <input v-model="bulkDatetime" type="datetime-local" class="input" step="1" />
           </label>
-          <button class="btn btn-primary" @click="doBulkAdd">Додати</button>
+          <button class="btn btn-primary" @click="doBulkAdd">Добавить</button>
         </div>
       </div>
       <div v-if="bulkError" class="status-msg status-err">{{ bulkError }}</div>
@@ -58,11 +58,11 @@
     <div v-if="planStore.targets.length" class="table-wrap">
       <table class="mini-table targets-table">
         <thead><tr>
-          <th>Координати</th>
-          <th>Гравець (ціль)</th>
-          <th>Плем'я</th>
-          <th v-if="showLabel">Мітка</th>
-          <th>Час прильоту</th>
+          <th>Координаты</th>
+          <th>Игрок (цель)</th>
+          <th>Племя</th>
+          <th v-if="showLabel">Метка</th>
+          <th>Время прилёта</th>
           <th></th>
         </tr></thead>
         <tbody>
@@ -71,7 +71,7 @@
               <td :colspan="showLabel ? 6 : 5">
                 <span class="target-group-player">{{ block.label }}</span>
                 <span v-if="block.sublabel" class="target-group-ally">{{ block.sublabel }}</span>
-                <span class="target-group-count">{{ block.targets.length }} цілей</span>
+                <span class="target-group-count">{{ block.targets.length }} целей</span>
               </td>
             </tr>
             <tr
@@ -86,17 +86,17 @@
                     @input="filterCoordsInput($event)"
                     @change="onCoordsChange(t.id, ($event.target as HTMLInputElement).value)"
                   />
-                  <span v-if="towerCoordsSet.has(t.coords)" class="tower-badge" :title="`Вежа рівень ${targetTowerLevel(t.coords)}`">
+                  <span v-if="towerCoordsSet.has(t.coords)" class="tower-badge" :title="`Башня уровень ${targetTowerLevel(t.coords)}`">
                     <img :src="watchtowerIcon" class="tower-icon" />{{ targetTowerLevel(t.coords) }}
                   </span>
-                  <span v-if="(t.palOffCount ?? 0) > 0" class="paloff-badge" :title="`Пал-оффів: ${t.palOffCount}`">
+                  <span v-if="(t.palOffCount ?? 0) > 0" class="paloff-badge" :title="`Пал-оффов: ${t.palOffCount}`">
                     <img :src="knightIcon" class="knight-icon" />{{ t.palOffCount }}
                   </span>
                 </div>
               </td>
               <td>
                 <input
-                  type="text" class="input" style="width:120px" placeholder="ім'я гравця"
+                  type="text" class="input" style="width:120px" placeholder="имя игрока"
                   :value="resolveTargetPlayer(t)"
                   :class="{ 'input-autofilled': !!enemyStore.lookupCoords(t.coords)?.player }"
                   @change="onTargetPlayerChange(t.id, t.coords, ($event.target as HTMLInputElement).value)"
@@ -105,7 +105,7 @@
               <td class="muted-small">{{ enemyStore.lookupCoords(t.coords)?.ally?.tag ?? t.enemyAllyTag ?? '—' }}</td>
               <td v-if="showLabel">
                 <input
-                  type="text" class="input" style="width:100px" placeholder="мітка…"
+                  type="text" class="input" style="width:100px" placeholder="метка…"
                   :value="t.label ?? ''"
                   @change="planStore.updateTarget(t.id, { label: ($event.target as HTMLInputElement).value || undefined })"
                 />
@@ -123,7 +123,7 @@
         </tbody>
       </table>
     </div>
-    <p v-else class="muted-text">Цілей ще немає. Додай вище.</p>
+    <p v-else class="muted-text">Целей ещё нет. Добавь выше.</p>
   </section>
 </template>
 
@@ -155,11 +155,11 @@ const showLabel = ref(false)
 
 const groupBy = ref<GroupBy>('none')
 const groupByOptions: { value: GroupBy; label: string }[] = [
-  { value: 'none',    label: 'Немає' },
-  { value: 'player',  label: 'Гравець' },
-  { value: 'tribe',   label: 'Плем\'я' },
-  { value: 'arrival', label: 'Час прильоту' },
-  { value: 'tower',   label: 'Вежа' },
+  { value: 'none',    label: 'Нет' },
+  { value: 'player',  label: 'Игрок' },
+  { value: 'tribe',   label: 'Племя' },
+  { value: 'arrival', label: 'Время прилёта' },
+  { value: 'tower',   label: 'Башня' },
 ]
 
 const towerCoordsSet = computed(() => new Set(planStore.watchtowerVillages.map((w) => w.coords)))
@@ -229,13 +229,13 @@ function addTargetsFromParsed(entries: ParsedTarget[], arrivalTime: Date): { add
 function doBulkAdd(): void {
   bulkError.value = ''
   const entries = parseTargetsFromText(bulkText.value)
-  if (!entries.length) { bulkError.value = 'Не знайдено координат. Формат: 500|500 або 500|500,15 (рівень вежі)'; return }
+  if (!entries.length) { bulkError.value = 'Не найдено координат. Формат: 500|500 или 500|500,15 (уровень башни)'; return }
   const arrivalTime = new Date(bulkDatetime.value)
-  if (isNaN(arrivalTime.getTime())) { bulkError.value = 'Некоректна дата'; return }
+  if (isNaN(arrivalTime.getTime())) { bulkError.value = 'Некорректная дата'; return }
   const { added, skipped } = addTargetsFromParsed(entries, arrivalTime)
   bulkText.value = ''
   bulkOpen.value = false
-  if (skipped) bulkError.value = `Додано ${added}, пропущено ${skipped} некоректних`
+  if (skipped) bulkError.value = `Добавлено ${added}, пропущено ${skipped} некорректных`
 }
 
 function onTargetFile(event: Event): void {
@@ -245,10 +245,10 @@ function onTargetFile(event: Event): void {
   reader.onload = (e) => {
     const text = e.target?.result as string
     const entries = parseTargetsFromText(text)
-    if (!entries.length) { bulkError.value = 'У файлі не знайдено координат формату 500|500'; return }
+    if (!entries.length) { bulkError.value = 'В файле не найдено координат формата 500|500'; return }
     const arrivalTime = new Date(Date.now() + 3600_000)
     const { added } = addTargetsFromParsed(entries, arrivalTime)
-    bulkError.value = `З файлу додано ${added} цілей. Відредагуй час прильоту в таблиці.`
+    bulkError.value = `Из файла добавлено ${added} целей. Отредактируй время прилёта в таблице.`
     if (fileInput.value) fileInput.value.value = ''
   }
   reader.readAsText(file, 'utf-8')

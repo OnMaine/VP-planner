@@ -80,7 +80,12 @@ function loadFromLS(): WorldSettings {
     const raw = localStorage.getItem(LS_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as WorldSettings
-      return { ...defaultSettings(), ...parsed, unitTimes: { ...DEFAULT_UNIT_TIMES, ...parsed.unitTimes } }
+      const merged = { ...DEFAULT_UNIT_TIMES, ...parsed.unitTimes }
+      // migrate: if any value looks like minutes (≤ 60) convert to seconds
+      for (const key of Object.keys(merged) as (keyof UnitTimes)[]) {
+        if (merged[key] <= 60) merged[key] = merged[key] * 60
+      }
+      return { ...defaultSettings(), ...parsed, unitTimes: merged }
     }
   } catch {
     // ignore
@@ -148,7 +153,7 @@ export const useWorldStore = defineStore('world', () => {
         if (el?.textContent) {
           const val = parseFloat(el.textContent)
           if (!isNaN(val) && val > 0) {
-            unitTimes[storeKey] = val
+            unitTimes[storeKey] = Math.round(val * 60)
           }
         }
       }

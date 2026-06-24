@@ -2,15 +2,15 @@
   <section class="panel panel--compact">
     <button class="collapse-toggle" @click="open = !open">
       <span>
-        Карта ворога
+        Карта врага
         <span v-if="enemyStore.hasVillageData" class="tower-count-badge">
-          {{ enemyStore.villages.length.toLocaleString() }} сіл
+          {{ enemyStore.villages.length.toLocaleString() }} деревень
         </span>
         <span v-if="enemyStore.hasPlayerData" class="tower-count-badge">
-          {{ enemyStore.players.length.toLocaleString() }} гравців
+          {{ enemyStore.players.length.toLocaleString() }} игроков
         </span>
         <span v-if="enemyStore.hasAllyData" class="tower-count-badge">
-          {{ enemyStore.allies.length.toLocaleString() }} племен
+          {{ enemyStore.allies.length.toLocaleString() }} племён
         </span>
       </span>
       <span class="collapse-icon">{{ open ? '▲' : '▼' }}</span>
@@ -18,30 +18,30 @@
 
     <div v-if="open" class="mt">
       <p class="bulk-hint">
-        Завантаж <code>village.txt</code> або <code>village.txt.gz</code> та <code>player.txt[.gz]</code> —
-        отримані з <code>{world}.voynaplemyon.com/map/</code>. Дані зберігаються тільки в пам'яті сесії.
+        Загрузи <code>village.txt</code> или <code>village.txt.gz</code> и <code>player.txt[.gz]</code> —
+        полученные с <code>{world}.voynaplemyon.com/map/</code>. Данные хранятся только в памяти сессии.
       </p>
       <div class="map-upload-row">
         <label class="map-upload-btn" :class="{ 'map-btn--loaded': enemyStore.hasVillageData }">
           <span>{{ enemyStore.hasVillageData ? `village.txt (${enemyStore.villages.length.toLocaleString()})` : 'village.txt[.gz]' }}</span>
           <input type="file" accept=".txt,.gz" class="hidden-input" @change="onVillageFile" />
         </label>
-        <span class="fmt-tip">ⓘ<span class="fmt-tip-body">Формат village.txt<br><code>id,name,x,y,player_id,points,type</code><br>Отримати: <code>{world}.voynaplemyon.com/map/village.txt</code></span></span>
+        <span class="fmt-tip">ⓘ<span class="fmt-tip-body">Формат village.txt<br><code>id,name,x,y,player_id,points,type</code><br>Получить: <code>{world}.voynaplemyon.com/map/village.txt</code></span></span>
         <label class="map-upload-btn" :class="{ 'map-btn--loaded': enemyStore.hasPlayerData }" style="margin-left:0.75rem">
           <span>{{ enemyStore.hasPlayerData ? `player.txt (${enemyStore.players.length.toLocaleString()})` : 'player.txt[.gz]' }}</span>
           <input type="file" accept=".txt,.gz" class="hidden-input" @change="onPlayerFile" />
         </label>
-        <span class="fmt-tip">ⓘ<span class="fmt-tip-body">Формат player.txt<br><code>id,name,ally_id,villages,points,rank</code><br>Отримати: <code>{world}.voynaplemyon.com/map/player.txt</code></span></span>
+        <span class="fmt-tip">ⓘ<span class="fmt-tip-body">Формат player.txt<br><code>id,name,ally_id,villages,points,rank</code><br>Получить: <code>{world}.voynaplemyon.com/map/player.txt</code></span></span>
         <label class="map-upload-btn" :class="{ 'map-btn--loaded': enemyStore.hasAllyData }" style="margin-left:0.75rem">
           <span>{{ enemyStore.hasAllyData ? `ally.txt (${enemyStore.allies.length.toLocaleString()})` : 'ally.txt[.gz]' }}</span>
           <input type="file" accept=".txt,.gz" class="hidden-input" @change="onAllyFile" />
         </label>
-        <span class="fmt-tip">ⓘ<span class="fmt-tip-body">Формат ally.txt<br><code>id,name,tag,members,villages,points,rank</code><br>Отримати: <code>{world}.voynaplemyon.com/map/ally.txt</code></span></span>
+        <span class="fmt-tip">ⓘ<span class="fmt-tip-body">Формат ally.txt<br><code>id,name,tag,members,villages,points,rank</code><br>Получить: <code>{world}.voynaplemyon.com/map/ally.txt</code></span></span>
         <button
           v-if="enemyStore.hasVillageData || enemyStore.hasPlayerData || enemyStore.hasAllyData"
           class="btn btn-danger btn-sm"
           @click="enemyStore.clearAll()"
-        >Очистити</button>
+        >Очистить</button>
       </div>
 
       <div
@@ -49,17 +49,17 @@
         class="mt"
         style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"
       >
-        <button class="btn btn-secondary" @click="resolveAllFromMap">Підтягнути гравців з файлу</button>
-        <span v-if="resolveCount !== null && resolveCount > 0" class="muted-text">Оновлено: {{ resolveCount }}</span>
+        <button class="btn btn-secondary" @click="resolveAllFromMap">Подтянуть игроков из файла</button>
+        <span v-if="resolveCount !== null && resolveCount > 0" class="muted-text">Обновлено: {{ resolveCount }}</span>
         <span v-if="resolveCount === 0" class="status-msg status-warn" style="margin:0">
-          Нічого не оновлено — для імен гравців потрібен player.txt
+          Ничего не обновлено — для имён игроков нужен player.txt
         </span>
         <span v-if="!enemyStore.hasPlayerData || !enemyStore.hasAllyData" class="muted-text">
-          ({{ [!enemyStore.hasPlayerData ? 'player.txt' : '', !enemyStore.hasAllyData ? 'ally.txt' : ''].filter(Boolean).join(', ') }} не завантажено)
+          ({{ [!enemyStore.hasPlayerData ? 'player.txt' : '', !enemyStore.hasAllyData ? 'ally.txt' : ''].filter(Boolean).join(', ') }} не загружено)
         </span>
       </div>
 
-      <div v-if="enemyStore.loading" class="muted-text">Завантаження...</div>
+      <div v-if="enemyStore.loading" class="muted-text">Загрузка...</div>
       <div v-if="enemyStore.loadError" class="status-msg status-err">{{ enemyStore.loadError }}</div>
     </div>
   </section>

@@ -5,16 +5,16 @@
       v-if="planStore.attacks.length > 0 && (planStore.noblePlacements.length > 0 || planStore.paladinPlacements.length > 0)"
       class="panel"
     >
-      <h2>Інструкції по будівництву</h2>
+      <h2>Инструкции по строительству</h2>
 
       <div v-if="planStore.noblePlacements.length > 0">
-        <h3>Дворяни (де будувати)</h3>
+        <h3>Дворяне (где строить)</h3>
         <div class="table-wrap">
           <table class="mini-table">
             <thead><tr>
-              <th>Гравець</th>
-              <th>Координати</th>
-              <th>Кількість</th>
+              <th>Игрок</th>
+              <th>Координаты</th>
+              <th>Количество</th>
             </tr></thead>
             <tbody>
               <tr v-for="(np, i) in planStore.noblePlacements" :key="i">
@@ -28,13 +28,13 @@
       </div>
 
       <div v-if="planStore.paladinPlacements.length > 0" :class="planStore.noblePlacements.length > 0 ? 'mt' : ''">
-        <h3>Паладини (для якої цілі)</h3>
+        <h3>Паладины (для какой цели)</h3>
         <div class="table-wrap">
           <table class="mini-table">
             <thead><tr>
-              <th>Гравець</th>
-              <th>Координати</th>
-              <th>Для цілі</th>
+              <th>Игрок</th>
+              <th>Координаты</th>
+              <th>Для цели</th>
             </tr></thead>
             <tbody>
               <tr v-for="(pp, i) in planStore.paladinPlacements" :key="i">
@@ -50,7 +50,7 @@
 
     <!-- Results by player -->
     <section v-if="planStore.attacks.length > 0" class="panel">
-      <h2>Результати по гравцях</h2>
+      <h2>Результаты по игрокам</h2>
 
       <div
         v-for="[player, playerAttacks] in planStore.attacksByPlayer"
@@ -71,12 +71,12 @@
               <thead>
                 <tr>
                   <th>Тип</th>
-                  <th>Відправка</th>
-                  <th>Прибуття</th>
-                  <th>Від → До</th>
-                  <th>Юніти</th>
-                  <th>Попередження</th>
-                  <th>Викл.</th>
+                  <th>Отправка</th>
+                  <th>Прибытие</th>
+                  <th>От → До</th>
+                  <th>Юниты</th>
+                  <th>Предупреждения</th>
+                  <th>Искл.</th>
                 </tr>
               </thead>
               <tbody>
@@ -155,14 +155,14 @@ function typeLabel(type: AttackType): string {
   switch (type) {
     case 'off':                return 'Офф'
     case 'paladin_off':        return 'Пал-Офф'
-    case 'split_off_rams':     return 'Сплін (тарани)'
-    case 'split_off_rest':     return 'Сплін (решта)'
-    case 'noble_green_strong': return 'Двір 999'
-    case 'noble_green_weak':   return 'Двір ~50'
-    case 'noble_orange':       return 'Двір 1001+'
-    case 'noble_red':          return 'Двір Фулл'
+    case 'split_off_rams':     return 'Сплит (тараны)'
+    case 'split_off_rest':     return 'Сплит (остальное)'
+    case 'noble_green_strong': return 'Двор 999'
+    case 'noble_green_weak':   return 'Двор ~50'
+    case 'noble_orange':       return 'Двор 1001+'
+    case 'noble_red':          return 'Двор Фулл'
     case 'spam':               return 'Спам'
-    case 'spam_noble':         return 'Спам-двір'
+    case 'spam_noble':         return 'Спам-двор'
   }
 }
 
@@ -195,21 +195,21 @@ function rowStyle(atk: Attack): Record<string, string> {
 
 function warnBadgeLabel(code: WarningCode): string {
   switch (code) {
-    case 'SEND_IN_PAST':   return 'Минуло'
-    case 'NIGHT_ARRIVAL':  return 'Ніч↓'
-    case 'NIGHT_SEND':     return 'Ніч↑'
-    case 'WATCHTOWER_HIT': return 'Вежа'
+    case 'SEND_IN_PAST':   return 'Прошло'
+    case 'NIGHT_ARRIVAL':  return 'Ночь↓'
+    case 'NIGHT_SEND':     return 'Ночь↑'
+    case 'WATCHTOWER_HIT': return 'Башня'
     case 'SNOB_TOO_FAR':   return 'Далеко'
   }
 }
 
 function warnBadgeTitle(code: WarningCode): string {
   switch (code) {
-    case 'SEND_IN_PAST':   return 'Час відправки вже минув'
-    case 'NIGHT_ARRIVAL':  return 'Прибуття у нічний час'
-    case 'NIGHT_SEND':     return 'Відправка у нічний час'
-    case 'WATCHTOWER_HIT': return 'Потрапляє під вежу'
-    case 'SNOB_TOO_FAR':   return 'Двір занадто далеко від цілі'
+    case 'SEND_IN_PAST':   return 'Время отправки уже прошло'
+    case 'NIGHT_ARRIVAL':  return 'Прибытие в ночное время'
+    case 'NIGHT_SEND':     return 'Отправка в ночное время'
+    case 'WATCHTOWER_HIT': return 'Попадает под башню'
+    case 'SNOB_TOO_FAR':   return 'Двор слишком далеко от цели'
   }
 }
 

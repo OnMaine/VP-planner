@@ -1,10 +1,10 @@
 <template>
   <div class="presets-view">
-    <h1>Пресети атак</h1>
+    <h1>Пресеты атак</h1>
 
     <div class="top-bar">
-      <button class="btn btn-primary" @click="openNew">+ Новий пресет</button>
-      <button class="btn btn-secondary" @click="openSaveCurrent">Зберегти поточний</button>
+      <button class="btn btn-primary" @click="openNew">+ Новый пресет</button>
+      <button class="btn btn-secondary" @click="openSaveCurrent">Сохранить текущий</button>
       <span v-if="appliedMsg" class="applied-msg">{{ appliedMsg }}</span>
     </div>
 
@@ -17,7 +17,7 @@
       >
         <div class="card-head">
           <span class="card-name">{{ preset.name }}</span>
-          <span v-if="preset.builtIn" class="badge-builtin">вбудований</span>
+          <span v-if="preset.builtIn" class="badge-builtin">встроенный</span>
         </div>
 
         <p class="card-desc">{{ preset.description || '—' }}</p>
@@ -26,30 +26,30 @@
           <span class="chip chip-off">
             <template v-if="preset.config.regularOffsPerTarget > 0">
               Офф ×{{ preset.config.regularOffsPerTarget }}
-              <span v-if="preset.config.splitOff"> · поділений</span>
+              <span v-if="preset.config.splitOff"> · разделённый</span>
             </template>
-            <template v-else>Без оффів</template>
+            <template v-else>Без оффов</template>
           </span>
           <span v-if="preset.config.nobleTrainSize > 0" class="chip chip-noble">
-            Двір ×{{ preset.config.nobleTrainSize }}
+            Двор ×{{ preset.config.nobleTrainSize }}
           </span>
           <span v-if="preset.config.useSpamAttacks" class="chip chip-spam">
             Спам ×{{ preset.config.spamCountPerTarget }}
           </span>
           <span v-if="preset.config.useSpamNobles" class="chip chip-spam">
-            Спам-двір ×{{ preset.config.spamNobleCountPerTarget }}
+            Спам-двор ×{{ preset.config.spamNobleCountPerTarget }}
           </span>
         </div>
 
         <div class="card-actions">
-          <button class="btn btn-primary btn-sm" @click="apply(preset.id)">Застосувати</button>
+          <button class="btn btn-primary btn-sm" @click="apply(preset.id)">Применить</button>
           <button
             v-if="!preset.builtIn"
             class="btn btn-secondary btn-sm"
             @click="openEdit(preset.id)"
-          >Змінити</button>
+          >Изменить</button>
           <button class="btn btn-secondary btn-sm" @click="store.clone(preset.id)">
-            {{ preset.builtIn ? 'Клонувати' : 'Копія' }}
+            {{ preset.builtIn ? 'Клонировать' : 'Копия' }}
           </button>
           <button
             v-if="!preset.builtIn"
@@ -62,49 +62,49 @@
 
     <!-- Editor panel -->
     <section v-if="editorOpen" class="panel editor-panel">
-      <h2>{{ editingId ? 'Редагувати пресет' : 'Новий пресет' }}</h2>
+      <h2>{{ editingId ? 'Редактировать пресет' : 'Новый пресет' }}</h2>
 
       <div class="form-row">
         <label class="f-label f-wide">
-          Назва
+          Название
           <input v-model="form.name" type="text" class="input" placeholder="Напр. Офф + паровоз" />
         </label>
         <label class="f-label f-wide">
-          Опис (необов.)
+          Описание (необяз.)
           <input v-model="form.description" type="text" class="input" />
         </label>
       </div>
 
       <!-- Offs -->
-      <h3 class="sub-head">Оффи</h3>
+      <h3 class="sub-head">Оффы</h3>
       <div class="form-row">
         <label class="f-label">
-          Оффів на ціль
+          Оффов на цель
           <input v-model.number="form.config.regularOffsPerTarget" type="number" min="0" class="input" />
         </label>
         <label class="f-label f-checkbox">
           <input v-model="form.config.splitOff" type="checkbox" />
-          Поділений офф (тарани окремо)
+          Разделённый офф (тараны отдельно)
         </label>
       </div>
 
       <!-- Nobles -->
-      <h3 class="sub-head">Дворяни</h3>
+      <h3 class="sub-head">Дворяне</h3>
       <div class="form-row">
         <label class="f-label">
-          Розмір паровоза
+          Размер паровоза
           <input v-model.number="form.config.nobleTrainSize" type="number" min="0" class="input" />
         </label>
         <label class="f-label">
-          Макс. дворів з одного села
+          Макс. дворов из одной деревни
           <input v-model.number="form.config.maxNoblesPerVillage" type="number" min="1" class="input" />
         </label>
         <label class="f-label">
-          Затримка після оффу (мс)
+          Задержка после оффа (мс)
           <input v-model.number="form.config.offsetAfterOffMs" type="number" min="0" step="50" class="input" />
         </label>
         <label class="f-label">
-          Юніт ескорту
+          Юнит эскорта
           <select v-model="form.config.nobleComposition.escortUnit" class="input">
             <option value="light">ЛК</option>
             <option value="axe">Топор</option>
@@ -115,7 +115,7 @@
       </div>
 
       <div v-if="form.config.nobleTrainSize > 0">
-        <p class="hint-text">Розподіл типів дворян (сума = 100%):</p>
+        <p class="hint-text">Распределение типов дворян (сумма = 100%):</p>
         <div class="form-row pct-row">
           <label class="f-label">
             <span class="noble-type-label noble-gs">999 escort</span>
@@ -130,11 +130,11 @@
             <input v-model.number="form.config.nobleComposition.orangePct" type="number" min="0" max="100" class="input" />
           </label>
           <label class="f-label">
-            <span class="noble-type-label noble-rd">Повний офф</span>
+            <span class="noble-type-label noble-rd">Фулл офф</span>
             <input v-model.number="form.config.nobleComposition.redPct" type="number" min="0" max="100" class="input" />
           </label>
           <span :class="['pct-sum', pctSum === 100 ? 'pct-ok' : 'pct-err']">
-            Разом: {{ pctSum }}%
+            Итого: {{ pctSum }}%
           </span>
         </div>
       </div>
@@ -147,26 +147,26 @@
           Спам-атаки
         </label>
         <label v-if="form.config.useSpamAttacks" class="f-label">
-          Спамів на ціль
+          Спамов на цель
           <input v-model.number="form.config.spamCountPerTarget" type="number" min="1" class="input" />
         </label>
         <label class="f-label f-checkbox">
           <input v-model="form.config.useSpamNobles" type="checkbox" />
-          Спам-двори
+          Спам-дворы
         </label>
         <label v-if="form.config.useSpamNobles" class="f-label">
-          Спам-дворів на ціль
+          Спам-дворов на цель
           <input v-model.number="form.config.spamNobleCountPerTarget" type="number" min="1" class="input" />
         </label>
       </div>
 
       <div class="editor-footer">
         <button class="btn btn-primary" :disabled="!canSave" @click="save">
-          {{ editingId ? 'Зберегти зміни' : 'Створити пресет' }}
+          {{ editingId ? 'Сохранить изменения' : 'Создать пресет' }}
         </button>
-        <button class="btn btn-secondary" @click="closeEditor">Скасувати</button>
+        <button class="btn btn-secondary" @click="closeEditor">Отмена</button>
         <span v-if="!canSave && form.name" class="hint-text">
-          {{ pctSum !== 100 && form.config.nobleTrainSize > 0 ? `Сума відсотків: ${pctSum}% ≠ 100%` : '' }}
+          {{ pctSum !== 100 && form.config.nobleTrainSize > 0 ? `Сумма процентов: ${pctSum}% ≠ 100%` : '' }}
         </span>
       </div>
     </section>
@@ -272,13 +272,13 @@ function save(): void {
 function apply(id: string): void {
   store.applyToPlanner(id)
   const preset = store.all.find((p) => p.id === id)
-  appliedMsg.value = `"${preset?.name}" застосовано`
+  appliedMsg.value = `"${preset?.name}" применён`
   setTimeout(() => { appliedMsg.value = '' }, 2500)
 }
 
 function confirmRemove(id: string): void {
   const preset = store.all.find((p) => p.id === id)
-  if (confirm(`Видалити пресет "${preset?.name}"?`)) store.remove(id)
+  if (confirm(`Удалить пресет "${preset?.name}"?`)) store.remove(id)
 }
 
 function scrollToEditor(): void {

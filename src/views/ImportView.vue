@@ -1,6 +1,6 @@
 <template>
   <div class="import-view">
-    <h1>Імпорт CSV</h1>
+    <h1>Импорт CSV</h1>
 
     <!-- Drop zone -->
     <div
@@ -12,14 +12,14 @@
       @click="triggerFileInput"
     >
       <div class="drop-icon">📂</div>
-      <p>Перетягніть CSV файл сюди або натисніть для вибору</p>
+      <p>Перетащите CSV файл сюда или нажмите для выбора</p>
       <p class="drop-format">Формат: <code>Игрок,Координаты,Очки,Копья,Мечи,Топоры,Лазы,ЛК,ТК,Тараны,Каты,Пал,Двор</code></p>
       <input ref="fileInput" type="file" accept=".csv,text/csv" class="hidden-input" @change="onFileChange" />
     </div>
 
     <!-- Paste area -->
     <section class="panel">
-      <h2>Або вставте CSV-текст</h2>
+      <h2>Или вставьте CSV-текст</h2>
       <textarea
         v-model="csvText"
         class="csv-textarea"
@@ -27,8 +27,8 @@
         rows="6"
       ></textarea>
       <div class="btn-row">
-        <button class="btn btn-primary" @click="doParseText">Парсити</button>
-        <button class="btn btn-secondary" @click="clearAll">Очистити</button>
+        <button class="btn btn-primary" @click="doParseText">Парсить</button>
+        <button class="btn btn-secondary" @click="clearAll">Очистить</button>
       </div>
     </section>
 
@@ -39,23 +39,23 @@
     <section class="panel">
       <button class="collapse-toggle" @click="palOffImportOpen = !palOffImportOpen">
         <span>
-          Імпорт пал-оффів
-          <span v-if="palOffImportApplied" class="tower-count-badge">{{ palOffImportApplied }} гравців</span>
+          Импорт пал-оффов
+          <span v-if="palOffImportApplied" class="tower-count-badge">{{ palOffImportApplied }} игроков</span>
         </span>
         <span class="collapse-icon">{{ palOffImportOpen ? '▲' : '▼' }}</span>
       </button>
       <div v-if="palOffImportOpen" class="mt">
         <p class="drop-format" style="margin-bottom:0.5rem">
-          Формат: <code>Гравець,кількість</code> — по одному рядку на гравця
+          Формат: <code>Игрок,количество</code> — по одной строке на игрока
         </p>
         <textarea v-model="palOffText" class="csv-textarea" rows="6" placeholder="Онмайн,5&#10;AnotherPlayer,3"></textarea>
         <div v-if="palOffError" class="status-msg status-err">{{ palOffError }}</div>
         <div class="btn-row">
-          <button class="btn btn-primary" @click="applyPalOffImport">Застосувати</button>
-          <button class="btn btn-secondary" @click="palOffText = ''; palOffError = ''; palOffImportApplied = 0">Очистити</button>
+          <button class="btn btn-primary" @click="applyPalOffImport">Применить</button>
+          <button class="btn btn-secondary" @click="palOffText = ''; palOffError = ''; palOffImportApplied = 0">Очистить</button>
         </div>
         <table v-if="planStore.playerData.some(pd => pd.offPaladins > 0)" class="mini-table" style="margin-top:1rem">
-          <thead><tr><th>Гравець</th><th>Пал-оффів</th></tr></thead>
+          <thead><tr><th>Игрок</th><th>Пал-оффов</th></tr></thead>
           <tbody>
             <tr v-for="pd in planStore.playerData.filter(pd => pd.offPaladins > 0)" :key="pd.player">
               <td>{{ pd.player }}</td>
@@ -70,23 +70,23 @@
     <section class="panel">
       <button class="collapse-toggle" @click="noblesImportOpen = !noblesImportOpen">
         <span>
-          Імпорт дворів
-          <span v-if="noblesImportApplied" class="tower-count-badge">{{ noblesImportApplied }} гравців</span>
+          Импорт дворов
+          <span v-if="noblesImportApplied" class="tower-count-badge">{{ noblesImportApplied }} игроков</span>
         </span>
         <span class="collapse-icon">{{ noblesImportOpen ? '▲' : '▼' }}</span>
       </button>
       <div v-if="noblesImportOpen" class="mt">
         <p class="drop-format" style="margin-bottom:0.5rem">
-          Формат: <code>Гравець,кількість</code> — дані зі збору інфи по дворах
+          Формат: <code>Игрок,количество</code> — данные из сбора инфы по дворам
         </p>
         <textarea v-model="noblesText" class="csv-textarea" rows="6" placeholder="Онмайн,12&#10;AnotherPlayer,8"></textarea>
         <div v-if="noblesError" class="status-msg status-err">{{ noblesError }}</div>
         <div class="btn-row">
-          <button class="btn btn-primary" @click="applyNoblesImport">Застосувати</button>
-          <button class="btn btn-secondary" @click="noblesText = ''; noblesError = ''; noblesImportApplied = 0">Очистити</button>
+          <button class="btn btn-primary" @click="applyNoblesImport">Применить</button>
+          <button class="btn btn-secondary" @click="noblesText = ''; noblesError = ''; noblesImportApplied = 0">Очистить</button>
         </div>
         <table v-if="planStore.playerData.some(pd => pd.totalNobles > 0)" class="mini-table" style="margin-top:1rem">
-          <thead><tr><th>Гравець</th><th>Дворів</th><th>Паравозів</th></tr></thead>
+          <thead><tr><th>Игрок</th><th>Дворов</th><th>Паровозов</th></tr></thead>
           <tbody>
             <tr v-for="pd in planStore.playerData.filter(pd => pd.totalNobles > 0)" :key="pd.player">
               <td>{{ pd.player }}</td>
@@ -132,14 +132,14 @@ const noblesImportApplied = ref(0)
 function applyPalOffImport(): void {
   palOffError.value = ''
   const lines = palOffText.value.split('\n').map((l) => l.trim()).filter(Boolean)
-  if (!lines.length) { palOffError.value = 'Введіть хоча б один рядок'; return }
+  if (!lines.length) { palOffError.value = 'Введите хотя бы одну строку'; return }
   let applied = 0
   for (const line of lines) {
     const comma = line.lastIndexOf(',')
-    if (comma === -1) { palOffError.value = `Невірний формат: "${line}"`; return }
+    if (comma === -1) { palOffError.value = `Неверный формат: "${line}"`; return }
     const player = line.slice(0, comma).trim()
     const count = parseInt(line.slice(comma + 1).trim(), 10)
-    if (!player || isNaN(count) || count < 0) { palOffError.value = `Невірний рядок: "${line}"`; return }
+    if (!player || isNaN(count) || count < 0) { palOffError.value = `Неверная строка: "${line}"`; return }
     planStore.setPlayerData(player, { offPaladins: count })
     applied++
   }
@@ -149,14 +149,14 @@ function applyPalOffImport(): void {
 function applyNoblesImport(): void {
   noblesError.value = ''
   const lines = noblesText.value.split('\n').map((l) => l.trim()).filter(Boolean)
-  if (!lines.length) { noblesError.value = 'Введіть хоча б один рядок'; return }
+  if (!lines.length) { noblesError.value = 'Введите хотя бы одну строку'; return }
   let applied = 0
   for (const line of lines) {
     const comma = line.lastIndexOf(',')
-    if (comma === -1) { noblesError.value = `Невірний формат: "${line}"`; return }
+    if (comma === -1) { noblesError.value = `Неверный формат: "${line}"`; return }
     const player = line.slice(0, comma).trim()
     const count = parseInt(line.slice(comma + 1).trim(), 10)
-    if (!player || isNaN(count) || count < 0) { noblesError.value = `Невірний рядок: "${line}"`; return }
+    if (!player || isNaN(count) || count < 0) { noblesError.value = `Неверная строка: "${line}"`; return }
     planStore.setPlayerData(player, { totalNobles: count })
     applied++
   }
@@ -186,7 +186,7 @@ function readFile(file: File) {
 }
 
 function doParseText() {
-  if (!csvText.value.trim()) { error.value = 'CSV порожній'; return }
+  if (!csvText.value.trim()) { error.value = 'CSV пустой'; return }
   parseCsv(csvText.value)
 }
 
@@ -196,7 +196,7 @@ function parseCsv(text: string) {
     const result = villagesStore.parseCSV(text)
     statsVisible.value = true
     if (result.count === 0) {
-      error.value = 'Не знайдено жодного рядка. Перевірте формат CSV.'
+      error.value = 'Не найдено ни одной строки. Проверьте формат CSV.'
       return
     }
     // prefillAll runs after DOM update so ImportStats is mounted

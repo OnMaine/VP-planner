@@ -1,27 +1,27 @@
 <template>
   <div class="home">
     <h1>VP Attack Planner</h1>
-    <p class="subtitle">Планер масових атак для гри Війна Племен</p>
+    <p class="subtitle">Планер массовых атак для игры Война Племён</p>
     <div class="cards">
       <RouterLink to="/settings" class="card">
         <span class="card-icon">🌍</span>
-        <h2>Налаштування світу</h2>
-        <p>Вкажи код світу, швидкості та параметри нічного бонусу</p>
+        <h2>Настройки мира</h2>
+        <p>Укажи код мира, скорости и параметры ночного бонуса</p>
       </RouterLink>
       <RouterLink to="/import" class="card">
         <span class="card-icon">📋</span>
-        <h2>Імпорт військ</h2>
-        <p>Завантаж CSV з військами гравців племені</p>
+        <h2>Импорт войск</h2>
+        <p>Загрузи CSV с войсками игроков племени</p>
       </RouterLink>
       <RouterLink to="/planner" class="card">
         <span class="card-icon">⚔️</span>
         <h2>Планер атак</h2>
-        <p>Створюй масові атаки з точним таймінгом</p>
+        <p>Создавай массовые атаки с точным таймингом</p>
       </RouterLink>
       <RouterLink to="/presets" class="card">
         <span class="card-icon">📁</span>
-        <h2>Пресети атак</h2>
-        <p>Збережені конфігурації для швидкого застосування</p>
+        <h2>Пресеты атак</h2>
+        <p>Сохранённые конфигурации для быстрого применения</p>
       </RouterLink>
     </div>
   </div>

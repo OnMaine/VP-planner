@@ -3,8 +3,8 @@
     <button class="collapse-toggle" @click="open = !open">
       <span class="panel-title-row">
         <img :src="knightIcon" class="knight-icon" />
-        Пал-оффи
-        <span v-if="totalAssigned > 0" class="tower-count-badge">{{ totalAssigned }} призначено</span>
+        Пал-оффы
+        <span v-if="totalAssigned > 0" class="tower-count-badge">{{ totalAssigned }} назначено</span>
       </span>
       <span class="collapse-icon">{{ open ? '▲' : '▼' }}</span>
     </button>
@@ -15,9 +15,9 @@
         <div class="paloff-troops">
           <table class="results-table" style="width:100%">
             <thead>
-              <tr><th style="text-align:left">Гравець</th><th style="text-align:right">#</th></tr>
+              <tr><th style="text-align:left">Игрок</th><th style="text-align:right">#</th></tr>
               <tr v-if="planStore.playerData.length > 0" class="tfoot-row">
-                <td><strong>Всього</strong></td>
+                <td><strong>Всего</strong></td>
                 <td style="text-align:right"><strong>{{ totalAvailable }}</strong></td>
               </tr>
             </thead>
@@ -27,7 +27,7 @@
                 <td style="text-align:right">{{ pd.offPaladins }}</td>
               </tr>
               <tr v-if="planStore.playerData.length === 0">
-                <td colspan="2" class="muted-text" style="text-align:center">Імпортуйте CSV гравців</td>
+                <td colspan="2" class="muted-text" style="text-align:center">Импортируйте CSV игроков</td>
               </tr>
             </tbody>
           </table>
@@ -35,35 +35,35 @@
 
         <div class="paloff-assign">
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.5rem">
-            <button class="btn btn-secondary btn-sm" @click="distributeEvenly">Розподілити рівномірно</button>
-            <button class="btn btn-secondary btn-sm" @click="clearAssignments">Скинути</button>
+            <button class="btn btn-secondary btn-sm" @click="distributeEvenly">Распределить равномерно</button>
+            <button class="btn btn-secondary btn-sm" @click="clearAssignments">Сбросить</button>
             <button class="btn btn-secondary btn-sm" @click="bulkOpen = !bulkOpen">
-              {{ bulkOpen ? '▲' : '▼' }} Масова вставка
+              {{ bulkOpen ? '▲' : '▼' }} Массовая вставка
             </button>
             <span class="muted-text" style="font-size:0.8rem;margin-left:auto">
-              Призначено: {{ totalAssigned }} / {{ totalAvailable }}
+              Назначено: {{ totalAssigned }} / {{ totalAvailable }}
             </span>
           </div>
 
           <div v-if="bulkOpen" style="margin-bottom:0.75rem">
-            <p class="bulk-hint">Формат: <code>координати,кількість</code> (або тільки координати — для рівномірного розподілу)</p>
+            <p class="bulk-hint">Формат: <code>координаты,количество</code> (или только координаты — для равномерного распределения)</p>
             <textarea class="bulk-textarea" rows="5" v-model="bulkText" placeholder="416|535,3&#10;416|536,2&#10;416|537"></textarea>
             <div v-if="bulkError" class="status-msg status-err">{{ bulkError }}</div>
-            <button class="btn btn-primary btn-sm mt" @click="applyBulk">Застосувати</button>
+            <button class="btn btn-primary btn-sm mt" @click="applyBulk">Применить</button>
           </div>
 
           <table class="results-table" style="width:100%">
             <thead><tr>
-              <th style="text-align:left">Координати</th>
-              <th style="text-align:left">Гравець (ціль)</th>
-              <th style="text-align:right">Пал-оффів</th>
+              <th style="text-align:left">Координаты</th>
+              <th style="text-align:left">Игрок (цель)</th>
+              <th style="text-align:right">Пал-оффов</th>
             </tr></thead>
             <tbody>
               <tr v-for="t in planStore.targets" :key="t.id">
                 <td>
                   <div class="coords-cell">
                     {{ t.coords || '—' }}
-                    <span v-if="towerCoordsSet.has(t.coords)" class="tower-badge" :title="`Вежа рівень ${targetTowerLevel(t.coords)}`">
+                    <span v-if="towerCoordsSet.has(t.coords)" class="tower-badge" :title="`Башня уровень ${targetTowerLevel(t.coords)}`">
                       <img :src="watchtowerIcon" class="tower-icon" />{{ targetTowerLevel(t.coords) }}
                     </span>
                   </div>
@@ -78,7 +78,7 @@
                 </td>
               </tr>
               <tr v-if="planStore.targets.length === 0">
-                <td colspan="3" class="muted-text" style="text-align:center">Немає цілей</td>
+                <td colspan="3" class="muted-text" style="text-align:center">Нет целей</td>
               </tr>
             </tbody>
           </table>
@@ -135,14 +135,14 @@ function clearAssignments(): void {
 function applyBulk(): void {
   bulkError.value = ''
   const lines = bulkText.value.split('\n').map((l) => l.trim()).filter(Boolean)
-  if (!lines.length) { bulkError.value = 'Введіть хоча б один рядок'; return }
+  if (!lines.length) { bulkError.value = 'Введите хотя бы одну строку'; return }
   const parsed: { coords: string; count: number | null }[] = []
   for (const line of lines) {
     const parts = line.split(',')
     const coords = parts[0].trim()
-    if (!/^\d+\|\d+$/.test(coords)) { bulkError.value = `Невірний формат: ${line}`; return }
+    if (!/^\d+\|\d+$/.test(coords)) { bulkError.value = `Неверный формат: ${line}`; return }
     const count = parts[1] ? parseInt(parts[1].trim(), 10) : null
-    if (parts[1] && isNaN(count!)) { bulkError.value = `Невірна кількість: ${line}`; return }
+    if (parts[1] && isNaN(count!)) { bulkError.value = `Неверное количество: ${line}`; return }
     parsed.push({ coords, count })
   }
   const withCount = parsed.filter((p) => p.count !== null)

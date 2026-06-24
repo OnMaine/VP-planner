@@ -1,78 +1,78 @@
 <template>
   <div class="settings-view">
-    <h1>Налаштування світу</h1>
+    <h1>Настройки мира</h1>
 
     <!-- Current settings summary (priority display) -->
     <section class="panel panel-summary">
-      <h2>Поточні налаштування</h2>
+      <h2>Текущие настройки</h2>
       <div v-if="worldStore.settings.worldCode" class="summary-grid">
         <div class="summary-item">
-          <span class="summary-label">Світ</span>
+          <span class="summary-label">Мир</span>
           <span class="summary-value highlight">{{ worldStore.settings.worldCode }}</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Швидкість світу</span>
+          <span class="summary-label">Скорость мира</span>
           <span class="summary-value">×{{ worldStore.settings.worldSpeed }}</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Швидкість юнітів</span>
+          <span class="summary-label">Скорость юнитов</span>
           <span class="summary-value">×{{ worldStore.settings.unitSpeed }}</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Розмір карти</span>
+          <span class="summary-label">Размер карты</span>
           <span class="summary-value">{{ worldStore.settings.mapSize }}</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Нічний бонус</span>
+          <span class="summary-label">Ночной бонус</span>
           <span class="summary-value" :class="worldStore.settings.nightActive ? 'text-ok' : 'text-dim'">
             {{ worldStore.settings.nightActive
               ? `${worldStore.settings.nightFrom}:00 – ${worldStore.settings.nightTo}:00`
-              : 'вимкнено' }}
+              : 'отключён' }}
           </span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Макс. дальність двора</span>
-          <span class="summary-value">{{ worldStore.settings.snobMaxDist }} клітинок</span>
+          <span class="summary-label">Макс. дальность двора</span>
+          <span class="summary-value">{{ worldStore.settings.snobMaxDist }} клеток</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Розрив паровоза</span>
+          <span class="summary-label">Разрыв паровоза</span>
           <span class="summary-value">{{ worldStore.settings.snobIntervalMs }} мс</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Сторожова башта</span>
+          <span class="summary-label">Сторожевая башня</span>
           <span class="summary-value" :class="worldStore.settings.watchtowerEnabled ? 'text-ok' : 'text-dim'">
-            {{ worldStore.settings.watchtowerEnabled ? 'є в грі' : 'вимкнена' }}
+            {{ worldStore.settings.watchtowerEnabled ? 'есть в игре' : 'отключена' }}
           </span>
         </div>
       </div>
       <div v-else class="no-settings">
-        Світ не налаштовано — завантажте через API або пресет нижче
+        Мир не настроен — загрузите через API или пресет ниже
       </div>
 
       <div class="unit-times-row" v-if="worldStore.settings.worldCode">
         <span v-for="(label, key) in UNIT_LABELS" :key="key" class="unit-chip">
           <img :src="UNIT_ICONS[key]" class="unit-chip-img" :alt="label" />
           <span class="unit-chip-name">{{ label }}</span>
-          <span class="unit-chip-val">{{ worldStore.settings.unitTimes[key] }}с</span>
+          <span class="unit-chip-val">{{ Math.round(worldStore.settings.unitTimes[key] / 60) }}мин</span>
         </span>
       </div>
     </section>
 
     <!-- Fetch from API / Preset -->
     <section class="panel">
-      <h2>Завантажити налаштування</h2>
+      <h2>Загрузить настройки</h2>
       <div class="row">
         <input
           v-model="worldCodeInput"
           type="text"
-          placeholder="Код світу, напр. ru100"
+          placeholder="Код мира, напр. ru100"
           class="input"
           @keydown.enter="doFetch"
         />
         <button class="btn btn-primary" :disabled="fetching" @click="doFetch">
-          {{ fetching ? 'Завантаження...' : 'З API' }}
+          {{ fetching ? 'Загрузка...' : 'Из API' }}
         </button>
-        <button class="btn btn-secondary" :disabled="!hasPreset" @click="doPreset" :title="hasPreset ? '' : 'Пресет для цього світу не знайдено'">
+        <button class="btn btn-secondary" :disabled="!hasPreset" @click="doPreset" :title="hasPreset ? '' : 'Пресет для этого мира не найден'">
           Пресет
         </button>
       </div>
@@ -82,64 +82,64 @@
     <!-- Manual settings (collapsible) -->
     <section class="panel">
       <button class="collapse-toggle" @click="manualOpen = !manualOpen">
-        <span>Ручне введення</span>
+        <span>Ручной ввод</span>
         <span class="collapse-icon">{{ manualOpen ? '▲' : '▼' }}</span>
       </button>
       <div v-if="manualOpen" class="collapse-body">
         <div class="form-grid mt">
           <label>
-            Код світу
+            Код мира
             <input v-model="form.worldCode" type="text" class="input" />
           </label>
           <label>
-            Швидкість світу
+            Скорость мира
             <input v-model.number="form.worldSpeed" type="number" min="0.1" step="0.1" class="input" />
           </label>
           <label>
-            Швидкість юнітів
+            Скорость юнитов
             <input v-model.number="form.unitSpeed" type="number" min="0.1" step="0.1" class="input" />
           </label>
           <label>
-            Розмір карти
+            Размер карты
             <input v-model.number="form.mapSize" type="number" min="100" class="input" />
           </label>
           <label>
-            Макс. дальність двора (клітинок)
+            Макс. дальность двора (клеток)
             <input v-model.number="form.snobMaxDist" type="number" min="1" class="input" />
           </label>
           <label>
-            Розрив паровоза (мс)
+            Разрыв паровоза (мс)
             <input v-model.number="form.snobIntervalMs" type="number" min="0" step="50" class="input" />
           </label>
           <label class="checkbox-label">
             <input v-model="form.watchtowerEnabled" type="checkbox" />
-            Сторожова башта є в грі
+            Сторожевая башня есть в игре
           </label>
           <label class="checkbox-label">
             <input v-model="form.nightActive" type="checkbox" />
-            Нічний бонус активний
+            Ночной бонус активен
           </label>
           <label>
-            Ніч від (годин)
+            Ночь от (часов)
             <input v-model.number="form.nightFrom" type="number" min="0" max="23" class="input" />
           </label>
           <label>
-            Ніч до (годин)
+            Ночь до (часов)
             <input v-model.number="form.nightTo" type="number" min="0" max="23" class="input" />
           </label>
         </div>
 
-        <h3>Час юнітів (секунд/клітинку)</h3>
+        <h3>Время юнитов (минут/клетку)</h3>
         <div class="form-grid">
           <label v-for="(label, key) in UNIT_LABELS" :key="key">
             <span class="unit-form-label">
               <img :src="UNIT_ICONS[key]" class="unit-icon-sm" :alt="label" />{{ label }}
             </span>
-            <input v-model.number="form.unitTimes[key]" type="number" min="1" class="input" />
+            <input v-model.number="form.unitTimesMin[key]" type="number" min="1" class="input" />
           </label>
         </div>
 
-        <button class="btn btn-primary mt" @click="saveManual">Зберегти</button>
+        <button class="btn btn-primary mt" @click="saveManual">Сохранить</button>
         <div v-if="savedMsg" class="status-msg status-ok">{{ savedMsg }}</div>
       </div>
     </section>
@@ -188,8 +188,14 @@ const form = reactive({
   snobMaxDist: worldStore.settings.snobMaxDist,
   snobIntervalMs: worldStore.settings.snobIntervalMs,
   watchtowerEnabled: worldStore.settings.watchtowerEnabled,
-  unitTimes: { ...worldStore.settings.unitTimes } as UnitTimes,
+  unitTimesMin: Object.fromEntries(
+    Object.entries(worldStore.settings.unitTimes).map(([k, v]) => [k, Math.round(v / 60)])
+  ) as UnitTimes,
 })
+
+function secToMin(times: UnitTimes): UnitTimes {
+  return Object.fromEntries(Object.entries(times).map(([k, v]) => [k, Math.round(v / 60)])) as UnitTimes
+}
 
 watch(
   () => worldStore.settings,
@@ -204,7 +210,7 @@ watch(
     form.snobMaxDist = s.snobMaxDist
     form.snobIntervalMs = s.snobIntervalMs
     form.watchtowerEnabled = s.watchtowerEnabled
-    Object.assign(form.unitTimes, s.unitTimes)
+    Object.assign(form.unitTimesMin, secToMin(s.unitTimes))
   },
   { deep: true },
 )
@@ -212,7 +218,7 @@ watch(
 async function doFetch() {
   const code = worldCodeInput.value.trim()
   if (!code) {
-    statusMsg.value = 'Введіть код світу'
+    statusMsg.value = 'Введите код мира'
     statusClass.value = 'status-err'
     return
   }
@@ -220,10 +226,10 @@ async function doFetch() {
   statusMsg.value = ''
   try {
     await worldStore.fetchFromApi(code)
-    statusMsg.value = `Успішно завантажено налаштування для "${code}"`
+    statusMsg.value = `Настройки для "${code}" успешно загружены`
     statusClass.value = 'status-ok'
   } catch (err) {
-    statusMsg.value = `Помилка: ${err instanceof Error ? err.message : String(err)}. Спробуйте пресет або ручне введення.`
+    statusMsg.value = `Ошибка: ${err instanceof Error ? err.message : String(err)}. Попробуйте пресет или ручной ввод.`
     statusClass.value = 'status-err'
   } finally {
     fetching.value = false
@@ -233,10 +239,10 @@ async function doFetch() {
 function doPreset() {
   const code = worldCodeInput.value.trim()
   if (worldStore.applyPreset(code)) {
-    statusMsg.value = `Пресет "${code}" застосовано`
+    statusMsg.value = `Пресет "${code}" применён`
     statusClass.value = 'status-ok'
   } else {
-    statusMsg.value = `Пресет для "${code}" не знайдено`
+    statusMsg.value = `Пресет для "${code}" не найден`
     statusClass.value = 'status-err'
   }
 }
@@ -253,9 +259,11 @@ function saveManual() {
     snobMaxDist: form.snobMaxDist,
     snobIntervalMs: form.snobIntervalMs,
     watchtowerEnabled: form.watchtowerEnabled,
-    unitTimes: { ...form.unitTimes },
+    unitTimes: Object.fromEntries(
+      Object.entries(form.unitTimesMin).map(([k, v]) => [k, v * 60])
+    ) as UnitTimes,
   })
-  savedMsg.value = 'Збережено!'
+  savedMsg.value = 'Сохранено!'
   setTimeout(() => { savedMsg.value = '' }, 2000)
 }
 </script>

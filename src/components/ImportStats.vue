@@ -3,9 +3,9 @@
     <div class="stats-header-row">
       <h2>Статистика</h2>
       <div class="cat-settings">
-        <span class="cat-settings-label">Кат. загін:</span>
+        <span class="cat-settings-label">Кат. отряд:</span>
         <label class="cat-settings-field">
-          мін
+          мин
           <input v-model.number="catMinSize" type="number" min="1" class="inline-input cat-input" />
         </label>
         <label class="cat-settings-field">
@@ -18,11 +18,11 @@
     <div class="stats-grid">
       <div class="stat-card stat-card--blue">
         <span class="stat-num">{{ villagesStore.villages.length }}</span>
-        <span class="stat-label">Сел</span>
+        <span class="stat-label">Деревень</span>
       </div>
       <div class="stat-card stat-card--blue">
         <span class="stat-num">{{ villagesStore.playerCount }}</span>
-        <span class="stat-label">Гравців</span>
+        <span class="stat-label">Игроков</span>
       </div>
       <div class="stat-card stat-card--accent">
         <span class="stat-num">{{ totals.breakOff }}</span>
@@ -34,44 +34,44 @@
       </div>
       <div class="stat-card stat-card--orange">
         <span class="stat-num">{{ totals.halfOff }}</span>
-        <span class="stat-label">Пів-офф</span>
+        <span class="stat-label">Пол-офф</span>
       </div>
       <div class="stat-card stat-card--yellow">
         <span class="stat-num">{{ totals.smallOff }}</span>
-        <span class="stat-label">Міні офф</span>
+        <span class="stat-label">Мини офф</span>
       </div>
       <div class="stat-card stat-card--purple">
         <span class="stat-num">{{ totals.snobs }}</span>
-        <span class="stat-label">Дворів</span>
+        <span class="stat-label">Дворов</span>
       </div>
       <div class="stat-card stat-card--teal">
         <span class="stat-num">{{ totals.trains }}</span>
-        <span class="stat-label">Паравозів</span>
+        <span class="stat-label">Паровозов</span>
       </div>
       <div class="stat-card stat-card--gold">
         <span class="stat-num">{{ planStore.playerData.reduce((s, pd) => s + pd.offPaladins, 0) }}</span>
-        <span class="stat-label">Офф-палів</span>
+        <span class="stat-label">Офф-палов</span>
       </div>
       <div class="stat-card stat-card--teal">
         <span class="stat-num">{{ totals.catSquadsTotal }}</span>
-        <span class="stat-label">Кат загонів</span>
+        <span class="stat-label">Кат отрядов</span>
         <span class="stat-sublabel">({{ totals.catapults }} кат)</span>
       </div>
     </div>
 
     <!-- Players table -->
-    <h3>Гравці</h3>
+    <h3>Игроки</h3>
     <div class="players-wrap">
       <table class="mini-table players-table">
         <thead>
           <tr>
-            <th>Гравець</th>
-            <th title="Сел з топорами ≥ 5 000 та таранами ≥ 750 (не входить у фулл офф)">Пробой</th>
-            <th title="Сел з топорами ≥ 5 000 (без пробойних)">Фулл офф</th>
-            <th title="Сел з топорами 2 000–4 999">Пів-офф</th>
-            <th title="Сел з топорами 1 000–1 999">Міні офф</th>
+            <th>Игрок</th>
+            <th title="Деревень с топорами ≥ 5 000 и таранами ≥ 750 (не входит в фулл офф)">Пробой</th>
+            <th title="Деревень с топорами ≥ 5 000 (без пробойных)">Фулл офф</th>
+            <th title="Деревень с топорами 2 000–4 999">Пол-офф</th>
+            <th title="Деревень с топорами 1 000–1 999">Мини офф</th>
             <th>
-              Кати
+              Каты
               <span class="th-info-icon" @mouseenter="showThTooltip('cats', $event)" @mouseleave="hideThTooltip">ⓘ</span>
             </th>
             <th>
@@ -79,11 +79,11 @@
               <span class="th-info-icon" @mouseenter="showThTooltip('pal-off', $event)" @mouseleave="hideThTooltip">ⓘ</span>
             </th>
             <th>
-              Двори
+              Дворы
               <span class="th-info-icon" @mouseenter="showThTooltip('nobles', $event)" @mouseleave="hideThTooltip">ⓘ</span>
             </th>
             <th>
-              Паравози
+              Паровозы
               <span class="th-info-icon" @mouseenter="showThTooltip('trains', $event)" @mouseleave="hideThTooltip">ⓘ</span>
             </th>
           </tr>
@@ -100,7 +100,7 @@
                   <span class="info-popup">
                     <span class="info-row"><span class="info-lbl">Фулл офф</span><span class="info-val">{{ p.fullOff }}</span></span>
                     <span class="info-row"><span class="info-lbl">Офф пробой</span><span class="info-val accent">{{ p.breakOff }}</span></span>
-                    <span class="info-row info-row--total"><span class="info-lbl">Разом</span><span class="info-val">{{ p.fullOff + p.breakOff }}</span></span>
+                    <span class="info-row info-row--total"><span class="info-lbl">Итого</span><span class="info-val">{{ p.fullOff + p.breakOff }}</span></span>
                   </span>
                 </span>
               </span>
@@ -128,7 +128,7 @@
                 <span
                   v-if="planStore.getPlayerData(p.player).offPaladins !== p.knightsCsv"
                   class="csv-hint"
-                  :title="`Відновити значення з CSV (${p.knightsCsv})`"
+                  :title="`Восстановить значение из CSV (${p.knightsCsv})`"
                   @click="planStore.setPlayerData(p.player, { offPaladins: p.knightsCsv })"
                 >{{ p.knightsCsv }}</span>
               </div>
@@ -139,13 +139,13 @@
                   type="number" min="0"
                   :class="['inline-input', { 'input-edited': planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv }]"
                   :value="planStore.getPlayerData(p.player).totalNobles"
-                  :title="planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv ? `З CSV: ${p.snobsCsv}` : ''"
+                  :title="planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv ? `Из CSV: ${p.snobsCsv}` : ''"
                   @change="planStore.setPlayerData(p.player, { totalNobles: +($event.target as HTMLInputElement).value })"
                 />
                 <span
                   v-if="planStore.getPlayerData(p.player).totalNobles !== p.snobsCsv"
                   class="csv-hint"
-                  :title="`Відновити значення з CSV (${p.snobsCsv})`"
+                  :title="`Восстановить значение из CSV (${p.snobsCsv})`"
                   @click="planStore.setPlayerData(p.player, { totalNobles: p.snobsCsv })"
                 >{{ p.snobsCsv }}</span>
               </div>
@@ -162,15 +162,15 @@
   <!-- Villages table -->
   <section class="panel">
     <button class="collapse-toggle" @click="villagesOpen = !villagesOpen">
-      <span>Всі села ({{ villagesStore.villages.length }})</span>
+      <span>Все деревни ({{ villagesStore.villages.length }})</span>
       <span class="collapse-icon">{{ villagesOpen ? '▲' : '▼' }}</span>
     </button>
     <div v-if="villagesOpen" class="preview-wrap mt">
       <table class="mini-table">
         <thead>
           <tr>
-            <th>Гравець</th>
-            <th>Координати</th>
+            <th>Игрок</th>
+            <th>Координаты</th>
             <th>Очки</th>
             <th title="Копья"><img :src="UNIT_ICONS.spear"    class="th-unit-icon" /></th>
             <th title="Мечи"><img :src="UNIT_ICONS.sword"    class="th-unit-icon" /></th>
@@ -217,45 +217,45 @@
   <Teleport to="body">
     <div v-if="thTooltip" class="th-fixed-tooltip" :style="{ left: thTooltip.x + 'px', top: thTooltip.y + 'px' }">
       <template v-if="thTooltip.id === 'pal-off'">
-        <div class="ftt-row"><span class="ftt-lbl">Джерело</span><span class="ftt-val">CSV (поле «Пал»)</span></div>
+        <div class="ftt-row"><span class="ftt-lbl">Источник</span><span class="ftt-val">CSV (поле «Пал»)</span></div>
         <div class="ftt-sep"></div>
         <div class="ftt-hint">
-          Кількість паладинів в офф-позиції.<br/>
-          Редагується вручну — зміни зберігаються.<br/>
-          Використовується планером для генерації<br/><strong>paladin_off</strong> атак.
+          Количество паладинов в офф-позиции.<br/>
+          Редактируется вручную — изменения сохраняются.<br/>
+          Используется планером для генерации<br/><strong>paladin_off</strong> атак.
         </div>
       </template>
       <template v-else-if="thTooltip.id === 'nobles'">
-        <div class="ftt-row"><span class="ftt-lbl">За замовч.</span><span class="ftt-val">З CSV</span></div>
+        <div class="ftt-row"><span class="ftt-lbl">По умолч.</span><span class="ftt-val">Из CSV</span></div>
         <div class="ftt-sep"></div>
         <div class="ftt-hint">
-          Пріоритет значень:<br/>
-          <strong>1.</strong> Імпорт дворів (окремий збір)<br/>
-          <strong>2.</strong> Ручне редагування<br/>
-          <strong>3.</strong> CSV (побудовані двори)<br/>
+          Приоритет значений:<br/>
+          <strong>1.</strong> Импорт дворов (отдельный сбор)<br/>
+          <strong>2.</strong> Ручное редактирование<br/>
+          <strong>3.</strong> CSV (построенные дворы)<br/>
           <br/>
-          Окремий збір показує <strong>доступні</strong> двори,<br/>
-          що може бути більше ніж побудованих.
+          Отдельный сбор показывает <strong>доступные</strong> дворы,<br/>
+          что может быть больше, чем построенных.
         </div>
       </template>
       <template v-else-if="thTooltip.id === 'cats'">
-        <div class="ftt-row"><span class="ftt-lbl">Формат</span><span class="ftt-val">загони (кат)</span></div>
+        <div class="ftt-row"><span class="ftt-lbl">Формат</span><span class="ftt-val">отряды (кат)</span></div>
         <div class="ftt-sep"></div>
         <div class="ftt-hint">
-          Число — кількість кат. загонів з цієї дери.<br/>
-          У дужках — загальна кількість кат.<br/>
+          Число — количество кат. отрядов из этой деревни.<br/>
+          В скобках — общее количество кат.<br/>
           <br/>
-          Мін. загін: <strong>{{ catMinSize }}</strong> кат — менше не рахується.<br/>
-          Макс. загін: <strong>{{ catMaxSize }}</strong> кат — більше ділиться.<br/>
-          Змінити можна над таблицею.
+          Мин. отряд: <strong>{{ catMinSize }}</strong> кат — меньше не считается.<br/>
+          Макс. отряд: <strong>{{ catMaxSize }}</strong> кат — больше делится.<br/>
+          Изменить можно над таблицей.
         </div>
       </template>
       <template v-else-if="thTooltip.id === 'trains'">
-        <div class="ftt-row"><span class="ftt-lbl">Формула</span><span class="ftt-val">Двори ÷ 5</span></div>
+        <div class="ftt-row"><span class="ftt-lbl">Формула</span><span class="ftt-val">Дворы ÷ 5</span></div>
         <div class="ftt-sep"></div>
         <div class="ftt-hint">
-          Скільки повних паровозів може зібрати гравець.<br/>
-          Рахується від <strong>редагованого</strong> значення<br/>дворів, не з CSV.
+          Сколько полных паровозов может собрать игрок.<br/>
+          Считается от <strong>редактированного</strong> значения<br/>дворов, не из CSV.
         </div>
       </template>
     </div>

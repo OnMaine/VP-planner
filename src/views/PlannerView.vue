@@ -11,10 +11,10 @@
 
     <!-- Generate -->
     <section class="panel generate-section">
-      <button class="btn btn-primary btn-generate" @click="onGenerate">Генерувати план</button>
+      <button class="btn btn-primary btn-generate" @click="onGenerate">Сгенерировать план</button>
       <div v-if="planStore.attacks.length > 0" class="generate-stat">
-        Всього атак: <strong>{{ planStore.attacks.length }}</strong>
-        &nbsp;·&nbsp; Активних: <strong>{{ activeAttackCount }}</strong>
+        Всего атак: <strong>{{ planStore.attacks.length }}</strong>
+        &nbsp;·&nbsp; Активных: <strong>{{ activeAttackCount }}</strong>
       </div>
     </section>
 

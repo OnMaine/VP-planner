@@ -4,7 +4,7 @@
       <button class="collapse-toggle" @click="open = !open">
         <span class="panel-title-row">
           <img :src="watchtowerIcon" class="section-icon" />
-          Башти ворога
+          Башни врага
           <span v-if="planStore.watchtowerVillages.length" class="tower-count-badge">
             {{ planStore.watchtowerVillages.length }}
           </span>
@@ -14,38 +14,38 @@
       <button
         v-if="planStore.watchtowerVillages.length"
         class="btn btn-danger btn-sm"
-        @click.stop="confirm('Очистити всі башти?') && planStore.clearWatchtowerVillages()"
-      >Очистити</button>
+        @click.stop="confirm('Очистить все башни?') && planStore.clearWatchtowerVillages()"
+      >Очистить</button>
     </div>
 
     <div v-if="open" class="mt">
       <div class="add-targets-bar">
-        <button class="btn btn-primary" @click="addEmptyTower">+ Вручну</button>
+        <button class="btn btn-primary" @click="addEmptyTower">+ Вручную</button>
         <button class="btn btn-secondary" @click="bulkOpen = !bulkOpen">
-          {{ bulkOpen ? '▲' : '▼' }} Масова вставка
+          {{ bulkOpen ? '▲' : '▼' }} Массовая вставка
         </button>
         <label class="btn btn-secondary file-btn">
-          Завантажити файл
+          Загрузить файл
           <input ref="fileInput" type="file" accept=".txt,.csv" class="hidden-input" @change="onTowerFile" />
         </label>
         <span class="fmt-tip">ⓘ<span class="fmt-tip-body">
-          Один рядок = одна вежа<br>
-          <code>500|500</code> ← тільки кори (рівень 20)<br>
-          <code>500|500,EnemyNick</code> ← з ніком<br>
-          <code>500|500,EnemyNick,15</code> ← з ніком і рівнем
+          Одна строка = одна башня<br>
+          <code>500|500</code> ← только коры (уровень 20)<br>
+          <code>500|500,EnemyNick</code> ← с ником<br>
+          <code>500|500,EnemyNick,15</code> ← с ником и уровнем
         </span></span>
       </div>
 
       <div v-if="bulkOpen" class="bulk-panel">
         <p class="bulk-hint">
-          Формат рядка: <code>500|500,НікВорога,15</code> — нік і рівень необов'язкові. Без рівня — вежа 20.
+          Формат строки: <code>500|500,НикВрага,15</code> — ник и уровень необязательны. Без уровня — башня 20.
         </p>
         <div class="bulk-row">
           <textarea
             v-model="bulkText"
             class="bulk-textarea"
             rows="5"
-            placeholder="500|500,EnemyPlayer,15   ← нік + рівень&#10;501|501,AnotherEnemy    ← без рівня (20)&#10;502|502,,10            ← без ніка, рівень 10&#10;503|503               ← тільки кори (20)"
+            placeholder="500|500,EnemyPlayer,15   ← ник + уровень&#10;501|501,AnotherEnemy    ← без уровня (20)&#10;502|502,,10            ← без ника, уровень 10&#10;503|503               ← только коры (20)"
           />
           <div class="bulk-time" style="min-width:160px">
             <button class="btn btn-primary" @click="doBulkAdd">Додати</button>
@@ -57,15 +57,15 @@
       <template v-if="planStore.watchtowerVillages.length">
         <div v-for="block in towerBlocks" :key="block.player" class="tower-group mt">
           <div v-if="towerBlocks.length > 1 || block.player" class="tower-group-header">
-            <span class="tower-group-player">{{ block.player || '(без гравця)' }}</span>
-            <span class="tower-group-count">{{ block.villages.length }} башт</span>
+            <span class="tower-group-player">{{ block.player || '(без игрока)' }}</span>
+            <span class="tower-group-count">{{ block.villages.length }} башен</span>
           </div>
           <div class="table-wrap">
             <table class="mini-table">
               <thead><tr>
-                <th>Координати</th>
-                <th>Гравець</th>
-                <th>Рівень (0–20)</th>
+                <th>Координаты</th>
+                <th>Игрок</th>
+                <th>Уровень (0–20)</th>
                 <th></th>
               </tr></thead>
               <tbody>
@@ -80,7 +80,7 @@
                   </td>
                   <td>
                     <input
-                      type="text" class="input" style="width:130px" placeholder="(необов.)"
+                      type="text" class="input" style="width:130px" placeholder="(необяз.)"
                       :value="resolveTowerPlayer(wt)"
                       :class="{ 'input-autofilled': !!enemyStore.lookupCoords(wt.coords)?.player }"
                       @change="onTowerPlayerChange(wt.id, wt.coords, ($event.target as HTMLInputElement).value)"
@@ -101,7 +101,7 @@
         </div>
       </template>
       <p v-else class="muted-text">
-        Башти не додані. Додай вежі ворога щоб бачити попередження WATCHTOWER_HIT у плані.
+        Башни не добавлены. Добавь башни врага, чтобы видеть предупреждения WATCHTOWER_HIT в плане.
       </p>
     </div>
   </section>
@@ -184,7 +184,7 @@ function parseTowersFromText(text: string): ParsedTower[] {
 function doBulkAdd(): void {
   bulkError.value = ''
   const entries = parseTowersFromText(bulkText.value)
-  if (!entries.length) { bulkError.value = 'Не знайдено координат. Формат: 500|500,НікВорога,15'; return }
+  if (!entries.length) { bulkError.value = 'Не найдено координат. Формат: 500|500,НикВрага,15'; return }
   planStore.importWatchtowerVillages(entries)
   bulkText.value = ''
   bulkOpen.value = false
@@ -197,9 +197,9 @@ function onTowerFile(event: Event): void {
   reader.onload = (e) => {
     const text = e.target?.result as string
     const entries = parseTowersFromText(text)
-    if (!entries.length) { bulkError.value = 'У файлі не знайдено рядків формату 500|500'; return }
+    if (!entries.length) { bulkError.value = 'В файле не найдено строк формата 500|500'; return }
     planStore.importWatchtowerVillages(entries)
-    bulkError.value = `З файлу додано ${entries.length} башт.`
+    bulkError.value = `Из файла добавлено ${entries.length} башен.`
     if (fileInput.value) fileInput.value.value = ''
   }
   reader.readAsText(file, 'utf-8')

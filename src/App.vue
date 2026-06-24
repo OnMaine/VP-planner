@@ -3,17 +3,17 @@
     <header class="app-header">
       <div class="brand">VP Planner</div>
       <nav>
-        <RouterLink to="/">Головна</RouterLink>
+        <RouterLink to="/">Главная</RouterLink>
         <RouterLink to="/settings">
-          Налаштування
-          <span v-if="!hasWorld" class="badge badge-warn" title="Налаштування не збережені">●</span>
+          Настройки
+          <span v-if="!hasWorld" class="badge badge-warn" title="Настройки не сохранены">●</span>
         </RouterLink>
         <RouterLink to="/import">
-          Імпорт
-          <span v-if="!hasVillages" class="badge badge-warn" title="Немає сел">●</span>
+          Импорт
+          <span v-if="!hasVillages" class="badge badge-warn" title="Нет деревень">●</span>
         </RouterLink>
         <RouterLink to="/planner">Планер</RouterLink>
-        <RouterLink to="/presets">Пресети</RouterLink>
+        <RouterLink to="/presets">Пресеты</RouterLink>
       </nav>
     </header>
     <main class="app-main">
