@@ -60,7 +60,14 @@
             </tr></thead>
             <tbody>
               <tr v-for="t in planStore.targets" :key="t.id">
-                <td>{{ t.coords || '—' }}</td>
+                <td>
+                  <div class="coords-cell">
+                    {{ t.coords || '—' }}
+                    <span v-if="towerCoordsSet.has(t.coords)" class="tower-badge" :title="`Вежа рівень ${targetTowerLevel(t.coords)}`">
+                      <img :src="watchtowerIcon" class="tower-icon" />{{ targetTowerLevel(t.coords) }}
+                    </span>
+                  </div>
+                </td>
                 <td class="muted-small">{{ resolveTargetPlayer(t) || '—' }}</td>
                 <td style="text-align:right;width:90px">
                   <input
@@ -86,7 +93,7 @@
 import { ref, computed } from 'vue'
 import { usePlanStore } from '@/stores/planStore'
 import { usePlayerResolution } from '@/composables/usePlayerResolution'
-import { UNIT_ICONS } from '@/utils/unitIcons'
+import { UNIT_ICONS, watchtowerIcon } from '@/utils/unitIcons'
 const knightIcon = UNIT_ICONS.knight
 
 const planStore = usePlanStore()
@@ -96,6 +103,13 @@ const open = ref(false)
 const bulkOpen = ref(false)
 const bulkText = ref('')
 const bulkError = ref('')
+
+const towerCoordsSet = computed(() => new Set(planStore.watchtowerVillages.map((w) => w.coords)))
+
+function targetTowerLevel(coords: string): number | null {
+  const wt = planStore.watchtowerVillages.find((w) => w.coords === coords)
+  return wt?.level ?? null
+}
 
 const totalAvailable = computed(() =>
   planStore.playerData.reduce((s, pd) => s + pd.offPaladins, 0),
@@ -159,6 +173,10 @@ function applyBulk(): void {
 
 .panel-title-row { display: inline-flex; align-items: center; gap: 6px; }
 .knight-icon { width: 16px; height: 16px; image-rendering: pixelated; }
+
+.coords-cell  { display: flex; align-items: center; gap: 0.4rem; }
+.tower-badge  { display: inline-flex; align-items: center; gap: 2px; font-size: 0.72rem; color: $orange; white-space: nowrap; cursor: default; }
+.tower-icon   { width: 14px; height: 14px; image-rendering: pixelated; }
 
 .tfoot-row td {
   background: $border;

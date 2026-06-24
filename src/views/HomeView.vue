@@ -18,6 +18,11 @@
         <h2>Планер атак</h2>
         <p>Створюй масові атаки з точним таймінгом</p>
       </RouterLink>
+      <RouterLink to="/presets" class="card">
+        <span class="card-icon">📁</span>
+        <h2>Пресети атак</h2>
+        <p>Збережені конфігурації для швидкого застосування</p>
+      </RouterLink>
     </div>
   </div>
 </template>
@@ -48,7 +53,7 @@ h1 {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 1.5rem;
 }
 

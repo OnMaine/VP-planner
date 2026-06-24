@@ -13,6 +13,7 @@
           <span v-if="!hasVillages" class="badge badge-warn" title="Немає сел">●</span>
         </RouterLink>
         <RouterLink to="/planner">Планер</RouterLink>
+        <RouterLink to="/presets">Пресети</RouterLink>
       </nav>
     </header>
     <main class="app-main">

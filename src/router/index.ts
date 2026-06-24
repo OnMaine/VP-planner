@@ -24,6 +24,11 @@ const router = createRouter({
       name: 'planner',
       component: () => import('@/views/PlannerView.vue'),
     },
+    {
+      path: '/presets',
+      name: 'presets',
+      component: () => import('@/views/PresetsView.vue'),
+    },
   ],
 })
 
