@@ -22,36 +22,36 @@ function cfg(overrides: Partial<MassConfig> = {}): MassConfig {
 const BUILT_IN: AttackPreset[] = [
   {
     id: 'bi_off1',
-    name: 'Звичайний офф',
-    description: 'Один офф на ціль без дворян і спаму',
+    name: 'Обычный офф',
+    description: 'Один офф на цель без дворян и спама',
     builtIn: true,
     config: cfg({ regularOffsPerTarget: 1, nobleTrainSize: 0, useSpamAttacks: false }),
   },
   {
     id: 'bi_off3',
     name: 'Офф × 3',
-    description: 'Три оффи на ціль, без дворян',
+    description: 'Три оффа на цель, без дворян',
     builtIn: true,
     config: cfg({ regularOffsPerTarget: 3, nobleTrainSize: 0, useSpamAttacks: false }),
   },
   {
     id: 'bi_off_noble',
     name: 'Офф + паровоз',
-    description: '3 оффи + паровоз з 4 дворів (999 ескорт)',
+    description: '3 оффа + паровоз из 4 дворов (999 эскорт)',
     builtIn: true,
     config: cfg({ regularOffsPerTarget: 3, nobleTrainSize: 4 }),
   },
   {
     id: 'bi_split_noble',
-    name: 'Поділений офф + паровоз',
-    description: 'Розподілений офф (тарани окремо) + 4 двори',
+    name: 'Разделённый офф + паровоз',
+    description: 'Разделённый офф (тараны отдельно) + 4 двора',
     builtIn: true,
     config: cfg({ regularOffsPerTarget: 3, splitOff: true, nobleTrainSize: 4 }),
   },
   {
     id: 'bi_spam_train',
     name: 'Спам паровоз',
-    description: '10 спамів + 4 спам-двори + паровоз з 4 дворів',
+    description: '10 спамов + 4 спам-двора + паровоз из 4 дворов',
     builtIn: true,
     config: cfg({
       regularOffsPerTarget: 0,
@@ -64,8 +64,8 @@ const BUILT_IN: AttackPreset[] = [
   },
   {
     id: 'bi_spam_only',
-    name: 'Тільки спам',
-    description: 'Тільки спам-атаки, без оффів і дворян',
+    name: 'Только спам',
+    description: 'Только спам-атаки, без оффов и дворян',
     builtIn: true,
     config: cfg({
       regularOffsPerTarget: 0,
@@ -126,7 +126,7 @@ export const usePresetsStore = defineStore('presets', () => {
     const preset = all.value.find((p) => p.id === id)
     if (!preset) return null
     return add({
-      name: `${preset.name} (копія)`,
+      name: `${preset.name} (копия)`,
       description: preset.description,
       config: _deepCopyConfig(preset.config),
     })
