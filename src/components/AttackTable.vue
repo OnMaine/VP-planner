@@ -12,7 +12,7 @@
           <th>Время в пути</th>
           <th>Время отправки</th>
           <th>Время прибытия</th>
-          <th>Количество</th>
+          <th>Всего юнитов</th>
           <th>Исключить</th>
         </tr>
       </thead>
@@ -22,13 +22,13 @@
           :key="row.id"
           :class="rowClass(row)"
         >
-          <td>{{ row.village.player }}</td>
-          <td>{{ row.village.coords }}</td>
+          <td>{{ row.fromVillage.player }}</td>
+          <td>{{ row.fromVillage.coords }}</td>
           <td>{{ row.distance.toFixed(1) }}</td>
           <td>{{ formatDuration(row.travelSeconds) }}</td>
           <td class="mono">{{ formatDateTime(row.sendTime) }}</td>
           <td class="mono">{{ formatDateTime(row.arrivalTime) }}</td>
-          <td>{{ troopCount(row) }}</td>
+          <td>{{ row.totalUnits.toLocaleString() }}</td>
           <td class="center">
             <input
               type="checkbox"
@@ -44,14 +44,14 @@
 
 <script setup lang="ts">
 import { usePlanStore } from '@/stores/planStore'
-import type { AttackRow } from '@/stores/planStore'
+import type { Attack } from '@/stores/planStore'
 import { formatDuration } from '@/utils/travelTime'
 
 const planStore = usePlanStore()
 
 const attacks = planStore.attacks
 
-function rowClass(row: AttackRow): string {
+function rowClass(row: Attack): string {
   if (row.excluded) return 'row-excluded'
   if (row.warnings.includes('SEND_IN_PAST')) return 'row-past'
   if (row.warnings.includes('NIGHT_ARRIVAL') || row.warnings.includes('NIGHT_SEND'))
@@ -66,11 +66,6 @@ function formatDateTime(d: Date): string {
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
     `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}`
   )
-}
-
-function troopCount(row: AttackRow): number {
-  const key = planStore.unitKey
-  return row.village.troops[key]
 }
 </script>
 
@@ -123,19 +118,16 @@ function troopCount(row: AttackRow): number {
   text-align: center;
 }
 
-/* Red: send time is in the past */
 .row-past td {
   background: rgba(233, 69, 96, 0.2) !important;
   color: #ff8a9a;
 }
 
-/* Yellow: night arrival or night send */
 .row-night td {
   background: rgba(255, 200, 0, 0.15) !important;
   color: #ffe066;
 }
 
-/* Excluded: dimmed */
 .row-excluded td {
   opacity: 0.4;
   text-decoration: line-through;

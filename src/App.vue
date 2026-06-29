@@ -13,7 +13,8 @@
           <span v-if="!hasVillages" class="badge badge-warn" title="Нет деревень">●</span>
         </RouterLink>
         <RouterLink to="/planner">Планер</RouterLink>
-        <RouterLink to="/presets">Пресеты</RouterLink>
+        <RouterLink to="/presets">Пресеты войск</RouterLink>
+        <RouterLink to="/mass-configs">Пресеты масса</RouterLink>
       </nav>
     </header>
     <main class="app-main">

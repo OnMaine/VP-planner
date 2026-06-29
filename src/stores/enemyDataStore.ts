@@ -135,6 +135,12 @@ export const useEnemyDataStore = defineStore('enemyData', () => {
     return m
   })
 
+  const playerByName = computed(() => {
+    const m = new Map<string, EnemyPlayer>()
+    for (const p of players.value) m.set(p.name, p)
+    return m
+  })
+
   function lookupCoords(coords: string): EnemyVillageInfo | null {
     const village = villageByCoords.value.get(coords)
     if (!village) return null
@@ -208,7 +214,7 @@ export const useEnemyDataStore = defineStore('enemyData', () => {
   return {
     villages, players, allies,
     loadError, loading,
-    villageByCoords, playerById, allyById,
+    villageByCoords, playerById, playerByName, allyById,
     lookupCoords,
     loadVillageFile, loadPlayerFile, loadAllyFile,
     clearAll,

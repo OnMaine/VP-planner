@@ -20,6 +20,9 @@ dist-ssr/
 .vscode/
 
 data.csv
+data-*.csv
+
+import requests.py
 
 player.txt
 village.txt

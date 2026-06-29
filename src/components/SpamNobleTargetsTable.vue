@@ -1,5 +1,5 @@
 <template>
-  <section v-if="planStore.massConfig.useSpamNobles" class="panel">
+  <section class="panel">
     <div class="section-header">
       <h2>Цели (спам дворы)</h2>
       <button

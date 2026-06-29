@@ -29,6 +29,11 @@ const router = createRouter({
       name: 'presets',
       component: () => import('@/views/PresetsView.vue'),
     },
+    {
+      path: '/mass-configs',
+      name: 'mass-configs',
+      component: () => import('@/views/MassConfigsView.vue'),
+    },
   ],
 })
 

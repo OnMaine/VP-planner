@@ -24,11 +24,14 @@
         </div>
         <div class="summary-item">
           <span class="summary-label">Ночной бонус</span>
-          <span class="summary-value" :class="worldStore.settings.nightActive ? 'text-ok' : 'text-dim'">
+          <button
+            :class="['summary-toggle', worldStore.settings.nightActive ? 'toggle-on' : 'toggle-off']"
+            @click="worldStore.updateSettings({ nightActive: !worldStore.settings.nightActive })"
+          >
             {{ worldStore.settings.nightActive
               ? `${worldStore.settings.nightFrom}:00 – ${worldStore.settings.nightTo}:00`
               : 'отключён' }}
-          </span>
+          </button>
         </div>
         <div class="summary-item">
           <span class="summary-label">Макс. дальность двора</span>
@@ -39,10 +42,22 @@
           <span class="summary-value">{{ worldStore.settings.snobIntervalMs }} мс</span>
         </div>
         <div class="summary-item">
+          <span class="summary-label">Мин. войск в атаке</span>
+          <input
+            type="number" min="1"
+            class="summary-inline-input"
+            :value="worldStore.settings.minAttackSize"
+            @change="worldStore.updateSettings({ minAttackSize: +($event.target as HTMLInputElement).value })"
+          />
+        </div>
+        <div class="summary-item">
           <span class="summary-label">Сторожевая башня</span>
-          <span class="summary-value" :class="worldStore.settings.watchtowerEnabled ? 'text-ok' : 'text-dim'">
+          <button
+            :class="['summary-toggle', worldStore.settings.watchtowerEnabled ? 'toggle-on' : 'toggle-off']"
+            @click="worldStore.updateSettings({ watchtowerEnabled: !worldStore.settings.watchtowerEnabled })"
+          >
             {{ worldStore.settings.watchtowerEnabled ? 'есть в игре' : 'отключена' }}
-          </span>
+          </button>
         </div>
       </div>
       <div v-else class="no-settings">
@@ -53,10 +68,14 @@
         <span v-for="(label, key) in UNIT_LABELS" :key="key" class="unit-chip">
           <img :src="UNIT_ICONS[key]" class="unit-chip-img" :alt="label" />
           <span class="unit-chip-name">{{ label }}</span>
-          <span class="unit-chip-val">{{ Math.round(worldStore.settings.unitTimes[key] / 60) }}мин</span>
+          <span class="unit-chip-val">{{ Math.round(worldStore.settings.unitTimes[key] / 60) }}<span class="unit-chip-unit">мин</span></span>
+          <span class="unit-chip-pop"><span class="pop-icon">⌂</span>{{ worldStore.settings.unitPop[key] }}</span>
         </span>
       </div>
     </section>
+
+    <!-- World map -->
+    <WorldMapPanel />
 
     <!-- Fetch from API / Preset -->
     <section class="panel">
@@ -79,13 +98,10 @@
       <div v-if="statusMsg" :class="['status-msg', statusClass]">{{ statusMsg }}</div>
     </section>
 
-    <!-- Manual settings (collapsible) -->
+    <!-- Manual settings -->
     <section class="panel">
-      <button class="collapse-toggle" @click="manualOpen = !manualOpen">
-        <span>Ручной ввод</span>
-        <span class="collapse-icon">{{ manualOpen ? '▲' : '▼' }}</span>
-      </button>
-      <div v-if="manualOpen" class="collapse-body">
+      <h2>Ручной ввод</h2>
+      <div class="collapse-body">
         <div class="form-grid mt">
           <label>
             Код мира
@@ -139,6 +155,16 @@
           </label>
         </div>
 
+        <h3>Усадьба юнитов (мест/юнит)</h3>
+        <div class="form-grid">
+          <label v-for="(label, key) in UNIT_LABELS" :key="key">
+            <span class="unit-form-label">
+              <img :src="UNIT_ICONS[key]" class="unit-icon-sm" :alt="label" />{{ label }}
+            </span>
+            <input v-model.number="form.unitPop[key]" type="number" min="1" class="input" />
+          </label>
+        </div>
+
         <button class="btn btn-primary mt" @click="saveManual">Сохранить</button>
         <div v-if="savedMsg" class="status-msg status-ok">{{ savedMsg }}</div>
       </div>
@@ -150,8 +176,9 @@
 import { ref, reactive, watch, computed } from 'vue'
 import { useWorldStore } from '@/stores/worldStore'
 import { KNOWN_WORLDS } from '@/stores/worldStore'
-import type { UnitTimes } from '@/stores/worldStore'
+import type { UnitTimes, UnitPop } from '@/stores/worldStore'
 import { UNIT_ICONS } from '@/utils/unitIcons'
+import WorldMapPanel from '@/components/WorldMapPanel.vue'
 
 const worldStore = useWorldStore()
 
@@ -160,7 +187,7 @@ const fetching = ref(false)
 const statusMsg = ref('')
 const statusClass = ref('')
 const savedMsg = ref('')
-const manualOpen = ref(false)
+
 
 const hasPreset = computed(() => Boolean(worldCodeInput.value && KNOWN_WORLDS[worldCodeInput.value.trim()]))
 
@@ -190,11 +217,12 @@ const form = reactive({
   watchtowerEnabled: worldStore.settings.watchtowerEnabled,
   unitTimesMin: Object.fromEntries(
     Object.entries(worldStore.settings.unitTimes).map(([k, v]) => [k, Math.round(v / 60)])
-  ) as UnitTimes,
+  ) as unknown as UnitTimes,
+  unitPop: { ...worldStore.settings.unitPop } as UnitPop,
 })
 
 function secToMin(times: UnitTimes): UnitTimes {
-  return Object.fromEntries(Object.entries(times).map(([k, v]) => [k, Math.round(v / 60)])) as UnitTimes
+  return Object.fromEntries(Object.entries(times).map(([k, v]) => [k, Math.round(v / 60)])) as unknown as UnitTimes
 }
 
 watch(
@@ -211,6 +239,7 @@ watch(
     form.snobIntervalMs = s.snobIntervalMs
     form.watchtowerEnabled = s.watchtowerEnabled
     Object.assign(form.unitTimesMin, secToMin(s.unitTimes))
+    Object.assign(form.unitPop, s.unitPop)
   },
   { deep: true },
 )
@@ -261,7 +290,8 @@ function saveManual() {
     watchtowerEnabled: form.watchtowerEnabled,
     unitTimes: Object.fromEntries(
       Object.entries(form.unitTimesMin).map(([k, v]) => [k, v * 60])
-    ) as UnitTimes,
+    ) as unknown as UnitTimes,
+    unitPop: { ...form.unitPop },
   })
   savedMsg.value = 'Сохранено!'
   setTimeout(() => { savedMsg.value = '' }, 2000)
@@ -296,26 +326,106 @@ function saveManual() {
   &.highlight { color: $accent; font-size: 1.15rem; }
 }
 
+.summary-toggle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.15s;
+
+  &.toggle-on  { color: $orange; background: a($orange, 0.1); border-color: a($orange, 0.4); }
+  &.toggle-off { color: #555570; background: a(#555570, 0.08); border-color: a(#555570, 0.25);
+    &:hover { border-color: $accent; color: $text-dim; }
+  }
+}
+
+.summary-inline-input {
+  width: 72px;
+  padding: 0.2rem 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: $text;
+  background: $bg-page;
+  border: 1px solid $border;
+  border-radius: 4px;
+  text-align: center;
+  &:focus { outline: none; border-color: $accent; }
+}
+
 .text-ok  { color: $orange; }
 .text-dim { color: #555570; }
 
 .no-settings { color: $text-faint; font-style: italic; font-size: 0.9rem; }
 
 // Unit chips
-.unit-times-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem; }
+.unit-times-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
 
 .unit-chip {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: $border;
-  border-radius: 4px;
-  padding: 0.25rem 0.5rem;
-  min-width: 48px;
+  gap: 0.15rem;
+  background: a($accent, 0.06);
+  border: 1px solid a($accent, 0.15);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem 0.4rem;
+  min-width: 58px;
+  transition: border-color 0.15s;
+
+  &:hover { border-color: a($accent, 0.35); }
 }
-.unit-chip-img  { width: 18px; height: 18px; image-rendering: pixelated; }
-.unit-chip-name { font-size: 0.7rem; color: #8888a8; }
-.unit-chip-val  { font-size: 0.8rem; color: $text; font-weight: 600; }
+
+.unit-chip-img  {
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+  margin-bottom: 0.1rem;
+}
+
+.unit-chip-name {
+  font-size: 0.65rem;
+  color: $text-faint;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.unit-chip-val {
+  font-size: 1rem;
+  color: $text;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.unit-chip-unit {
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: $text-dim;
+  margin-left: 1px;
+}
+
+.unit-chip-pop {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.7rem;
+  color: $text-dim;
+  background: a($border, 0.6);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+  margin-top: 0.1rem;
+}
+
+.pop-icon {
+  font-size: 0.75rem;
+  color: $text-faint;
+}
 
 .unit-form-label { display: inline-flex; align-items: center; gap: 5px; }
 .unit-icon-sm    { width: 16px; height: 16px; image-rendering: pixelated; }

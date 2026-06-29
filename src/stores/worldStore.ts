@@ -14,6 +14,8 @@ export interface UnitTimes {
   snob: number
 }
 
+export type UnitPop = UnitTimes  // same shape — population (farm space) per unit
+
 export interface WorldSettings {
   worldCode: string
   worldSpeed: number
@@ -22,10 +24,14 @@ export interface WorldSettings {
   nightActive: boolean
   nightFrom: number
   nightTo: number
+  sendExcludeEnabled: boolean
+  moraleEnabled: boolean
   snobMaxDist: number
   snobIntervalMs: number
+  minAttackSize: number   // minimum farm-space sum for any attack
   watchtowerEnabled: boolean
   unitTimes: UnitTimes
+  unitPop: UnitPop
 }
 
 export const DEFAULT_UNIT_TIMES: UnitTimes = {
@@ -41,6 +47,19 @@ export const DEFAULT_UNIT_TIMES: UnitTimes = {
   snob: 2100,
 }
 
+export const DEFAULT_UNIT_POP: UnitPop = {
+  spear: 1,
+  sword: 1,
+  axe: 1,
+  spy: 2,
+  light: 4,
+  heavy: 6,
+  ram: 5,
+  catapult: 8,
+  knight: 10,
+  snob: 100,
+}
+
 export const KNOWN_WORLDS: Record<string, Partial<WorldSettings>> = {
   ru100: {
     worldCode: 'ru100',
@@ -54,6 +73,7 @@ export const KNOWN_WORLDS: Record<string, Partial<WorldSettings>> = {
     snobIntervalMs: 100,
     watchtowerEnabled: true,
     unitTimes: { spear:1080, sword:1320, axe:1080, spy:540, light:600, heavy:660, ram:1800, catapult:1800, knight:600, snob:2100 },
+    unitPop: { ...DEFAULT_UNIT_POP },
   },
 }
 
@@ -68,10 +88,14 @@ function defaultSettings(): WorldSettings {
     nightActive: false,
     nightFrom: 0,
     nightTo: 8,
+    sendExcludeEnabled: false,
+    moraleEnabled: false,
     snobMaxDist: 60,
     snobIntervalMs: 100,
+    minAttackSize: 100,
     watchtowerEnabled: false,
     unitTimes: { ...DEFAULT_UNIT_TIMES },
+    unitPop: { ...DEFAULT_UNIT_POP },
   }
 }
 
@@ -80,12 +104,12 @@ function loadFromLS(): WorldSettings {
     const raw = localStorage.getItem(LS_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as WorldSettings
-      const merged = { ...DEFAULT_UNIT_TIMES, ...parsed.unitTimes }
-      // migrate: if any value looks like minutes (≤ 60) convert to seconds
-      for (const key of Object.keys(merged) as (keyof UnitTimes)[]) {
-        if (merged[key] <= 60) merged[key] = merged[key] * 60
+      const mergedTimes = { ...DEFAULT_UNIT_TIMES, ...parsed.unitTimes }
+      for (const key of Object.keys(mergedTimes) as (keyof UnitTimes)[]) {
+        if (mergedTimes[key] <= 60) mergedTimes[key] = mergedTimes[key] * 60
       }
-      return { ...defaultSettings(), ...parsed, unitTimes: merged }
+      const mergedPop = { ...DEFAULT_UNIT_POP, ...parsed.unitPop }
+      return { ...defaultSettings(), ...parsed, unitTimes: mergedTimes, unitPop: mergedPop }
     }
   } catch {
     // ignore
@@ -93,7 +117,6 @@ function loadFromLS(): WorldSettings {
   return defaultSettings()
 }
 
-// XML unit key mapping from API name → our key
 const API_UNIT_MAP: Record<string, keyof UnitTimes> = {
   spear: 'spear',
   sword: 'sword',
@@ -124,7 +147,13 @@ export const useWorldStore = defineStore('world', () => {
   function applyPreset(worldCode: string): boolean {
     const preset = KNOWN_WORLDS[worldCode]
     if (!preset) return false
-    settings.value = { ...defaultSettings(), ...preset } as WorldSettings
+    settings.value = {
+      ...defaultSettings(),
+      ...preset,
+      minAttackSize: settings.value.minAttackSize,
+      sendExcludeEnabled: settings.value.sendExcludeEnabled,
+      moraleEnabled: settings.value.moraleEnabled,
+    } as WorldSettings
     save()
     return true
   }
@@ -146,19 +175,22 @@ export const useWorldStore = defineStore('world', () => {
       const unitDoc = parser.parseFromString(unitText, 'text/xml')
       const configDoc = parser.parseFromString(configText, 'text/xml')
 
-      // Parse unit speeds
       const unitTimes: UnitTimes = { ...DEFAULT_UNIT_TIMES }
+      const unitPop: UnitPop = { ...DEFAULT_UNIT_POP }
+
       for (const [apiKey, storeKey] of Object.entries(API_UNIT_MAP)) {
-        const el = unitDoc.querySelector(`${apiKey} speed`)
-        if (el?.textContent) {
-          const val = parseFloat(el.textContent)
-          if (!isNaN(val) && val > 0) {
-            unitTimes[storeKey] = Math.round(val * 60)
-          }
+        const speedEl = unitDoc.querySelector(`${apiKey} speed`)
+        if (speedEl?.textContent) {
+          const val = parseFloat(speedEl.textContent)
+          if (!isNaN(val) && val > 0) unitTimes[storeKey] = Math.round(val * 60)
+        }
+        const popEl = unitDoc.querySelector(`${apiKey} pop`)
+        if (popEl?.textContent) {
+          const val = parseInt(popEl.textContent, 10)
+          if (!isNaN(val) && val > 0) unitPop[storeKey] = val
         }
       }
 
-      // Parse world config
       const getConfig = (tag: string): string => {
         const el = configDoc.querySelector(tag)
         return el?.textContent ?? ''
@@ -186,6 +218,10 @@ export const useWorldStore = defineStore('world', () => {
         snobIntervalMs,
         watchtowerEnabled,
         unitTimes,
+        unitPop,
+        minAttackSize: settings.value.minAttackSize,
+        sendExcludeEnabled: settings.value.sendExcludeEnabled,
+        moraleEnabled: settings.value.moraleEnabled,
       }
       save()
       fetchStatus.value = 'success'

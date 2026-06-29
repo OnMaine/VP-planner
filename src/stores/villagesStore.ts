@@ -15,6 +15,7 @@ export interface VillageTroops {
 }
 
 export interface Village {
+  villageId?: number
   player: string
   coords: string
   x: number
@@ -68,6 +69,7 @@ export const useVillagesStore = defineStore('villages', () => {
     const playerIdx = headers.indexOf('Игрок')
     const coordsIdx = headers.indexOf('Координаты')
     const pointsIdx = headers.indexOf('Очки')
+    const idIdx     = headers.indexOf('ID')
 
     if (playerIdx === -1 || coordsIdx === -1) {
       throw new Error('CSV не содержит обязательных колонок "Игрок" или "Координаты"')
@@ -86,9 +88,10 @@ export const useVillagesStore = defineStore('villages', () => {
       const cols = lines[i].split(',').map((c) => c.trim())
       if (cols.length < Math.max(playerIdx, coordsIdx) + 1) continue
 
-      const player = cols[playerIdx] ?? ''
-      const coords = cols[coordsIdx] ?? ''
-      const points = pointsIdx >= 0 ? parseInt(cols[pointsIdx] ?? '0', 10) || 0 : 0
+      const player    = cols[playerIdx] ?? ''
+      const coords    = cols[coordsIdx] ?? ''
+      const points    = pointsIdx >= 0 ? parseInt(cols[pointsIdx]  ?? '0', 10) || 0 : 0
+      const villageId = idIdx     >= 0 ? parseInt(cols[idIdx]      ?? '',  10) || undefined : undefined
 
       const match = coords.match(/^(\d+)\|(\d+)$/)
       if (!match) continue
@@ -105,7 +108,7 @@ export const useVillagesStore = defineStore('villages', () => {
         troops[key] = parseInt(cols[idx] ?? '0', 10) || 0
       }
 
-      parsed.push({ player, coords, x, y, points, troops })
+      parsed.push({ villageId, player, coords, x, y, points, troops })
     }
 
     villages.value = parsed

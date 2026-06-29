@@ -98,18 +98,22 @@
       </div>
     </section>
 
-    <ImportStats v-if="statsVisible" ref="importStatsRef" />
+    <ImportStats v-if="statsVisible" ref="importStatsRef" :highlight="highlightCoords" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { usePlanStore } from '@/stores/planStore'
 import ImportStats from '@/components/ImportStats.vue'
 
+const route = useRoute()
 const villagesStore = useVillagesStore()
 const planStore = usePlanStore()
+
+const highlightCoords = computed(() => route.query.highlight as string | undefined)
 
 const importStatsRef = ref<InstanceType<typeof ImportStats> | null>(null)
 

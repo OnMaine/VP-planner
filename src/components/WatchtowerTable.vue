@@ -14,7 +14,7 @@
       <button
         v-if="planStore.watchtowerVillages.length"
         class="btn btn-danger btn-sm"
-        @click.stop="confirm('Очистить все башни?') && planStore.clearWatchtowerVillages()"
+        @click.stop="clearAllTowers()"
       >Очистить</button>
     </div>
 
@@ -117,6 +117,10 @@ import type { WatchtowerVillage } from '@/stores/planStore'
 import { watchtowerIcon } from '@/utils/unitIcons'
 
 const planStore = usePlanStore()
+
+function clearAllTowers() {
+  if (window.confirm('Очистить все башни?')) planStore.clearWatchtowerVillages()
+}
 const enemyStore = useEnemyDataStore()
 const { filterCoordsInput } = useCoordInput()
 const { resolveTowerPlayer } = usePlayerResolution()

@@ -23,6 +23,11 @@
         <h2>Пресеты войск</h2>
         <p>Сохранённые конфигурации для быстрого применения</p>
       </RouterLink>
+      <RouterLink to="/mass-configs" class="card">
+        <span class="card-icon">⚙️</span>
+        <h2>Конфигуратор масса</h2>
+        <p>Настройка типов масс — оффы, дворы, колючки, спам</p>
+      </RouterLink>
     </div>
   </div>
 </template>

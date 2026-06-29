@@ -170,11 +170,8 @@
 
   <!-- Villages table -->
   <section class="panel">
-    <button class="collapse-toggle" @click="villagesOpen = !villagesOpen">
-      <span>Все деревни ({{ villagesStore.villages.length }})</span>
-      <span class="collapse-icon">{{ villagesOpen ? '▲' : '▼' }}</span>
-    </button>
-    <div v-if="villagesOpen" class="preview-wrap mt">
+    <h2>Все деревни ({{ villagesStore.villages.length }})</h2>
+    <div ref="previewRef" class="preview-wrap mt">
       <table class="mini-table">
         <thead>
           <tr>
@@ -194,7 +191,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(v, i) in villagesStore.villages" :key="i">
+          <tr v-for="(v, i) in villagesStore.villages" :key="i" :class="{ 'row-highlighted': v.coords === props.highlight }">
             <td>{{ v.player }}</td>
             <td>{{ v.coords }}</td>
             <td>{{ v.points }}</td>
@@ -276,11 +273,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { usePlanStore } from '@/stores/planStore'
 import { usePresetsStore } from '@/stores/presetsStore'
 import { UNIT_ICONS } from '@/utils/unitIcons'
+
+const props = defineProps<{ highlight?: string }>()
 
 const villagesStore = useVillagesStore()
 const planStore = usePlanStore()
@@ -297,7 +296,17 @@ function catSquadsForPlayer(player: string): number {
     .reduce((sum, v) => sum + catSquads(v.troops.catapult), 0)
 }
 
-const villagesOpen = ref(false)
+const previewRef = ref<HTMLElement | null>(null)
+
+watch(() => props.highlight, (coords) => {
+  if (!coords) return
+  nextTick(() => {
+    const idx = villagesStore.villages.findIndex(v => v.coords === coords)
+    if (idx < 0 || !previewRef.value) return
+    const rows = previewRef.value.querySelectorAll<HTMLElement>('tbody tr')
+    rows[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}, { immediate: true })
 
 // Tooltip
 const thTooltip = ref<{ id: string; x: number; y: number } | null>(null)
@@ -582,6 +591,12 @@ defineExpose({ prefillAll })
 }
 .players-wrap { max-height: 70vh; overflow-y: auto; }
 .preview-wrap { max-height: 60vh; overflow-y: auto; }
+
+.row-highlighted {
+  background: a($accent, 0.15) !important;
+  outline: 1px solid a($accent, 0.5);
+  td { color: $text !important; }
+}
 </style>
 
 <style lang="scss">
