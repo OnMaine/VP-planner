@@ -5,6 +5,7 @@
     <div class="top-bar">
       <button class="btn btn-primary" @click="openNew('single')">+ Одиночный пресет</button>
       <button class="btn btn-primary" @click="openNew('train')">+ Комбинированный</button>
+      <button class="btn btn-primary" @click="openNew('custom')">+ Кастомный</button>
     </div>
 
     <!-- Single-attack presets -->
@@ -85,7 +86,7 @@
           :key="t"
           :class="['role-btn', { active: form.role.type === t }, roleChipClass(t)]"
           @click="setRoleType(t)"
-        >{{ ROLE_LABELS[t] }}</button>
+        >{{ editorMode === 'custom' ? (t === 'custom_off' ? 'Одиночная' : 'Комбинированная') : ROLE_LABELS[t] }}</button>
       </div>
 
       <!-- Type-specific config -->
@@ -102,10 +103,61 @@
             <input v-model.number="form.role.spikeSpy" type="number" min="0" class="input" />
           </label>
           <label class="f-label">
+            Топоры
+            <input v-model.number="form.role.spikeAxe" type="number" min="0" class="input" />
+          </label>
+          <label class="f-label">
             ЛК
             <input v-model.number="form.role.spikeLight" type="number" min="0" class="input" />
           </label>
+          <label class="f-label">
+            ТК
+            <input v-model.number="form.role.spikeHeavy" type="number" min="0" class="input" />
+          </label>
+          <label class="f-label">
+            Катапульты
+            <input v-model.number="form.role.spikeCat" type="number" min="0" class="input" />
+          </label>
         </div>
+      </template>
+
+      <template v-else-if="form.role.type === 'half_off'">
+        <h3 class="sub-head">Параметры</h3>
+        <div class="form-row">
+          <label class="f-label">
+            Мин. юнитов
+            <input v-model.number="form.role.halfMin" type="number" min="1" class="input" />
+          </label>
+          <label class="f-label">
+            Макс. юнитов
+            <input v-model.number="form.role.halfMax" type="number" min="1" class="input" />
+          </label>
+          <label class="f-label f-checkbox">
+            <input v-model="form.role.halfFixedComp" type="checkbox" />
+            Фиксированный состав
+          </label>
+        </div>
+        <template v-if="form.role.halfFixedComp">
+          <div class="form-row">
+            <label class="f-label">
+              Топоры
+              <input v-model.number="form.role.halfFixedAxe" type="number" min="0" class="input" />
+            </label>
+            <label class="f-label">
+              ЛК
+              <input v-model.number="form.role.halfFixedLight" type="number" min="0" class="input" />
+            </label>
+            <label class="f-label">
+              ТК
+              <input v-model.number="form.role.halfFixedHeavy" type="number" min="0" class="input" />
+            </label>
+            <label class="f-label">
+              Тараны
+              <input v-model.number="form.role.halfFixedRam" type="number" min="0" class="input" />
+            </label>
+          </div>
+          <p class="hint-text">Берёт деревни с армией в диапазоне [мин–макс]. В фиксированном режиме отправляет не более указанного кол-ва каждого юнита.</p>
+        </template>
       </template>
 
       <template v-else-if="form.role.type === 'breach_off'">
@@ -126,14 +178,41 @@
             <select v-model="form.role.greenVariant" class="input">
               <option value="light">ЛК (лёгкая кавалерия)</option>
               <option value="axes">Топоры</option>
-              <option value="mixed">Микс (ЛК + топоры)</option>
+              <option value="flexible">Гибкий (любые войска)</option>
             </select>
           </label>
-          <label class="f-label f-checkbox">
-            <input v-model="form.role.greenWithRams" type="checkbox" />
-            Включить тараны (опционально)
-          </label>
+          <template v-if="form.role.greenVariant !== 'flexible'">
+            <label class="f-label f-checkbox">
+              <input v-model="form.role.greenWithRams" type="checkbox" />
+              Включить тараны (опционально)
+            </label>
+          </template>
         </div>
+        <template v-if="form.role.greenVariant === 'flexible'">
+          <div class="form-row">
+            <label class="f-label">
+              Цель: топоры
+              <input v-model.number="form.role.greenTargetAxe" type="number" min="0" :max="form.role.greenMax ?? 999" class="input"
+                @change="clampFlexGreenFields()" />
+            </label>
+            <label class="f-label">
+              Цель: ЛК
+              <input v-model.number="form.role.greenTargetLight" type="number" min="0" :max="(form.role.greenMax ?? 999) - (form.role.greenTargetAxe ?? 0)" class="input"
+                @change="clampFlexGreenFields()" />
+            </label>
+            <label class="f-label">
+              Макс. эскорт
+              <input v-model.number="form.role.greenMax" type="number" min="1" max="999" class="input"
+                @change="clampFlexGreenFields()" />
+            </label>
+            <label class="f-label">
+              Мин. эскорт
+              <input v-model.number="form.role.greenMin" type="number" min="0" :max="form.role.greenMax ?? 999" class="input"
+                @change="clampFlexGreenFields()" />
+            </label>
+          </div>
+          <p class="hint-text">Заполняет: сначала топоры (до цели), затем ЛК (до цели), затем тяж.кав → мечи → копья. Деревня пропускается если эскорт &lt; мин.</p>
+        </template>
       </template>
 
       <template v-else-if="form.role.type === 'cat_squad'">
@@ -157,7 +236,7 @@
             <span class="ta-num"></span>
             <span class="ta-col">Тип атаки</span>
             <span class="ta-col">Эскорт</span>
-            <span class="ta-col">Тараны</span>
+            <span class="ta-col">Доп. параметры</span>
             <span class="ta-actions"></span>
           </div>
           <div
@@ -166,18 +245,54 @@
             class="train-attack-row"
           >
             <span class="ta-num">Нападение #{{ i + 1 }}</span>
-            <select v-model="atk.type" class="input ta-select" @change="onAttackTypeChange(atk)">
-              <option v-for="(label, t) in TRAIN_ATTACK_LABELS" :key="t" :value="t">{{ label }}</option>
+            <select
+              :value="trainSelectValue(atk)"
+              class="input ta-select"
+              @change="onTrainAttackSelect(atk, ($event.target as HTMLSelectElement).value)"
+            >
+              <optgroup label="С дворянином">
+                <option value="full_off">Красный двор</option>
+                <option value="split">Поделёнка</option>
+                <option value="green_off">Зеленка</option>
+              </optgroup>
+              <optgroup label="Оффы">
+                <option value="pal_off">Пал-офф</option>
+                <option value="breach_off">Офф пробой</option>
+                <option value="half_off">Медиум офф</option>
+              </optgroup>
+              <optgroup label="Спец">
+                <option value="spike">Колючка</option>
+                <option value="cat_squad">Кат отряд</option>
+              </optgroup>
+              <optgroup label="Спам">
+                <option value="spam">Спам</option>
+              </optgroup>
+              <optgroup v-if="customOffPresets.length > 0" label="── Кастом ──">
+                <option v-for="p in customOffPresets" :key="p.id" :value="`custom::${p.id}`">{{ p.name }}</option>
+              </optgroup>
             </select>
             <template v-if="atk.type === 'green_off'">
               <select v-model="atk.greenVariant" class="input ta-select">
                 <option value="light">ЛК</option>
                 <option value="axes">Топоры</option>
-                <option value="mixed">Микс</option>
+                <option value="flexible">Гибкий</option>
               </select>
-              <label class="ta-check">
+              <template v-if="atk.greenVariant === 'flexible'">
+                <span class="ta-flex-params">
+                  <input v-model.number="atk.greenTargetAxe" type="number" min="0" :max="atk.greenMax ?? 999" class="input ta-tiny" placeholder="топ." title="Цель: топоры"
+                    @change="atk.greenTargetAxe = Math.max(0, Math.min(atk.greenTargetAxe ?? 0, atk.greenMax ?? 999)); atk.greenTargetLight = Math.max(0, Math.min(atk.greenTargetLight ?? 0, (atk.greenMax ?? 999) - (atk.greenTargetAxe ?? 0)))" />
+                  <input v-model.number="atk.greenTargetLight" type="number" min="0" :max="(atk.greenMax ?? 999) - (atk.greenTargetAxe ?? 0)" class="input ta-tiny" placeholder="лк" title="Цель: ЛК"
+                    @change="atk.greenTargetLight = Math.max(0, Math.min(atk.greenTargetLight ?? 0, (atk.greenMax ?? 999) - (atk.greenTargetAxe ?? 0)))" />
+                  <span class="ta-flex-info">{{ worldStore.settings.minAttackSize }}–{{ atk.greenMax ?? 999 }}</span>
+                </span>
+              </template>
+              <label v-else class="ta-check">
                 <input v-model="atk.greenWithRams" type="checkbox" /> тар.
               </label>
+            </template>
+            <template v-else-if="atk.type === 'custom_off'">
+              <span class="ta-empty">—</span>
+              <span class="ta-empty">—</span>
             </template>
             <template v-else>
               <span class="ta-empty">—</span>
@@ -190,6 +305,68 @@
       </template>
 
 
+      <template v-else-if="form.role.type === 'custom_off'">
+        <h3 class="sub-head">Состав атаки</h3>
+        <div class="custom-units-grid">
+          <div v-for="u in CUSTOM_UNITS" :key="u.key" class="cu-row">
+            <img :src="u.icon" class="cu-icon" :title="u.label" />
+            <span class="cu-label">{{ u.label }}</span>
+            <div class="cu-controls">
+              <button
+                :class="['cu-mode', { 'cu-mode-on': getCustomUnit(u.key) === 0 }]"
+                @click="setCustomUnit(u.key, 0)"
+              >Не брать</button>
+              <button
+                :class="['cu-mode', { 'cu-mode-on': getCustomUnit(u.key) === -1 }]"
+                @click="setCustomUnit(u.key, -1)"
+              >Всё</button>
+              <button
+                :class="['cu-mode', { 'cu-mode-on': getCustomUnit(u.key) > 0 }]"
+                @click="setCustomUnit(u.key, getCustomUnit(u.key) > 0 ? getCustomUnit(u.key) : 100)"
+              >Кол-во</button>
+              <input
+                v-if="getCustomUnit(u.key) > 0"
+                :value="getCustomUnit(u.key)"
+                type="number" min="1"
+                class="input cu-count"
+                @change="setCustomUnit(u.key, Math.max(1, +($event.target as HTMLInputElement).value))"
+              />
+            </div>
+          </div>
+        </div>
+        <h3 class="sub-head">Ограничения и отображение</h3>
+        <div class="form-row">
+          <label class="f-label">
+            Мин. юнитов
+            <input v-model.number="form.role.customMin" type="number" min="0" class="input" />
+          </label>
+          <label class="f-label">
+            Макс. юнитов
+            <input v-model.number="form.role.customMax" type="number" min="1" class="input" />
+          </label>
+          <label class="f-label">
+            Цвет бейджа
+            <div class="cu-color-row">
+              <input type="color" v-model="customColor" class="cu-color-input" />
+              <span class="cu-color-preview" :style="{ background: customColor }">Кастом</span>
+            </div>
+          </label>
+          <label class="f-label">
+            Иконка пресета
+            <div class="cu-image-row">
+              <label :class="['cu-img-opt', { 'cu-img-on': !form.role.customImageUrl }]" @click="form.role.customImageUrl = undefined" title="По умолчанию">
+                <img :src="customAttIcon" class="cu-img-preview" />
+              </label>
+              <label :class="['cu-img-opt', { 'cu-img-on': !!form.role.customImageUrl }]" title="Загрузить свою">
+                <span v-if="!form.role.customImageUrl" class="cu-img-upload-text">📁</span>
+                <input type="file" accept="image/*" class="cu-file-input" @change="onCustomImageUpload" />
+                <img v-if="form.role.customImageUrl" :src="form.role.customImageUrl" class="cu-img-preview" />
+              </label>
+            </div>
+          </label>
+        </div>
+      </template>
+
       <template v-else-if="form.role.type === 'spam'">
         <h3 class="sub-head">Параметры спама</h3>
         <div class="form-row">
@@ -200,14 +377,6 @@
               <option value="strong">Рыжий (1000+ юнитов)</option>
               <option value="full">Фуллами (полный офф)</option>
             </select>
-          </label>
-          <label class="f-label">
-            Спам-дворян
-            <input v-model.number="form.role.spamNobleCount" type="number" min="0" class="input" />
-          </label>
-          <label class="f-label">
-            Размер спам-паровоза (0 = нет)
-            <input v-model.number="form.role.spamTrainSize" type="number" min="0" class="input" />
           </label>
         </div>
       </template>
@@ -225,6 +394,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import { usePresetsStore } from '@/stores/presetsStore'
+import { useWorldStore } from '@/stores/worldStore'
 import {
   ROLE_LABELS, ALL_ROLE_TYPES, defaultRoleForType,
 } from '@/stores/presetsStore'
@@ -233,13 +403,16 @@ import { TRAIN_ATTACK_LABELS } from '@/stores/presetsStore'
 import attackLarge  from '@/assets/images/attack_large.webp'
 import attackMedium from '@/assets/images/attack_medium.webp'
 import attackSmall  from '@/assets/images/attack_small.webp'
+import customAttIcon from '@/assets/images/att.png'
 import catapultIcon from '@/assets/images/unit_catapult@2x.webp'
 import snobIcon     from '@/assets/images/unit_snob.webp'
 import knightIcon   from '@/assets/images/unit_knight.webp'
 import ramIcon      from '@/assets/images/unit_ram@2x.webp'
+import { UNIT_ICONS } from '@/utils/unitIcons'
 import lightIcon    from '@/assets/images/unit_light@2x.webp'
 
 const store = usePresetsStore()
+const worldStore = useWorldStore()
 
 const isCombined = (p: AttackPreset) => p.role.type === 'train' || p.combined
 const singlePresets = computed(() => store.all.filter(p => !isCombined(p)))
@@ -247,10 +420,12 @@ const trainPresets  = computed(() => store.all.filter(p => isCombined(p)))
 
 const editorOpen = ref(false)
 const editingId = ref<string | null>(null)
-const editorMode = ref<'single' | 'train'>('single')
+const editorMode = ref<'single' | 'custom'>('single')
 
 const availableRoleTypes = computed(() =>
-  editorMode.value === 'train' ? (['train'] as VillageRoleType[]) : ALL_ROLE_TYPES.filter(t => t !== 'train')
+  editorMode.value === 'custom'
+    ? (['custom_off', 'train'] as VillageRoleType[])
+    : ALL_ROLE_TYPES.filter(t => t !== 'train' && t !== 'custom_off')
 )
 
 interface FormState {
@@ -286,6 +461,9 @@ function roleIcons(role: VillageRole): string[] {
     case 'spam': {
       const base = role.spamStrength === 'full' ? attackLarge : role.spamStrength === 'strong' ? attackMedium : attackSmall
       return (role.spamNobleCount ?? 0) > 0 ? [base, snobIcon] : [base]
+    }
+    case 'custom_off': {
+      return [role.customImageUrl ?? customAttIcon]
     }
     default:           return []
   }
@@ -326,6 +504,7 @@ function roleChipClass(type: VillageRoleType): string {
     case 'train':
     case 'split':      return 'chip-noble'
     case 'spam':       return 'chip-spam'
+    case 'custom_off': return 'chip-off'
     default:           return 'chip-detail'
   }
 }
@@ -356,15 +535,25 @@ function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
       d.push(chip(`${threshold}+ тар.`))
       break
     }
-    case 'half_off':
-      d.push(chip('2001+ юн.'))
+    case 'half_off': {
+      const hMin = role.halfMin ?? 1001
+      const hMax = role.halfMax ?? 5000
+      d.push(chip(`${hMin}–${hMax} юн.`))
+      if (role.halfFixedComp) d.push(chip('фикс. состав'))
       break
+    }
     case 'green_off': {
       const v = role.greenVariant ?? 'light'
       d.push(chip('1 двор'))
-      d.push(chip(v === 'light' ? 'ЛК' : v === 'axes' ? 'Топоры' : 'Микс'))
-      if (role.greenWithRams) d.push(chip('+ тар.'))
-      d.push(chip('= 1000'))
+      if (v === 'flexible') {
+        d.push(chip(`топ.${role.greenTargetAxe ?? 500}+лк${role.greenTargetLight ?? 250}`))
+        d.push(chip(`≤${role.greenMax ?? 999} юн.`))
+        if ((role.greenMin ?? 0) > 0) d.push(chip(`мин.${role.greenMin}`))
+      } else {
+        d.push(chip(v === 'axes' ? 'Топоры' : 'ЛК'))
+        if (role.greenWithRams) d.push(chip('+ тар.'))
+        d.push(chip('= 1000'))
+      }
       break
     }
     case 'cat_squad': {
@@ -406,6 +595,14 @@ function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
       }
       break
     }
+    case 'custom_off': {
+      const units = role.customUnits ?? {}
+      const active = Object.entries(units).filter(([, v]) => (v as number) !== 0).map(([k]) => k)
+      if (active.length) d.push(chip(active.join('+')))
+      if ((role.customMin ?? 0) > 0) d.push(chip(`мин.${role.customMin}`))
+      if ((role.customMax ?? 99999) < 99999) d.push(chip(`макс.${role.customMax}`))
+      break
+    }
   }
   return d
 }
@@ -413,6 +610,53 @@ function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
 // ---------------------------------------------------------------------------
 // Editor actions
 // ---------------------------------------------------------------------------
+
+// ── Custom off helpers ────────────────────────────────────────────────────
+
+const CUSTOM_UNITS = [
+  { key: 'axe',      label: 'Топоры',      icon: UNIT_ICONS.axe },
+  { key: 'light',    label: 'ЛК',          icon: UNIT_ICONS.light },
+  { key: 'heavy',    label: 'ТК',          icon: UNIT_ICONS.heavy },
+  { key: 'ram',      label: 'Тараны',      icon: UNIT_ICONS.ram },
+  { key: 'spear',    label: 'Копья',       icon: UNIT_ICONS.spear },
+  { key: 'sword',    label: 'Мечи',        icon: UNIT_ICONS.sword },
+  { key: 'spy',      label: 'Лазутчики',   icon: UNIT_ICONS.spy },
+  { key: 'catapult', label: 'Катапульты',  icon: UNIT_ICONS.catapult },
+  { key: 'knight',   label: 'Паладин',     icon: UNIT_ICONS.knight },
+  { key: 'snob',     label: 'Дворянин',    icon: UNIT_ICONS.snob },
+]
+
+function getCustomUnit(key: string): number {
+  return (form.role.customUnits?.[key] as number | undefined) ?? -1
+}
+
+function setCustomUnit(key: string, val: number): void {
+  if (!form.role.customUnits) form.role.customUnits = {}
+  form.role.customUnits[key] = val
+}
+
+function onCustomImageUpload(e: Event): void {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (ev) => { form.role.customImageUrl = ev.target?.result as string }
+  reader.readAsDataURL(file)
+}
+
+function clampFlexGreenFields(): void {
+  const max = Math.max(1, Math.min(form.role.greenMax ?? 999, 999))
+  form.role.greenMax       = max
+  const axe  = Math.max(0, Math.min(form.role.greenTargetAxe  ?? 0, max))
+  const light = Math.max(0, Math.min(form.role.greenTargetLight ?? 0, max - axe))
+  form.role.greenTargetAxe   = axe
+  form.role.greenTargetLight = light
+  form.role.greenMin         = Math.max(0, Math.min(form.role.greenMin ?? 0, max))
+}
+
+const customColor = computed({
+  get: () => (form.role as { customColor?: string }).customColor ?? '#e07b39',
+  set: (v: string) => { (form.role as { customColor?: string }).customColor = v },
+})
 
 function setRoleType(type: VillageRoleType): void {
   if (form.role.type === type) return
@@ -422,13 +666,35 @@ function setRoleType(type: VillageRoleType): void {
 }
 
 function defaultTrainAttack(): TrainAttack {
-  return { type: 'green_off', greenVariant: 'light', greenWithRams: true }
+  return { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999, greenWithRams: false }
+}
+
+// only single-attack customs — train presets explicitly excluded to prevent nesting loops
+const customOffPresets = computed(() => store.all.filter(p => p.role.type === 'custom_off'))
+
+function trainSelectValue(atk: TrainAttack): string {
+  if (atk.type === 'custom_off' && atk.customPresetId) return `custom::${atk.customPresetId}`
+  return atk.type
+}
+
+function onTrainAttackSelect(atk: TrainAttack, val: string): void {
+  if (val.startsWith('custom::')) {
+    atk.type = 'custom_off'
+    atk.customPresetId = val.slice(8)
+  } else {
+    atk.type = val as TrainAttackType
+    atk.customPresetId = undefined
+    onAttackTypeChange(atk)
+  }
 }
 
 function onAttackTypeChange(atk: TrainAttack): void {
   if (atk.type === 'green_off') {
-    atk.greenVariant = atk.greenVariant ?? 'light'
-    atk.greenWithRams = atk.greenWithRams ?? true
+    atk.greenVariant     = atk.greenVariant     ?? 'flexible'
+    atk.greenTargetAxe   = atk.greenTargetAxe   ?? 500
+    atk.greenTargetLight = atk.greenTargetLight  ?? 250
+    atk.greenMax         = atk.greenMax          ?? 999
+    atk.greenWithRams    = atk.greenWithRams     ?? false
   }
 }
 
@@ -441,11 +707,12 @@ function removeTrainAttack(i: number): void {
   form.role.trainAttacks?.splice(i, 1)
 }
 
-function openNew(section: 'single' | 'train' = 'single'): void {
+function openNew(section: 'single' | 'train' | 'custom' = 'single'): void {
   const f = blankForm()
-  if (section === 'train') f.role = defaultRoleForType('train')
+  if (section === 'train')  { f.role = defaultRoleForType('train');      }
+  if (section === 'custom') { f.role = defaultRoleForType('custom_off'); }
   Object.assign(form, f)
-  editorMode.value = section
+  editorMode.value = section === 'train' ? 'custom' : section
   editingId.value = null
   editorOpen.value = true
   scrollToEditor()
@@ -456,8 +723,12 @@ function openEdit(id: string): void {
   if (!preset) return
   form.name = preset.name
   form.description = preset.description
-  form.role = { ...preset.role }
-  editorMode.value = preset.role.type === 'train' ? 'train' : 'single'
+  form.role = {
+    ...preset.role,
+    customUnits: { ...(preset.role.customUnits ?? {}) },
+    ...(preset.role.type === 'custom_off' ? { customColor: preset.role.customColor ?? '#e07b39' } : {}),
+  }
+  editorMode.value = (preset.role.type === 'train' || preset.role.type === 'custom_off') ? 'custom' : 'single'
   editingId.value = id
   editorOpen.value = true
   scrollToEditor()
@@ -653,6 +924,13 @@ function scrollToEditor(): void {
 
 .f-wide { flex: 2 1 280px; }
 
+.f-hint {
+  font-size: 0.72rem;
+  color: $text-faint;
+  font-weight: 400;
+  margin-left: 0.3rem;
+}
+
 .f-checkbox {
   flex-direction: row;
   align-items: center;
@@ -669,6 +947,13 @@ function scrollToEditor(): void {
   margin: 1rem 0 0.4rem;
   border-bottom: 1px solid $border;
   padding-bottom: 0.3rem;
+}
+
+.hint-text {
+  font-size: 0.78rem;
+  color: $text-faint;
+  margin: 0.2rem 0 0.5rem;
+  line-height: 1.4;
 }
 
 // ---- Role type selector ----
@@ -753,6 +1038,26 @@ function scrollToEditor(): void {
   cursor: pointer;
 }
 
+.ta-flex-params {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ta-tiny {
+  width: 54px !important;
+  padding: 0.3rem 0.3rem !important;
+  font-size: 0.8rem !important;
+  text-align: center;
+}
+
+.ta-flex-info {
+  font-size: 0.75rem;
+  color: $text-faint;
+  white-space: nowrap;
+  align-self: center;
+}
+
 .ta-empty {
   min-width: 110px;
   color: $text-faint;
@@ -784,5 +1089,129 @@ function scrollToEditor(): void {
   gap: 0.75rem;
   margin-top: 1.25rem;
   flex-wrap: wrap;
+}
+
+// ── Custom off ────────────────────────────────────────────────────────────
+.custom-units-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.cu-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.cu-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.cu-label {
+  font-size: 0.85rem;
+  color: $text-dim;
+  width: 90px;
+  flex-shrink: 0;
+}
+
+.cu-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.cu-mode {
+  background: a($text-dim, 0.07);
+  border: 1px solid $border;
+  border-radius: 4px;
+  color: $text-dim;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  transition: all 0.12s;
+
+  &:hover { border-color: $accent; color: $text; }
+
+  &.cu-mode-on {
+    background: a($accent, 0.12);
+    border-color: a($accent, 0.5);
+    color: $accent;
+  }
+}
+
+.cu-count {
+  width: 70px !important;
+  padding: 0.22rem 0.4rem !important;
+  font-size: 0.83rem !important;
+}
+
+.cu-image-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+}
+
+.cu-img-opt {
+  border: 2px solid $border;
+  border-radius: 6px;
+  padding: 0.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s;
+  min-width: 40px;
+  min-height: 36px;
+
+  &:hover { border-color: $accent; }
+  &.cu-img-on { border-color: $accent; background: a($accent, 0.1); }
+}
+
+.cu-img-preview {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.cu-img-upload-text {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.cu-file-input {
+  display: none;
+}
+
+.cu-color-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.cu-color-input {
+  width: 40px;
+  height: 32px;
+  border: 1px solid $border;
+  border-radius: 4px;
+  padding: 2px;
+  background: $bg-page;
+  cursor: pointer;
+}
+
+.cu-color-preview {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 10px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
 }
 </style>

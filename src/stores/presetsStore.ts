@@ -1,7 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { usePlanStore, DEFAULT_MASS_CONFIG } from './planStore'
-import type { MassConfig } from './planStore'
 
 // ---------------------------------------------------------------------------
 // Village role — what ONE village contributes to an attack
@@ -18,8 +16,9 @@ export type VillageRoleType =
   | 'train'       // Паровоз — офф + N дворян с сопровождением
   | 'split'       // Поделёнка — войска делятся поровну между дворянами
   | 'spam'        // Спам — много фейк-атак и/или спам-дворян
+  | 'custom_off'  // Кастомный — полностью настраиваемый состав атаки
 
-export type GreenVariant = 'light' | 'axes' | 'mixed'
+export type GreenVariant = 'light' | 'axes' | 'flexible'
 
 export type TrainAttackType = Exclude<VillageRoleType, 'train'>
 
@@ -28,6 +27,10 @@ export interface TrainAttack {
   // green_off
   greenVariant?: GreenVariant
   greenWithRams?: boolean
+  greenMin?: number
+  greenMax?: number
+  greenTargetAxe?: number
+  greenTargetLight?: number
   // breach_off
   minRams?: number
   // cat_squad
@@ -36,10 +39,12 @@ export interface TrainAttack {
   // spam
   spamStrength?: 'weak' | 'strong' | 'full'
   spamNobleCount?: number
+  // custom_off
+  customPresetId?: string
 }
 
 export const TRAIN_ATTACK_LABELS: Record<TrainAttackType, string> = {
-  full_off:   'Красный (фулл офф)',
+  full_off:   'Красный двор',
   half_off:   'Медиум офф',
   pal_off:    'Пал-офф',
   breach_off: 'Офф пробой',
@@ -48,6 +53,7 @@ export const TRAIN_ATTACK_LABELS: Record<TrainAttackType, string> = {
   spike:      'Колючка',
   split:      'Поделёнка',
   spam:       'Спам',
+  custom_off: 'Кастом',
 }
 
 export interface VillageRole {
@@ -62,9 +68,30 @@ export interface VillageRole {
   spikeRams?: number   // тараны (def 100)
   spikeSpy?: number    // лазутчики (def 1)
   spikeLight?: number  // ЛК (def 899)
+  spikeAxe?: number    // топоры (def 0)
+  spikeHeavy?: number  // ТК (def 0)
+  spikeCat?: number    // катапульты (def 0)
+  // custom_off — per-unit: -1 = take all, 0 = skip, positive = fixed count
+  customMin?: number
+  customMax?: number
+  customColor?: string         // hex цвет бейджа в результатах (def '#e07b39')
+  customImageUrl?: string      // user-uploaded image (data URL or object URL)
+  customUnits?: Partial<Record<string, number>>
+  // half_off
+  halfMin?: number         // мин. юнитов в атаке (def 1001)
+  halfMax?: number         // макс. юнитов в атаке (def 5000)
+  halfFixedComp?: boolean  // фиксированный состав вместо деления пополам
+  halfFixedAxe?: number
+  halfFixedLight?: number
+  halfFixedHeavy?: number
+  halfFixedRam?: number
   // green_off
   greenVariant?: GreenVariant  // тип эскорта (def 'light')
   greenWithRams?: boolean      // тараны (def true)
+  greenMin?: number            // мин. эскорт юнитов для flexible (def 0)
+  greenMax?: number            // макс. эскорт юнитов (def 999)
+  greenTargetAxe?: number      // цель: топоры для flexible (def 500)
+  greenTargetLight?: number    // цель: ЛК для flexible (def 250)
   // breach_off
   minRams?: number  // мин тараны (def 750)
   // cat_squad
@@ -88,11 +115,12 @@ export const ROLE_LABELS: Record<VillageRoleType, string> = {
   train:      'Паровоз',
   split:      'Поделёнка',
   spam:       'Спам',
+  custom_off: 'Кастомный',
 }
 
 export const ALL_ROLE_TYPES: VillageRoleType[] = [
   'full_off', 'half_off', 'pal_off', 'breach_off',
-  'green_off', 'cat_squad', 'spike', 'train', 'split', 'spam',
+  'green_off', 'cat_squad', 'spike', 'train', 'split', 'spam', 'custom_off',
 ]
 
 // ---------------------------------------------------------------------------
@@ -115,100 +143,21 @@ export interface AttackPreset {
 export function defaultRoleForType(type: VillageRoleType): VillageRole {
   switch (type) {
     case 'breach_off': return { type, minRams: 750 }
-    case 'green_off':  return { type, greenVariant: 'light', greenWithRams: true }
+    case 'half_off':   return { type, halfMin: 1001, halfMax: 5000, halfFixedComp: false }
+    case 'custom_off': return { type, customMin: 0, customMax: 99999, customColor: '#e07b39', customUnits: { spear: 0, sword: 0, axe: -1, spy: 0, light: -1, heavy: -1, ram: -1, catapult: 0, knight: 0, snob: 0 } }
+    case 'green_off':  return { type, greenVariant: 'flexible', greenMin: 100, greenMax: 999, greenTargetAxe: 500, greenTargetLight: 250, greenWithRams: false }
     case 'spike':      return { type, spikeRams: 100, spikeSpy: 1, spikeLight: 899 }
     case 'cat_squad':  return { type, catMinCats: 50, catMaxEscort: 999 }
     case 'train':      return { type, trainAttacks: [
       { type: 'full_off' },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
     ] }
     case 'split':      return { type, nobleCount: 2 }
     case 'spam':       return { type, spamCount: 10, spamStrength: 'weak', spamNobleCount: 0, spamTrainSize: 0 }
     default:           return { type }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Translation: VillageRole → MassConfig (adapter for the current planner)
-// ---------------------------------------------------------------------------
-
-function roleToMassConfig(role: VillageRole): MassConfig {
-  const base: MassConfig = {
-    ...DEFAULT_MASS_CONFIG,
-    nobleComposition: { ...DEFAULT_MASS_CONFIG.nobleComposition },
-  }
-  switch (role.type) {
-    case 'full_off':
-    case 'pal_off':
-      return { ...base, regularOffsPerTarget: 1, nobleTrainSize: 0, useSpamAttacks: false, splitOff: false }
-
-    case 'half_off':
-      return { ...base, regularOffsPerTarget: 1, nobleTrainSize: 0, useSpamAttacks: false, splitOff: true }
-
-    case 'breach_off':
-      return { ...base, regularOffsPerTarget: 1, nobleTrainSize: 0, useSpamAttacks: false, splitOff: false }
-
-    case 'green_off':
-      return {
-        ...base,
-        regularOffsPerTarget: 0,
-        nobleTrainSize: 1,
-        useSpamAttacks: false,
-        nobleComposition: {
-          greenStrongPct: 100, greenWeakPct: 0, orangePct: 0, redPct: 0,
-          escortUnit: role.greenVariant === 'axes' ? 'axe' : 'light',
-        },
-      }
-
-    case 'cat_squad':
-    case 'spike':
-      return { ...base, regularOffsPerTarget: 0, nobleTrainSize: 0, useSpamAttacks: false }
-
-    case 'train': {
-      const attacks = role.trainAttacks ?? []
-      const firstType = attacks[0]?.type ?? 'full_off'
-      return {
-        ...base,
-        regularOffsPerTarget: (firstType === 'full_off' || firstType === 'half_off' || firstType === 'breach_off' || firstType === 'pal_off') ? 1 : 0,
-        splitOff: firstType === 'half_off',
-        nobleTrainSize: attacks.length,
-        useSpamAttacks: false,
-        nobleComposition: {
-          greenStrongPct: 100, greenWeakPct: 0, orangePct: 0, redPct: 0,
-          escortUnit: 'light',
-        },
-      }
-    }
-
-    case 'split':
-      return {
-        ...base,
-        regularOffsPerTarget: 0,
-        splitOff: true,
-        nobleTrainSize: role.nobleCount ?? 2,
-        useSpamAttacks: false,
-        nobleComposition: {
-          greenStrongPct: 0, greenWeakPct: 0, orangePct: 0, redPct: 100,
-          escortUnit: 'light',
-        },
-      }
-
-    case 'spam':
-      return {
-        ...base,
-        regularOffsPerTarget: 0,
-        nobleTrainSize: 0,
-        useSpamAttacks: true,
-        spamCountPerTarget: role.spamCount ?? 10,
-        useSpamNobles: (role.spamNobleCount ?? 0) > 0,
-        spamNobleCountPerTarget: role.spamNobleCount ?? 0,
-      }
-
-    default:
-      return base
   }
 }
 
@@ -227,9 +176,9 @@ const BUILT_IN: AttackPreset[] = [
   {
     id: 'bi_half_off',
     name: 'Медиум офф',
-    description: 'Medium офф — войска делятся поровну между двумя атаками',
+    description: 'Половина оффа — 1001–5000 юнитов из деревни',
     builtIn: true,
-    role: { type: 'half_off' },
+    role: { type: 'half_off', halfMin: 1001, halfMax: 5000 },
   },
   {
     id: 'bi_pal_off',
@@ -246,25 +195,11 @@ const BUILT_IN: AttackPreset[] = [
     role: { type: 'breach_off', minRams: 750 },
   },
   {
-    id: 'bi_green_light',
-    name: 'Зеленка (ЛК)',
-    description: 'Двор + ЛК (+ тараны опц.) = ровно 1000 юнитов — сопровождение дворянина',
+    id: 'bi_green',
+    name: 'Зеленка',
+    description: 'Двор + гибкий эскорт (топоры + ЛК + добивка) до 1000 юнитов',
     builtIn: true,
-    role: { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-  },
-  {
-    id: 'bi_green_axes',
-    name: 'Зеленка (топоры)',
-    description: 'Двор + топоры (+ тараны опц.) = ровно 1000 юнитов — сопровождение дворянина',
-    builtIn: true,
-    role: { type: 'green_off', greenVariant: 'axes', greenWithRams: true },
-  },
-  {
-    id: 'bi_green_mixed',
-    name: 'Зеленка (микс)',
-    description: 'Двор + ЛК и топоры (+ тараны опц.) = ровно 1000 юнитов — сопровождение дворянина',
-    builtIn: true,
-    role: { type: 'green_off', greenVariant: 'mixed', greenWithRams: true },
+    role: { type: 'green_off', greenVariant: 'flexible', greenMin: 100, greenMax: 999, greenTargetAxe: 500, greenTargetLight: 250 },
   },
   {
     id: 'bi_cat_squad',
@@ -287,23 +222,23 @@ const BUILT_IN: AttackPreset[] = [
     builtIn: true,
     role: { type: 'train', trainAttacks: [
       { type: 'full_off' },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
     ] },
   },
   {
     id: 'bi_train_green',
-    name: 'Зелёный паровоз (5)',
-    description: '5 зеленок из одной деревни — по максимуму силы, до 1000 юнитов в каждой атаке',
+    name: 'Зелёный паровоз',
+    description: '5 зеленок из одной деревни — до 1000 юнитов в каждой атаке',
     builtIn: true,
     role: { type: 'train', trainAttacks: [
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
     ] },
   },
   {
@@ -313,10 +248,10 @@ const BUILT_IN: AttackPreset[] = [
     builtIn: true,
     role: { type: 'train', trainAttacks: [
       { type: 'split' },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
       { type: 'split' },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
-      { type: 'green_off', greenVariant: 'light', greenWithRams: true },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
+      { type: 'green_off', greenVariant: 'flexible', greenTargetAxe: 500, greenTargetLight: 250, greenMax: 999 },
     ] },
   },
   {
@@ -428,16 +363,6 @@ export const usePresetsStore = defineStore('presets', () => {
     _persist()
   }
 
-  function applyToPlanner(id: string): void {
-    const preset = all.value.find((p) => p.id === id)
-    if (!preset) return
-    // Built-in breach_off uses the global threshold instead of the hardcoded value
-    const role = preset.builtIn && preset.role.type === 'breach_off'
-      ? { ...preset.role, minRams: breachMinRams.value }
-      : preset.role
-    usePlanStore().updateMassConfig(roleToMassConfig(role))
-  }
-
   function clone(id: string): AttackPreset | null {
     const preset = all.value.find((p) => p.id === id)
     if (!preset) return null
@@ -449,5 +374,5 @@ export const usePresetsStore = defineStore('presets', () => {
     })
   }
 
-  return { all, custom, breachMinRams, fullOffMinAxe, halfOffMinAxe, smallOffMinAxe, catMinSize, catMaxSize, catSplitSquads, add, update, remove, applyToPlanner, clone }
+  return { all, custom, breachMinRams, fullOffMinAxe, halfOffMinAxe, smallOffMinAxe, catMinSize, catMaxSize, catSplitSquads, add, update, remove, clone }
 })

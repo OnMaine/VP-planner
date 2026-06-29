@@ -5,7 +5,7 @@
       <button
         v-if="planStore.targets.length"
         class="btn btn-danger btn-sm"
-        @click="confirm('Очистить все цели?') && planStore.clearTargets()"
+        @click="clearAllTargets()"
       >Очистить</button>
     </div>
 
@@ -29,10 +29,6 @@
         @click="groupBy = opt.value"
       >{{ opt.label }}</button>
       <div class="sort-bar-sep"></div>
-      <label class="col-toggle">
-        <input type="checkbox" v-model="showLabel" />
-        Метки
-      </label>
       <span v-if="planStore.targets.length" class="target-count" style="margin-left:auto">
         {{ planStore.targets.length }} целей
       </span>
@@ -61,14 +57,13 @@
           <th>Координаты</th>
           <th>Игрок (цель)</th>
           <th>Племя</th>
-          <th v-if="showLabel">Метка</th>
-          <th>Время прилёта</th>
+          <th>Тайминг</th>
           <th></th>
         </tr></thead>
         <tbody>
           <template v-for="block in targetBlocks" :key="block.key">
             <tr v-if="groupBy !== 'none'" class="group-sep-row">
-              <td :colspan="showLabel ? 6 : 5">
+              <td :colspan="4">
                 <span class="target-group-player">{{ block.label }}</span>
                 <span v-if="block.sublabel" class="target-group-ally">{{ block.sublabel }}</span>
                 <span class="target-group-count">{{ block.targets.length }} целей</span>
@@ -76,7 +71,11 @@
             </tr>
             <tr
               v-for="t in block.targets" :key="t.id"
-              :class="{ 'row-has-tower': towerCoordsSet.has(t.coords), 'row-has-paloff': (t.palOffCount ?? 0) > 0 }"
+              :class="{
+                'row-has-tower': towerCoordsSet.has(t.coords),
+                'row-has-paloff': (t.palOffCount ?? 0) > 0,
+                'row-uncovered': planStore.uncoveredTargetCoords.has(t.coords),
+              }"
             >
               <td>
                 <div class="coords-cell">
@@ -86,6 +85,7 @@
                     @input="filterCoordsInput($event)"
                     @change="onCoordsChange(t.id, ($event.target as HTMLInputElement).value)"
                   />
+                  <span v-if="planStore.uncoveredTargetCoords.has(t.coords)" class="uncovered-badge" title="Не хватило войск для покрытия этой цели">⚠</span>
                   <span v-if="towerCoordsSet.has(t.coords)" class="tower-badge" :title="`Башня уровень ${targetTowerLevel(t.coords)}`">
                     <img :src="watchtowerIcon" class="tower-icon" />{{ targetTowerLevel(t.coords) }}
                   </span>
@@ -103,13 +103,6 @@
                 />
               </td>
               <td class="muted-small">{{ enemyStore.lookupCoords(t.coords)?.ally?.tag ?? t.enemyAllyTag ?? '—' }}</td>
-              <td v-if="showLabel">
-                <input
-                  type="text" class="input" style="width:100px" placeholder="метка…"
-                  :value="t.label ?? ''"
-                  @change="planStore.updateTarget(t.id, { label: ($event.target as HTMLInputElement).value || undefined })"
-                />
-              </td>
               <td>
                 <input
                   type="datetime-local" class="input" style="width:185px" step="1"
@@ -141,6 +134,10 @@ const knightIcon = UNIT_ICONS.knight
 
 const planStore = usePlanStore()
 const enemyStore = useEnemyDataStore()
+
+function clearAllTargets() {
+  if (window.confirm('Очистить все цели?')) planStore.clearTargets()
+}
 const { toDatetimeLocal } = useDateFormat()
 const { filterCoordsInput } = useCoordInput()
 const { resolveTargetPlayer } = usePlayerResolution()
@@ -151,7 +148,6 @@ const bulkText = ref('')
 const bulkDatetime = ref(toDatetimeLocal(new Date(Date.now() + 3600_000)))
 const bulkError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
-const showLabel = ref(false)
 
 const groupBy = ref<GroupBy>('none')
 const groupByOptions: { value: GroupBy; label: string }[] = [
@@ -178,7 +174,10 @@ function onCoordsChange(id: string, coords: string): void {
     coords, x: parseInt(m[1], 10), y: parseInt(m[2], 10),
   }
   const info = enemyStore.lookupCoords(coords)
-  if (info?.player) { patch.enemyPlayer = info.player.name; patch.enemyAllyTag = info.ally?.tag ?? '' }
+  if (info) {
+    patch.villageId = info.village.id
+    if (info.player) { patch.enemyPlayer = info.player.name; patch.enemyAllyTag = info.ally?.tag ?? '' }
+  }
   planStore.updateTarget(id, patch)
 }
 
@@ -220,7 +219,13 @@ function parseTargetsFromText(text: string): ParsedTarget[] {
 function addTargetsFromParsed(entries: ParsedTarget[], arrivalTime: Date): { added: number; skipped: number } {
   let added = 0; let skipped = 0
   for (const e of entries) {
-    if (planStore.addTarget(e.coords, arrivalTime, { watchtowerLevel: e.tower })) added++
+    const info = enemyStore.lookupCoords(e.coords)
+    const opts: Record<string, unknown> = {}
+    if (info) {
+      opts.villageId = info.village.id
+      if (info.player) { opts.enemyPlayer = info.player.name; opts.enemyAllyTag = info.ally?.tag ?? '' }
+    }
+    if (planStore.addTarget(e.coords, arrivalTime, opts)) added++
     else skipped++
   }
   return { added, skipped }
@@ -269,10 +274,19 @@ function onTargetFile(event: Event): void {
 
 .row-has-tower  { background: a($orange, 0.07) !important; border-left: 2px solid a($orange, 0.5); }
 .row-has-paloff { background: a($green,  0.07) !important; border-left: 2px solid a($green,  0.45); }
+.row-uncovered  { background: a($accent, 0.08) !important; border-left: 2px solid a($accent, 0.5); opacity: 0.7; }
 
 .coords-cell  { display: flex; align-items: center; gap: 0.4rem; }
 .tower-badge  { display: inline-flex; align-items: center; gap: 2px; font-size: 0.72rem; color: $orange; white-space: nowrap; cursor: default; }
 .tower-icon   { width: 14px; height: 14px; image-rendering: pixelated; }
+.uncovered-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  color: $accent;
+  cursor: default;
+  line-height: 1;
+}
 .paloff-badge {
   display: inline-flex;
   align-items: center;

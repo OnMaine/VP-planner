@@ -1,8 +1,12 @@
-import { defineStore } from 'pinia'
+import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed } from 'vue'
 import { useWorldStore } from './worldStore'
 import { useVillagesStore } from './villagesStore'
 import type { Village, VillageTroops } from './villagesStore'
+import { useMassConfigStore } from './massConfigStore'
+import { usePresetsStore } from './presetsStore'
+import type { VillageRole } from './presetsStore'
+import { useEnemyDataStore } from './enemyDataStore'
 import { calcDistance } from '@/utils/coords'
 import { calcTravelSeconds, calcSendTime, isInNightWindow } from '@/utils/travelTime'
 
@@ -16,6 +20,26 @@ export type WarningCode =
   | 'NIGHT_SEND'
   | 'WATCHTOWER_HIT'
   | 'SNOB_TOO_FAR'
+  | 'MORALE_HIGH_RISK'
+  | 'MORALE_MEDIUM'
+
+// ---------------------------------------------------------------------------
+// Generation issues (per-target, populated after generate())
+// ---------------------------------------------------------------------------
+
+export type GenerationIssueType =
+  | 'OFFS_SHORT'
+  | 'NOBLE_TRAIN_MISSING'
+  | 'NOBLE_TRAIN_PARTIAL'
+  | 'NOBLES_SHORT'
+  | 'SPAM_SHORT'
+
+export interface GenerationIssue {
+  targetCoords: string
+  type: GenerationIssueType
+  requested: number
+  generated: number
+}
 
 // ---------------------------------------------------------------------------
 // Attack types
@@ -76,6 +100,7 @@ export interface Target {
   enemyAllyTag?: string  // owner tribe tag
   label?: string
   palOffCount?: number   // how many paladin-offs to send to this target
+  nobleVillageCoords?: string  // manual noble train assignment
 }
 
 export interface Attack {
@@ -95,6 +120,8 @@ export interface Attack {
   warnings: WarningCode[]
   excluded: boolean
   label?: string
+  customColor?: string    // custom badge color for custom_off attacks
+  trainGroupId?: string   // shared by all attacks of the same noble train
 }
 
 // ---------------------------------------------------------------------------
@@ -133,38 +160,6 @@ export interface NobleCompositionConfig {
   escortUnit: 'light' | 'axe' | 'sword' | 'spear'
 }
 
-export interface MassConfig {
-  regularOffsPerTarget: number
-  splitOff: boolean
-  nobleTrainSize: number
-  nobleComposition: NobleCompositionConfig
-  maxNoblesPerVillage: number
-  offsetAfterOffMs: number    // ms gap: last off arrival → first noble arrival
-  useSpamAttacks: boolean
-  spamCountPerTarget: number
-  useSpamNobles: boolean
-  spamNobleCountPerTarget: number
-}
-
-export const DEFAULT_MASS_CONFIG: MassConfig = {
-  regularOffsPerTarget: 3,
-  splitOff: false,
-  nobleTrainSize: 4,
-  nobleComposition: {
-    greenStrongPct: 100,
-    greenWeakPct: 0,
-    orangePct: 0,
-    redPct: 0,
-    escortUnit: 'light',
-  },
-  maxNoblesPerVillage: 6,
-  offsetAfterOffMs: 500,
-  useSpamAttacks: false,
-  spamCountPerTarget: 0,
-  useSpamNobles: false,
-  spamNobleCountPerTarget: 0,
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -175,6 +170,30 @@ function emptyComposition(): AttackComposition {
 
 function totalUnits(c: AttackComposition): number {
   return c.spear + c.sword + c.axe + c.spy + c.light + c.heavy + c.ram + c.catapult + c.knight + c.snob
+}
+
+function totalPop(c: AttackComposition, pop: Record<string, number>): number {
+  return (Object.keys(c) as Array<keyof AttackComposition>).reduce((sum, k) => sum + c[k] * (pop[k] ?? 1), 0)
+}
+
+// Flexible green escort: fill axe/light to targets, then heavy/spear/sword up to max.
+// Returns null (without mutating pool) if total escort < greenMin.
+function buildFlexGreen(a: VillageTroops, role: VillageRole): AttackComposition | null {
+  const max         = role.greenMax        ?? 999
+  const targetAxe   = role.greenTargetAxe  ?? 500
+  const targetLight = role.greenTargetLight ?? 250
+  const minEscort   = role.greenMin        ?? 0
+
+  const axeTake   = Math.min(a.axe,   targetAxe,   max)
+  const lightTake = Math.min(a.light, targetLight,  max - axeTake)
+
+  if (axeTake + lightTake < minEscort) return null
+
+  a.axe -= axeTake; a.light -= lightTake; a.snob -= 1
+
+  const c = emptyComposition()
+  c.snob = 1; c.axe = axeTake; c.light = lightTake
+  return c
 }
 
 function coordsToXY(coords: string): { x: number; y: number } | null {
@@ -197,10 +216,17 @@ function speedUnitForType(type: AttackType): keyof VillageTroops {
     case 'spam_noble':
       return 'snob'
     case 'split_off_rest':
-      return 'light'  // no rams — LC determines speed
+      return 'light'
     default:
-      return 'ram'    // offs and spams always have rams
+      return 'ram'
   }
+}
+
+// Returns the slowest unit in the composition (highest unitTimes value among units with count > 0).
+function slowestUnitInComp(comp: AttackComposition, unitTimes: Record<string, number>): keyof VillageTroops {
+  const keys = (Object.keys(comp) as Array<keyof VillageTroops>).filter(k => comp[k] > 0)
+  if (keys.length === 0) return 'spear'
+  return keys.reduce((s, k) => (unitTimes[k] ?? 0) > (unitTimes[s] ?? 0) ? k : s)
 }
 
 // Assign noble types to train slots based on composition percentages
@@ -288,25 +314,13 @@ function buildNobleComposition(
 }
 
 // ---------------------------------------------------------------------------
-// Mass slots — preset-based recipe per target
-// ---------------------------------------------------------------------------
-
-export interface MassSlot {
-  id: string
-  presetId: string
-  count: number  // how many attacks of this type per target
-}
-
-// ---------------------------------------------------------------------------
 // localStorage helpers
 // ---------------------------------------------------------------------------
 
 const LS_TARGETS = 'vp_targets'
 const LS_PLAYER_DATA = 'vp_player_data'
-const LS_MASS_CONFIG = 'vp_mass_config'
 const LS_WATCHTOWER = 'vp_watchtower'
 const LS_SPAM_NOBLE_TARGETS = 'vp_spam_noble_targets'
-const LS_MASS_SLOTS = 'vp_mass_slots'
 
 function loadTargets(): Target[] {
   try {
@@ -325,14 +339,6 @@ function loadPlayerData(): PlayerData[] {
     if (raw) return JSON.parse(raw) as PlayerData[]
   } catch { /* ignore */ }
   return []
-}
-
-function loadMassConfig(): MassConfig {
-  try {
-    const raw = localStorage.getItem(LS_MASS_CONFIG)
-    if (raw) return { ...DEFAULT_MASS_CONFIG, ...JSON.parse(raw) }
-  } catch { /* ignore */ }
-  return { ...DEFAULT_MASS_CONFIG }
 }
 
 function loadWatchtowerVillages(): WatchtowerVillage[] {
@@ -354,14 +360,6 @@ function loadSpamNobleTargets(): Target[] {
   return []
 }
 
-function loadMassSlots(): MassSlot[] {
-  try {
-    const raw = localStorage.getItem(LS_MASS_SLOTS)
-    if (raw) return JSON.parse(raw) as MassSlot[]
-  } catch { /* ignore */ }
-  return []
-}
-
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -374,14 +372,13 @@ export const usePlanStore = defineStore('plan', () => {
   const targets = ref<Target[]>(loadTargets())
   const spamNobleTargets = ref<Target[]>(loadSpamNobleTargets())
   const playerData = ref<PlayerData[]>(loadPlayerData())
-  const massConfig = ref<MassConfig>(loadMassConfig())
-  const massSlots = ref<MassSlot[]>(loadMassSlots())
   const watchtowerVillages = ref<WatchtowerVillage[]>(loadWatchtowerVillages())
 
   // Generated (not persisted)
   const attacks = ref<Attack[]>([])
   const noblePlacements = ref<NoblePlacement[]>([])
   const paladinPlacements = ref<PaladinPlacement[]>([])
+  const generationIssues = ref<GenerationIssue[]>([])
 
   // ---------------------------------------------------------------------------
   // Persistence
@@ -393,14 +390,6 @@ export const usePlanStore = defineStore('plan', () => {
 
   function savePlayerData() {
     localStorage.setItem(LS_PLAYER_DATA, JSON.stringify(playerData.value))
-  }
-
-  function saveMassConfig() {
-    localStorage.setItem(LS_MASS_CONFIG, JSON.stringify(massConfig.value))
-  }
-
-  function saveMassSlots() {
-    localStorage.setItem(LS_MASS_SLOTS, JSON.stringify(massSlots.value))
   }
 
   function saveWatchtowerVillages() {
@@ -522,36 +511,6 @@ export const usePlanStore = defineStore('plan', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Mass config
-  // ---------------------------------------------------------------------------
-
-  function updateMassConfig(patch: Partial<MassConfig>) {
-    massConfig.value = { ...massConfig.value, ...patch }
-    saveMassConfig()
-  }
-
-  // ---------------------------------------------------------------------------
-  // Mass slots (preset-based recipe)
-  // ---------------------------------------------------------------------------
-
-  function addMassSlot(presetId: string, count = 1): void {
-    massSlots.value.push({ id: genId(), presetId, count })
-    saveMassSlots()
-  }
-
-  function removeMassSlot(id: string): void {
-    massSlots.value = massSlots.value.filter((s) => s.id !== id)
-    saveMassSlots()
-  }
-
-  function updateMassSlot(id: string, patch: Partial<Omit<MassSlot, 'id'>>): void {
-    const slot = massSlots.value.find((s) => s.id === id)
-    if (!slot) return
-    Object.assign(slot, patch)
-    saveMassSlots()
-  }
-
-  // ---------------------------------------------------------------------------
   // Watchtower villages
   // ---------------------------------------------------------------------------
 
@@ -613,257 +572,525 @@ export const usePlanStore = defineStore('plan', () => {
   // ---------------------------------------------------------------------------
 
   function generate(): void {
+    attacks.value = []
+    noblePlacements.value = []
+    paladinPlacements.value = []
+    generationIssues.value = []
+
+    const mcStore    = useMassConfigStore()
+    const presStore  = usePresetsStore()
+    const enemyStore = useEnemyDataStore()
+    const cfg = mcStore.active
+    if (!cfg) return
+
     const { settings } = worldStore
     const { villages } = villagesStore
-    const config = massConfig.value
     const now = new Date()
     const result: Attack[] = []
     const newNoblePlacements: NoblePlacement[] = []
     const newPaladinPlacements: PaladinPlacement[] = []
+    const genIssues: GenerationIssue[] = []
 
-    // Track available troops per village (consumed as attacks are assigned)
+    // Pool: available troops per village (consumed as attacks are assigned)
     const pool = new Map<string, AttackComposition>()
-    for (const v of villages) {
-      pool.set(v.coords, { ...v.troops })
+    for (const v of villages) pool.set(v.coords, { ...v.troops })
+
+    // Attacker points per player (for morale)
+    const attackerPoints = new Map<string, number>()
+    if (settings.moraleEnabled) {
+      for (const v of villages) {
+        attackerPoints.set(v.player, (attackerPoints.get(v.player) ?? 0) + v.points)
+      }
     }
 
-    // Track used noble slots per village
-    const nobleUsed = new Map<string, number>()
-
-    // Track paladin budget per player (decrements as paladin offs are assigned)
-    const paladinBudget = new Map<string, number>()
-    for (const pd of playerData.value) {
-      paladinBudget.set(pd.player, pd.offPaladins)
+    // ── spam arrival randomizer ───────────────────────────────────────────
+    function randomSpamArrival(windowStart: Date, windowEnd: Date): Date {
+      const startMs = windowStart.getTime()
+      const endMs   = windowEnd.getTime()
+      if (endMs <= startMs) return windowStart
+      return new Date(startMs + Math.random() * (endMs - startMs))
     }
 
-    // Helper: build and push one attack
-    function pushAttack(
-      type: AttackType,
-      village: Village,
-      target: Target,
-      composition: AttackComposition,
-      arrivalTime: Date,
-      label?: string,
-    ) {
-      const speedUnit = speedUnitForType(type)
+    // ── buildSpamComp ─────────────────────────────────────────────────────
+    // Must include at least 1 ram or 1 catapult (siege weapon required).
+    // Siege unit IS deducted from pool. Infantry fills remaining pop but is NOT deducted.
+    // Returns null if no siege weapon available or not enough troops for minAttackSize.
+    function buildSpamComp(a: AttackComposition): AttackComposition | null {
+      const up = settings.unitPop
+      const c = emptyComposition()
+      if (a.ram >= 1) {
+        c.ram = 1
+      } else if (a.catapult >= 1) {
+        c.catapult = 1
+      } else {
+        return null
+      }
+      let popLeft = settings.minAttackSize - c.ram * up.ram - c.catapult * up.catapult
+      const order: Array<keyof AttackComposition> = ['spear', 'sword', 'axe', 'spy', 'light', 'heavy']
+      for (const unit of order) {
+        if (popLeft <= 0) break
+        const upVal = up[unit] ?? 1
+        const needed = Math.ceil(popLeft / upVal)
+        c[unit] = Math.min(a[unit], needed)
+        popLeft -= c[unit] * upVal
+      }
+      if (popLeft > 0) return null
+      return c
+    }
+
+    // ── pushAtk ──────────────────────────────────────────────────────────
+    function pushAtk(
+      type: AttackType, village: Village, target: Target,
+      composition: AttackComposition, arrivalTime: Date, label?: string, customColor?: string,
+    ): boolean {
+      const speedUnit   = slowestUnitInComp(composition, settings.unitTimes)
       const unitBaseSec = settings.unitTimes[speedUnit]
-      const dist = calcDistance(
-        { x: village.x, y: village.y },
-        { x: target.x, y: target.y },
-        settings.mapSize,
-      )
-      const travelSec = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
-      const sendTime = calcSendTime(arrivalTime, travelSec)
+      const dist        = calcDistance({ x: village.x, y: village.y }, { x: target.x, y: target.y }, settings.mapSize)
+      const travelSec   = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
+      const sendTime    = calcSendTime(arrivalTime, travelSec)
 
-      const total = totalUnits(composition)
+      // Night exclude mode: skip this village if send time falls in night window
+      if (settings.sendExcludeEnabled) {
+        if (isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return false
+      }
+
+      const total       = totalUnits(composition)
+      const pop         = totalPop(composition, settings.unitPop)
+      if (pop < settings.minAttackSize) return false
       const { color, icon } = calcWatchtower(total, composition.snob > 0)
 
       const warnings: WarningCode[] = []
       if (sendTime < now) warnings.push('SEND_IN_PAST')
       if (settings.nightActive) {
         if (isInNightWindow(arrivalTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_ARRIVAL')
-        if (isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_SEND')
+        if (isInNightWindow(sendTime,    settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_SEND')
       }
       if (settings.watchtowerEnabled && watchtowerVillages.value.length > 0) {
         const hit = watchtowerVillages.value.some((wt) => {
           if (wt.level <= 0) return false
-          const d = calcDistance({ x: village.x, y: village.y }, { x: wt.x, y: wt.y }, settings.mapSize)
-          return d <= wt.level
+          return calcDistance({ x: village.x, y: village.y }, { x: wt.x, y: wt.y }, settings.mapSize) <= wt.level
         })
         if (hit) warnings.push('WATCHTOWER_HIT')
       }
+      if (settings.moraleEnabled && target.enemyPlayer) {
+        const defPoints = enemyStore.playerByName.get(target.enemyPlayer)?.points ?? 0
+        const atkPoints = attackerPoints.get(village.player) ?? 0
+        if (defPoints > 0 && atkPoints > 0) {
+          const ratio = atkPoints / defPoints
+          if (ratio < 1.0)       warnings.push('MORALE_HIGH_RISK')
+          else if (ratio < 1.5)  warnings.push('MORALE_MEDIUM')
+        }
+      }
 
       result.push({
-        id: genId(),
-        type,
-        fromVillage: village,
-        target,
-        composition,
-        speedUnit,
-        totalUnits: total,
-        watchtowerColor: color,
-        watchtowerIcon: icon,
-        distance: dist,
-        travelSeconds: travelSec,
-        arrivalTime,
-        sendTime,
-        warnings,
-        excluded: false,
-        label,
+        id: genId(), type, fromVillage: village, target, composition,
+        speedUnit, totalUnits: total, watchtowerColor: color, watchtowerIcon: icon,
+        distance: dist, travelSeconds: travelSec, arrivalTime, sendTime,
+        warnings, excluded: false, label, customColor,
       })
+      return true
     }
 
+    // ── nightExcludes pre-check (call BEFORE pool mutation) ──────────────
+    function nightExcludes(village: Village, target: Target, type: AttackType, arrivalTime: Date): boolean {
+      if (!settings.sendExcludeEnabled) return false
+      const unitBaseSec = settings.unitTimes[speedUnitForType(type)]
+      const dist = calcDistance({ x: village.x, y: village.y }, { x: target.x, y: target.y }, settings.mapSize)
+      const travelSec = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
+      return isInNightWindow(calcSendTime(arrivalTime, travelSec), settings.nightFrom, settings.nightTo)
+    }
+
+    // ── trackNoble ───────────────────────────────────────────────────────
+    function trackNoble(village: Village) {
+      const ex = newNoblePlacements.find(p => p.village.coords === village.coords)
+      if (ex) ex.count++
+      else newNoblePlacements.push({ village, count: 1 })
+    }
+
+    // ── Virtual noble budget ──────────────────────────────────────────────
+    // Per player: totalNobles (from playerData) minus nobles already in pool
+    const virtualNobleBudget = new Map<string, number>()
+    for (const pd of playerData.value) {
+      if (!pd.totalNobles) continue
+      const builtSnob = villages
+        .filter(v => v.player === pd.player)
+        .reduce((s, v) => s + (pool.get(v.coords)?.snob ?? 0), 0)
+      const budget = pd.totalNobles - builtSnob
+      if (budget > 0) virtualNobleBudget.set(pd.player, budget)
+    }
+
+    const noblePriority = cfg.noblePriority ?? 'distance'
+
+    // Picks the best noble village from candidates (pre-sorted by distance).
+    // Handles both already-built nobles and virtual assignment from totalNobles budget.
+    //
+    // 'distance' mode — sort key: (distanceRank * 2 + isVirtual)
+    //   → closest built beats closest virtual, but closest virtual beats farther built
+    //
+    // 'built' mode — sort key: (isVirtual, distanceRank)
+    //   → all built (nearest first) before any virtual (nearest first)
+    function pickNobleVillage(
+      need: number,
+      candidates: Village[],
+      target: Target,
+      arrT: Date,
+      checkArmy?: (coords: string) => boolean,
+    ): Village | null {
+      type Entry = { v: Village; isVirtual: boolean; rank: number }
+      const entries: Entry[] = []
+
+      for (let i = 0; i < candidates.length; i++) {
+        const v = candidates[i]
+        if (checkArmy && !checkArmy(v.coords)) continue
+        const snob = pool.get(v.coords)?.snob ?? 0
+        if (snob >= need) {
+          const rank = noblePriority === 'distance' ? i * 2 : i
+          entries.push({ v, isVirtual: false, rank })
+        } else {
+          const budgetNeeded = need - snob
+          if ((virtualNobleBudget.get(v.player) ?? 0) >= budgetNeeded) {
+            const rank = noblePriority === 'distance' ? i * 2 + 1 : candidates.length + i
+            entries.push({ v, isVirtual: true, rank })
+          }
+        }
+      }
+
+      entries.sort((a, b) => a.rank - b.rank)
+
+      for (const { v, isVirtual } of entries) {
+        if (nightExcludes(v, target, 'noble_green_strong', arrT)) continue
+        if (isVirtual) {
+          const snob = pool.get(v.coords)?.snob ?? 0
+          const budgetNeeded = need - snob
+          pool.get(v.coords)!.snob += budgetNeeded
+          virtualNobleBudget.set(v.player, (virtualNobleBudget.get(v.player) ?? 0) - budgetNeeded)
+        }
+        return v
+      }
+      return null
+    }
+
+    // ── Per-target loop ───────────────────────────────────────────────────
     for (const target of targets.value) {
-      // Candidate villages sorted by distance to this target
       const byDist = [...villages].sort((a, b) =>
         calcDistance({ x: a.x, y: a.y }, { x: target.x, y: target.y }, settings.mapSize) -
         calcDistance({ x: b.x, y: b.y }, { x: target.x, y: target.y }, settings.mapSize),
       )
+      const nobleVillages = byDist.filter(v =>
+        calcDistance({ x: v.x, y: v.y }, { x: target.x, y: target.y }, settings.mapSize) <= settings.snobMaxDist
+      )
+      const baseArrT = target.arrivalTime
 
-      // ---- Paladin offs ----
-      let paladinOffsLeft = target.palOffCount ?? 0
-      for (const v of byDist) {
-        if (paladinOffsLeft <= 0) break
-        const avail = pool.get(v.coords)!
-        if (avail.ram <= 0) continue
-        const budget = paladinBudget.get(v.player) ?? 0
-        if (budget <= 0) continue
+      for (const slot of cfg.slots) {
+        if (!slot.enabled) continue
+        const preset = presStore.all.find(p => p.id === slot.presetId)
+        if (!preset) continue
+        const role = preset.role
 
-        const comp = emptyComposition()
-        comp.axe = avail.axe
-        comp.light = avail.light
-        comp.heavy = avail.heavy
-        comp.ram = avail.ram
-        // Consume troops
-        avail.axe = 0; avail.light = 0; avail.heavy = 0; avail.ram = 0
+        const slotArrT = new Date(baseArrT.getTime() + slot.offsetMs)
 
-        paladinBudget.set(v.player, budget - 1)
-        newPaladinPlacements.push({ village: v, forTarget: target })
+        // ── Train preset ──────────────────────────────────────────────
+        if (role.type === 'train') {
+          const trainAttacks = role.trainAttacks ?? []
+          const manualCoords = target.nobleVillageCoords
+          let trainsGenerated = 0
+          const trainNeedsFullOff = trainAttacks.some(a => a.type === 'full_off')
 
-        if (config.splitOff) {
-          const comp2 = emptyComposition()
-          comp2.axe = Math.floor(comp.axe / 2)
-          comp2.light = Math.floor(comp.light / 2)
-          comp2.heavy = Math.floor(comp.heavy / 2)
-          const comp1 = { ...comp, axe: comp.axe - comp2.axe, light: comp.light - comp2.light, heavy: comp.heavy - comp2.heavy }
-          pushAttack('split_off_rams', v, target, comp1, target.arrivalTime, 'Пал-Офф (тарани)')
-          pushAttack('split_off_rest', v, target, comp2, target.arrivalTime, 'Пал-Офф (решта)')
+          for (let trainIdx = 0; trainIdx < slot.count; trainIdx++) {
+            const firstArrT = slotArrT
+            const candidatePool = manualCoords ? byDist : (nobleVillages.length > 0 ? nobleVillages : byDist)
+            const hasArmy = (coords: string) => {
+              if (!trainNeedsFullOff) return true
+              const a = pool.get(coords)
+              return !!a && (a.axe + a.light) >= presStore.fullOffMinAxe && a.ram > 0
+            }
+            const trainCandidates = manualCoords
+              ? candidatePool.filter(v => v.coords === manualCoords)
+              : (nobleVillages.length > 0 ? nobleVillages : byDist)
+            const nv = pickNobleVillage(trainAttacks.length, trainCandidates, target, firstArrT, trainNeedsFullOff ? hasArmy : undefined)
+            if (!nv) break
+
+            const a = pool.get(nv.coords)!
+            const passOrder = [
+              ...trainAttacks.map((atk, i) => ({ atk, i })).filter(({ atk }) => atk.type !== 'full_off'),
+              ...trainAttacks.map((atk, i) => ({ atk, i })).filter(({ atk }) => atk.type === 'full_off'),
+            ]
+            const builtSlots: Array<{ type: AttackType; comp: AttackComposition; origIdx: number }> = []
+
+            for (const { atk, i: origIdx } of passOrder) {
+              const c = emptyComposition()
+              let type: AttackType = 'noble_green_strong'
+
+              if (atk.type === 'full_off') {
+                c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram; c.snob = 1
+                a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0; a.snob -= 1
+                type = 'noble_red'
+              } else if (atk.type === 'green_off') {
+                if (atk.greenVariant === 'flexible') {
+                  const fakeRole: VillageRole = { type: 'green_off', greenVariant: 'flexible', greenMin: atk.greenMin, greenMax: atk.greenMax ?? 999, greenTargetAxe: atk.greenTargetAxe ?? 500, greenTargetLight: atk.greenTargetLight ?? 250 }
+                  const fc = buildFlexGreen(a, fakeRole)
+                  if (fc) { Object.assign(c, fc) } else { c.snob = 1; a.snob -= 1 }
+                } else {
+                  const eu = atk.greenVariant === 'axes' ? 'axe' : 'light'
+                  c.snob = 1; c[eu] = Math.min(a[eu], 999)
+                  if (atk.greenWithRams !== false) c.ram = Math.min(a.ram, Math.max(0, 999 - c.snob - c[eu]))
+                  a.snob -= 1; a[eu] -= c[eu]; a.ram = Math.max(0, a.ram - c.ram)
+                }
+                type = 'noble_green_strong'
+              } else if (atk.type === 'split') {
+                c.axe = Math.ceil(a.axe / 2); c.light = Math.ceil(a.light / 2)
+                c.heavy = Math.ceil(a.heavy / 2); c.snob = 1
+                a.axe -= c.axe; a.light -= c.light; a.heavy -= c.heavy; a.snob -= 1
+                type = 'noble_orange'
+              } else if (atk.type === 'half_off') {
+                c.axe = Math.ceil(a.axe / 2); c.light = Math.ceil(a.light / 2)
+                c.heavy = Math.ceil(a.heavy / 2); c.ram = a.ram; c.snob = 1
+                a.axe -= c.axe; a.light -= c.light; a.heavy -= c.heavy; a.ram = 0; a.snob -= 1
+                type = 'split_off_rams'
+              } else if (atk.type === 'custom_off') {
+                const cp = atk.customPresetId ? presStore.all.find(p => p.id === atk.customPresetId) : null
+                const cu = cp?.role.type === 'custom_off' ? cp.role.customUnits ?? {} : {}
+                const unitKeys = Object.keys(cu) as Array<keyof VillageTroops>
+                if (unitKeys.length > 0) {
+                  for (const k of unitKeys) {
+                    const spec = cu[k] as number
+                    if (spec === 0) continue
+                    const take = spec === -1 ? a[k] : Math.min(spec, a[k])
+                    c[k] = take; a[k] -= take
+                  }
+                } else {
+                  c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
+                  a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
+                }
+                c.snob = 1; a.snob -= 1
+                type = 'off'
+              } else {
+                c.snob = 1; c.light = Math.min(a.light, 999)
+                a.snob -= 1; a.light -= c.light
+              }
+              builtSlots.push({ type, comp: c, origIdx })
+            }
+
+            builtSlots.sort((x, y) => x.origIdx - y.origIdx)
+            const trainGroupId = genId()
+            for (const { type, comp, origIdx } of builtSlots) {
+              const arrT = new Date(firstArrT.getTime() + origIdx * settings.snobIntervalMs)
+              const pushed = pushAtk(type, nv, target, comp, arrT)
+              if (pushed) {
+                result[result.length - 1].trainGroupId = trainGroupId
+                trackNoble(nv)
+              }
+            }
+            trainsGenerated++
+          }
+          if (slot.count > 0 && trainsGenerated < slot.count) {
+            genIssues.push({
+              targetCoords: target.coords,
+              type: trainsGenerated === 0 ? 'NOBLE_TRAIN_MISSING' : 'NOBLE_TRAIN_PARTIAL',
+              requested: slot.count,
+              generated: trainsGenerated,
+            })
+          }
+
+        // ── Spam train preset ─────────────────────────────────────────
+        } else if (role.type === 'spam' && (role.spamTrainSize ?? 0) > 0) {
+          const trainSize = role.spamTrainSize ?? 5
+          const spamCount = role.spamCount ?? 5
+          let trainsLeft = slot.count
+          while (trainsLeft > 0) {
+            const nv = pickNobleVillage(trainSize, nobleVillages, target, slotArrT)
+            if (!nv) break
+            const a = pool.get(nv.coords)!
+            for (let i = 0; i < spamCount; i++) {
+              const c = buildSpamComp(a)
+              if (!c) break
+              a.ram = Math.max(0, a.ram - c.ram); a.catapult = Math.max(0, a.catapult - c.catapult)
+              pushAtk('spam', nv, target, c, slotArrT, 'Спам-паровоз')
+            }
+            for (let i = 0; i < trainSize; i++) {
+              if (a.snob <= 0) break
+              const arrT = new Date(slotArrT.getTime() + i * settings.snobIntervalMs)
+              if (nightExcludes(nv, target, 'spam_noble', arrT)) break
+              const up = settings.unitPop
+              const c = emptyComposition()
+              c.snob = 1; a.snob -= 1
+              let popLeft = settings.minAttackSize - up.snob
+              const order: Array<keyof AttackComposition> = ['spear', 'sword', 'axe', 'spy', 'light', 'heavy']
+              for (const unit of order) {
+                if (popLeft <= 0) break
+                const upVal = up[unit] ?? 1
+                const needed = Math.ceil(popLeft / upVal)
+                c[unit] = Math.min(a[unit], needed)
+                popLeft -= c[unit] * upVal
+              }
+              if (popLeft > 0) { a.snob += 1; break }
+              pushAtk('spam_noble', nv, target, c, arrT, 'Спам-двор')
+            }
+            trainsLeft--
+          }
+
+        // ── Spam preset ───────────────────────────────────────────────
+        } else if (role.type === 'spam') {
+          const wBefore = slot.windowBeforeMin ?? 0
+          const wAfter  = slot.windowAfterMin  ?? 0
+          const useWindow = wBefore > 0 || wAfter > 0
+          let left = slot.count
+          for (const v of byDist) {
+            if (left <= 0) break
+            const a = pool.get(v.coords)!
+            const c = buildSpamComp(a)
+            if (!c) continue
+            const arrT = useWindow
+              ? randomSpamArrival(
+                  new Date(slotArrT.getTime() - wBefore * 60_000),
+                  new Date(slotArrT.getTime() + wAfter  * 60_000),
+                )
+              : slotArrT
+            if (nightExcludes(v, target, 'spam', arrT)) continue
+            a.ram = Math.max(0, a.ram - c.ram); a.catapult = Math.max(0, a.catapult - c.catapult)
+            pushAtk('spam', v, target, c, arrT, 'Спам')
+            left--
+          }
+          if (left > 0) genIssues.push({ targetCoords: target.coords, type: 'SPAM_SHORT', requested: slot.count, generated: slot.count - left })
+
+        // ── Green off preset ──────────────────────────────────────────
+        } else if (role.type === 'green_off') {
+          let left = slot.count
+          while (left > 0) {
+            const idx  = slot.count - left
+            const arrT = new Date(slotArrT.getTime() + idx * settings.snobIntervalMs)
+            const nv = pickNobleVillage(1, nobleVillages, target, arrT)
+            if (!nv) break
+            const a = pool.get(nv.coords)!
+            let c: AttackComposition | null
+            if (role.greenVariant === 'flexible') {
+              c = buildFlexGreen(a, role)
+            } else {
+              const eu = role.greenVariant === 'axes' ? 'axe' : 'light'
+              c = emptyComposition()
+              c.snob = 1; c[eu] = Math.min(a[eu], 999)
+              if (role.greenWithRams !== false) c.ram = Math.min(a.ram, Math.max(0, 999 - c.snob - c[eu]))
+              a.snob -= 1; a[eu] -= c[eu]; a.ram = Math.max(0, a.ram - c.ram)
+            }
+            if (!c) continue
+            pushAtk('noble_green_strong', nv, target, c, arrT)
+            trackNoble(nv)
+            left--
+          }
+          if (slot.count > 0 && left > 0) genIssues.push({ targetCoords: target.coords, type: 'NOBLES_SHORT', requested: slot.count, generated: slot.count - left })
+
+        // ── Spike preset ──────────────────────────────────────────────
+        } else if (role.type === 'spike') {
+          const sRams  = role.spikeRams  ?? 100
+          const sSpy   = role.spikeSpy   ?? 1
+          const sAxe   = role.spikeAxe   ?? 0
+          const sLc    = role.spikeLight ?? 899
+          const sHeavy = role.spikeHeavy ?? 0
+          const sCat   = role.spikeCat   ?? 0
+          let left = slot.count
+          for (const v of byDist) {
+            if (left <= 0) break
+            if (nightExcludes(v, target, 'off', slotArrT)) continue
+            const a = pool.get(v.coords)!
+            if (sRams > 0 && a.ram < Math.min(sRams, 10)) continue
+            const c = emptyComposition()
+            c.ram      = Math.min(a.ram,      sRams)
+            c.spy      = Math.min(a.spy,      sSpy)
+            c.axe      = Math.min(a.axe,      sAxe)
+            c.light    = Math.min(a.light,    sLc)
+            c.heavy    = Math.min(a.heavy,    sHeavy)
+            c.catapult = Math.min(a.catapult, sCat)
+            a.ram -= c.ram; a.spy -= c.spy; a.axe -= c.axe
+            a.light -= c.light; a.heavy -= c.heavy; a.catapult -= c.catapult
+            pushAtk('off', v, target, c, slotArrT, 'Колючка')
+            left--
+          }
+
+        // ── Off presets (full_off / half_off / breach_off / pal_off / custom_off) ──
         } else {
-          pushAttack('paladin_off', v, target, comp, target.arrivalTime, 'Пал-Офф')
-        }
-        paladinOffsLeft--
-      }
+          let left = slot.count
+          for (const v of byDist) {
+            if (left <= 0) break
+            const a = pool.get(v.coords)!
 
-      // ---- Regular offs ----
-      let offsLeft = config.regularOffsPerTarget
-      for (const v of byDist) {
-        if (offsLeft <= 0) break
-        const avail = pool.get(v.coords)!
-        if (avail.ram <= 0) continue
+            if (role.type === 'breach_off') {
+              const minRams = role.minRams ?? presStore.breachMinRams
+              if (a.ram < minRams || a.axe + a.light < presStore.halfOffMinAxe) continue
+              if (nightExcludes(v, target, 'off', slotArrT)) continue
+              const c = emptyComposition()
+              c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
+              a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
+              pushAtk('off', v, target, c, slotArrT, 'Пробой')
 
-        const comp = emptyComposition()
-        comp.axe = avail.axe
-        comp.light = avail.light
-        comp.heavy = avail.heavy
-        comp.ram = avail.ram
-        avail.axe = 0; avail.light = 0; avail.heavy = 0; avail.ram = 0
+            } else if (role.type === 'pal_off') {
+              if (a.axe + a.light < presStore.fullOffMinAxe || a.ram === 0) continue
+              if (nightExcludes(v, target, 'off', slotArrT)) continue
+              const c = emptyComposition()
+              c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
+              a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
+              newPaladinPlacements.push({ village: v, forTarget: target })
+              pushAtk('paladin_off', v, target, c, slotArrT, 'Пал-Офф')
 
-        if (config.splitOff) {
-          const comp2 = emptyComposition()
-          comp2.axe = Math.floor(comp.axe / 2)
-          comp2.light = Math.floor(comp.light / 2)
-          comp2.heavy = Math.floor(comp.heavy / 2)
-          const comp1 = { ...comp, axe: comp.axe - comp2.axe, light: comp.light - comp2.light, heavy: comp.heavy - comp2.heavy }
-          pushAttack('split_off_rams', v, target, comp1, target.arrivalTime, 'Офф (тарани)')
-          pushAttack('split_off_rest', v, target, comp2, target.arrivalTime, 'Офф (решта)')
-        } else {
-          pushAttack('off', v, target, comp, target.arrivalTime)
-        }
-        offsLeft--
-      }
+            } else if (role.type === 'full_off') {
+              if (a.axe + a.light < presStore.fullOffMinAxe || a.ram === 0) continue
+              if (nightExcludes(v, target, 'off', slotArrT)) continue
+              const c = emptyComposition()
+              c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
+              if (role.nobleIncluded && a.snob > 0) { c.snob = 1; a.snob -= 1 }
+              a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
+              pushAtk('off', v, target, c, slotArrT)
 
-      // ---- Noble train ----
-      const nobleTypes = assignNobleTypes(config.nobleTrainSize, config.nobleComposition)
-      const escortUnit = config.nobleComposition.escortUnit
+            } else if (role.type === 'half_off') {
+              const halfMin   = role.halfMin ?? 1001
+              const halfMax   = role.halfMax ?? 5000
+              const totalArmy = a.axe + a.light + a.heavy + a.ram
+              if (totalArmy < halfMin || totalArmy > halfMax) continue
+              if (nightExcludes(v, target, 'split_off_rams', slotArrT)) continue
+              const c = emptyComposition()
+              if (role.halfFixedComp) {
+                c.axe   = Math.min(a.axe,   role.halfFixedAxe   ?? 0)
+                c.light = Math.min(a.light, role.halfFixedLight ?? 0)
+                c.heavy = Math.min(a.heavy, role.halfFixedHeavy ?? 0)
+                c.ram   = Math.min(a.ram,   role.halfFixedRam   ?? 0)
+              } else {
+                c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
+              }
+              a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
+              pushAtk('split_off_rams', v, target, c, slotArrT, 'Медиум')
 
-      // Noble villages: within snobMaxDist, sorted by distance
-      const nobleVillages = byDist.filter((v) => {
-        const dist = calcDistance({ x: v.x, y: v.y }, { x: target.x, y: target.y }, settings.mapSize)
-        return dist <= settings.snobMaxDist
-      })
+            } else if (role.type === 'custom_off') {
+              const cMin = role.customMin ?? 0
+              const cMax = role.customMax ?? 99999
+              const units = role.customUnits ?? {}
+              const unitKeys: Array<keyof AttackComposition> = ['spear','sword','axe','spy','light','heavy','ram','catapult','knight','snob']
+              const c = emptyComposition()
+              for (const k of unitKeys) {
+                const spec = (units[k] as number | undefined) ?? -1
+                if (spec === 0) continue
+                c[k] = spec === -1 ? a[k] : Math.min(a[k], spec)
+              }
+              const total = totalUnits(c)
+              if (total < cMin || total > cMax) continue
+              if (nightExcludes(v, target, 'off', slotArrT)) continue
+              for (const k of unitKeys) a[k] -= c[k]
+              pushAtk('off', v, target, c, slotArrT, preset.name, role.customColor)
 
-      for (let i = 0; i < nobleTypes.length; i++) {
-        const nobleType = nobleTypes[i]
-        const arrivalTime = new Date(
-          target.arrivalTime.getTime() + config.offsetAfterOffMs + i * settings.snobIntervalMs,
-        )
+            } else { continue }
 
-        // Find a village with available snob within distance
-        const nv = nobleVillages.find((v) => {
-          const avail = pool.get(v.coords)!
-          const used = nobleUsed.get(v.coords) ?? 0
-          return avail.snob > 0 && used < config.maxNoblesPerVillage
-        })
-
-        if (!nv) break  // no more noble villages available
-
-        const avail = pool.get(nv.coords)!
-        const dist = calcDistance({ x: nv.x, y: nv.y }, { x: target.x, y: target.y }, settings.mapSize)
-        if (dist > settings.snobMaxDist) {
-          result.push({
-            id: genId(), type: nobleType, fromVillage: nv, target,
-            composition: emptyComposition(), speedUnit: 'snob',
-            totalUnits: 0, watchtowerColor: 'green', watchtowerIcon: 'snob',
-            distance: dist, travelSeconds: 0, arrivalTime, sendTime: arrivalTime,
-            warnings: ['SNOB_TOO_FAR'], excluded: true, label: 'Двор (далеко)',
-          })
-          continue
-        }
-
-        const comp = buildNobleComposition(nobleType, avail, escortUnit, 1)
-        if (comp.snob === 0) break
-
-        // Consume used resources
-        avail.snob -= comp.snob
-        avail[escortUnit] = Math.max(0, avail[escortUnit] - comp[escortUnit])
-        nobleUsed.set(nv.coords, (nobleUsed.get(nv.coords) ?? 0) + 1)
-
-        // Track noble placements for build instructions
-        const existing = newNoblePlacements.find((p) => p.village.coords === nv.coords)
-        if (existing) {
-          existing.count++
-        } else {
-          newNoblePlacements.push({ village: nv, count: 1 })
-        }
-
-        pushAttack(nobleType, nv, target, comp, arrivalTime)
-      }
-
-      // ---- Spams ----
-      if (config.useSpamAttacks) {
-        let spamsLeft = config.spamCountPerTarget
-        for (const v of byDist) {
-          if (spamsLeft <= 0) break
-          const avail = pool.get(v.coords)!
-          if (avail.ram <= 0) continue
-
-          const comp = emptyComposition()
-          comp.spear = Math.min(avail.spear, 50)
-          comp.ram = 1
-          avail.ram = Math.max(0, avail.ram - 1)
-
-          pushAttack('spam', v, target, comp, target.arrivalTime, 'Спам')
-          spamsLeft--
-        }
-      }
-
-      // ---- Spam nobles ----
-      if (config.useSpamNobles) {
-        let spamNoblesLeft = config.spamNobleCountPerTarget
-        for (const v of nobleVillages) {
-          if (spamNoblesLeft <= 0) break
-          const avail = pool.get(v.coords)!
-          if (avail.snob <= 0) continue
-
-          const arrivalTime = new Date(
-            target.arrivalTime.getTime() + config.offsetAfterOffMs,
-          )
-          const comp = buildNobleComposition('spam_noble', avail, escortUnit, 1)
-          if (comp.snob === 0) continue
-
-          avail.snob -= comp.snob
-          pushAttack('spam_noble', v, target, comp, arrivalTime, 'Спам-двор')
-          spamNoblesLeft--
+            left--
+          }
+          if (left > 0 && slot.count > 0) {
+            genIssues.push({ targetCoords: target.coords, type: 'OFFS_SHORT', requested: slot.count, generated: slot.count - left })
+          }
         }
       }
     }
 
-    // Sort all attacks by sendTime ascending
     result.sort((a, b) => a.sendTime.getTime() - b.sendTime.getTime())
-
     attacks.value = result
     noblePlacements.value = newNoblePlacements
     paladinPlacements.value = newPaladinPlacements
+    generationIssues.value = genIssues
   }
 
   // ---------------------------------------------------------------------------
@@ -892,25 +1119,75 @@ export const usePlanStore = defineStore('plan', () => {
     attacks.value = []
     noblePlacements.value = []
     paladinPlacements.value = []
+    generationIssues.value = []
+  }
+
+  function resolveAllFromMap(): number {
+    const enemyStore = useEnemyDataStore()
+    let count = 0
+    for (const t of targets.value) {
+      const info = enemyStore.lookupCoords(t.coords)
+      if (!info?.player && !info?.ally) continue
+      const patch: Parameters<typeof updateTarget>[1] = {}
+      if (info.player) patch.enemyPlayer = info.player.name
+      if (info.ally)   patch.enemyAllyTag = info.ally.tag
+      updateTarget(t.id, patch)
+      const tower = watchtowerVillages.value.find((w) => w.coords === t.coords)
+      if (tower && info.player) updateWatchtowerVillage(tower.id, { player: info.player.name })
+      count++
+    }
+    for (const wt of watchtowerVillages.value) {
+      const info = enemyStore.lookupCoords(wt.coords)
+      if (!info?.player) continue
+      if (!targets.value.find((t) => t.coords === wt.coords)) {
+        updateWatchtowerVillage(wt.id, { player: info.player.name })
+        count++
+      }
+    }
+    return count
   }
 
   function resetAll(): void {
     targets.value = []
     spamNobleTargets.value = []
     playerData.value = []
-    massConfig.value = { ...DEFAULT_MASS_CONFIG }
     watchtowerVillages.value = []
     resetGenerated()
     saveTargets()
     saveSpamNobleTargets()
     savePlayerData()
-    saveMassConfig()
     saveWatchtowerVillages()
   }
 
   // ---------------------------------------------------------------------------
   // Computed summaries
   // ---------------------------------------------------------------------------
+
+  // openOrdersTo[player] = set of friendly players that `player` must open orders to
+  // (all other tribe members who are also attacking the same target villages with real attacks)
+  const openOrdersTo = computed(() => {
+    // Step 1: per target → set of players with real (non-spam) attacks on it
+    const targetPlayers = new Map<string, Set<string>>()
+    for (const atk of attacks.value) {
+      if (atk.excluded) continue
+      if (atk.type === 'spam' || atk.type === 'spam_noble') continue
+      const tid = atk.target.id
+      if (!targetPlayers.has(tid)) targetPlayers.set(tid, new Set())
+      targetPlayers.get(tid)!.add(atk.fromVillage.player)
+    }
+    // Step 2: for each player, collect all co-attackers across all shared targets
+    const m = new Map<string, Set<string>>()
+    for (const players of targetPlayers.values()) {
+      if (players.size < 2) continue
+      for (const p of players) {
+        if (!m.has(p)) m.set(p, new Set())
+        for (const other of players) {
+          if (other !== p) m.get(p)!.add(other)
+        }
+      }
+    }
+    return m
+  })
 
   const attacksByTarget = computed(() => {
     const m = new Map<string, Attack[]>()
@@ -920,6 +1197,20 @@ export const usePlanStore = defineStore('plan', () => {
       m.set(a.target.id, list)
     }
     return m
+  })
+
+  // Targets that have at least one critical issue (no offs or no noble train at all)
+  const uncoveredTargetCoords = computed(() => {
+    const s = new Set<string>()
+    for (const issue of generationIssues.value) {
+      if (
+        (issue.type === 'OFFS_SHORT' && issue.generated === 0) ||
+        issue.type === 'NOBLE_TRAIN_MISSING'
+      ) {
+        s.add(issue.targetCoords)
+      }
+    }
+    return s
   })
 
   const attacksByPlayer = computed(() => {
@@ -937,7 +1228,6 @@ export const usePlanStore = defineStore('plan', () => {
     targets,
     spamNobleTargets,
     playerData,
-    massConfig,
     watchtowerVillages,
     attacks,
     noblePlacements,
@@ -951,13 +1241,6 @@ export const usePlanStore = defineStore('plan', () => {
     setPlayerData,
     getPlayerData,
     playerDataMap,
-    // Config
-    updateMassConfig,
-    // Mass slots
-    massSlots,
-    addMassSlot,
-    removeMassSlot,
-    updateMassSlot,
     // Watchtower villages
     importWatchtowerVillages,
     addWatchtowerVillage,
@@ -972,6 +1255,7 @@ export const usePlanStore = defineStore('plan', () => {
     clearSpamNobleTargets: clearSpamNobleTargetsAndSave,
     // Plan
     generate,
+    resolveAllFromMap,
     toggleExclude,
     clearTargets,
     resetGenerated,
@@ -979,5 +1263,12 @@ export const usePlanStore = defineStore('plan', () => {
     // Computed
     attacksByTarget,
     attacksByPlayer,
+    openOrdersTo,
+    generationIssues,
+    uncoveredTargetCoords,
   }
 })
+
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(usePlanStore, import.meta.hot))
+}
