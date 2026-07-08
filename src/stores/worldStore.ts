@@ -16,7 +16,7 @@ export interface UnitTimes {
 
 export type UnitPop = UnitTimes  // same shape — population (farm space) per unit
 
-export type NoblePollMode = 'real' | 'real_virtual' | 'virtual'
+export type NoblePollMode = 'real' | 'virtual'
 
 export interface WorldSettings {
   worldCode: string

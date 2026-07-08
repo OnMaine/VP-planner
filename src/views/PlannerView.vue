@@ -21,7 +21,6 @@
     <MassActivePanel />
     <TargetsTable />
     <WatchtowerTable />
-    <PalOffPanel />
 
     <!-- Generate -->
     <section class="panel generate-section">
@@ -36,15 +35,12 @@
         <div v-if="!canGenerate" class="generate-blocked">
           <span class="blocked-icon">⚠</span>
           <span>{{ generateBlockReason }}</span>
+          <button v-if="needsDataRefresh" class="blocked-link blocked-btn" :disabled="refreshing" @click="refreshGameData">
+            {{ refreshing ? 'Загрузка...' : 'Обновить игровые данные' }}
+          </button>
+          <span v-if="refreshError" class="refresh-error">{{ refreshError }}</span>
           <router-link v-for="link in generateBlockLinks" :key="link.to" :to="link.to" class="blocked-link">{{ link.label }}</router-link>
         </div>
-      </div>
-
-      <div v-if="showSpecialOffWarning" class="special-off-warning">
-        <span class="blocked-icon">⚠</span>
-        <span>Есть неназначенные пал/пробои — их можно задать в панели ниже.</span>
-        <button class="btn btn-secondary btn-sm" @click="specialOffWarningDismissed = true; doGenerate()">Игнорировать и генерировать</button>
-        <button class="btn btn-primary btn-sm" @click="showSpecialOffWarning = false">Назначить</button>
       </div>
 
       <div v-if="planStore.attacks.length > 0" class="generate-stat">
@@ -84,7 +80,6 @@ import { useMassConfigStore } from '@/stores/massConfigStore'
 import MassActivePanel from '@/components/MassActivePanel.vue'
 import TargetsTable from '@/components/TargetsTable.vue'
 import WatchtowerTable from '@/components/WatchtowerTable.vue'
-import PalOffPanel from '@/components/PalOffPanel.vue'
 import AttackResultsPanel from '@/components/AttackResultsPanel.vue'
 import AIPlanPanel from '@/components/AIPlanPanel.vue'
 
@@ -99,7 +94,7 @@ const activeAttackCount = computed(() => planStore.attacks.filter((a) => !a.excl
 
 const generateBlockLinks = computed<Array<{ to: string; label: string }>>(() => {
   const links: Array<{ to: string; label: string }> = []
-  if (!worldStore.settings.worldCode || !enemyStore.hasVillageData) links.push({ to: '/settings', label: 'Настройки мира →' })
+  if (!worldStore.settings.worldCode) links.push({ to: '/settings', label: 'Настройки мира →' })
   if (!massConfigStore.active) links.push({ to: '/mass-configs', label: 'Конфигуратор масса →' })
   return links
 })
@@ -113,12 +108,43 @@ const generateBlockReason = computed<string | null>(() => {
   return `Не хватает: ${missing.join(', ')}`
 })
 
+const needsDataRefresh = computed(() => !!worldStore.settings.worldCode && !enemyStore.hasVillageData)
+const refreshing   = ref(false)
+const refreshError = ref('')
+
+async function refreshGameData(): Promise<void> {
+  const code = worldStore.settings.worldCode
+  if (!code) return
+  refreshing.value = true
+  refreshError.value = ''
+  try {
+    const base = `/game-proxy/${code}/map`
+    const [vRes, pRes, aRes] = await Promise.all([
+      fetch(`${base}/village.txt.gz`),
+      fetch(`${base}/player.txt.gz`),
+      fetch(`${base}/ally.txt.gz`),
+    ])
+    if (!vRes.ok) throw new Error(`village.txt: HTTP ${vRes.status}`)
+    if (!pRes.ok) throw new Error(`player.txt: HTTP ${pRes.status}`)
+    if (!aRes.ok) throw new Error(`ally.txt: HTTP ${aRes.status}`)
+    const [vBlob, pBlob, aBlob] = await Promise.all([vRes.blob(), pRes.blob(), aRes.blob()])
+    await Promise.all([
+      enemyStore.loadVillageFile(new File([vBlob], 'village.txt.gz')),
+      enemyStore.loadPlayerFile(new File([pBlob], 'player.txt.gz')),
+      enemyStore.loadAllyFile(new File([aBlob], 'ally.txt.gz')),
+    ])
+    planStore.resolveAllFromMap()
+  } catch (err) {
+    refreshError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    refreshing.value = false
+  }
+}
+
 const canGenerate = computed(() => generateBlockReason.value === null)
 
 const lastGeneratedAt = ref<string>('')
 const justGenerated   = ref(false)
-const showSpecialOffWarning = ref(false)
-const specialOffWarningDismissed = ref(false)
 const importError = ref<string>('')
 
 async function onImportPlan(e: Event) {
@@ -134,17 +160,7 @@ async function onImportPlan(e: Event) {
   ;(e.target as HTMLInputElement).value = ''
 }
 
-const unassignedSpecialOffs = computed(() => {
-  const pool = planStore.offPoolStats
-  if (pool.breachPal + pool.palOnly + pool.breachOnly === 0) return false
-  const totalPal    = planStore.targets.reduce((s, t) => s + (t.palOffCount ?? 0), 0)
-  const totalBreach = planStore.targets.reduce((s, t) => s + (t.breachOffCount ?? 0), 0)
-  return (pool.breachPal + pool.palOnly > 0 && totalPal === 0) ||
-         (pool.breachPal + pool.breachOnly > 0 && totalBreach === 0)
-})
-
 function doGenerate(): void {
-  showSpecialOffWarning.value = false
   planStore.resolveAllFromMap()
   planStore.generate()
   resultsPanel.value?.expandAll(planStore.attacksByPlayer.keys())
@@ -161,10 +177,6 @@ function onFillOffs(): void {
 
 function onGenerate(): void {
   if (!canGenerate.value) return
-  if (unassignedSpecialOffs.value && !specialOffWarningDismissed.value) {
-    showSpecialOffWarning.value = true
-    return
-  }
   doGenerate()
 }
 </script>
@@ -219,21 +231,6 @@ function onGenerate(): void {
   color: $text-dim;
 }
 
-.special-off-warning {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  font-size: 0.85rem;
-  color: $orange;
-  padding: 0.4rem 0.75rem;
-  border: 1px solid rgba(220, 120, 40, 0.4);
-  border-radius: 6px;
-  background: rgba(220, 120, 40, 0.07);
-  width: 100%;
-  margin-top: 0.5rem;
-}
-
 .blocked-icon { color: $orange; }
 
 .blocked-link {
@@ -241,6 +238,23 @@ function onGenerate(): void {
   text-decoration: none;
   font-weight: 600;
   &:hover { text-decoration: underline; }
+}
+
+.blocked-btn {
+  background: none;
+  border: 1px solid a($accent, 0.4);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: border-color 0.15s;
+  &:hover:not(:disabled) { border-color: $accent; text-decoration: none; }
+  &:disabled { opacity: 0.55; cursor: default; }
+}
+
+.refresh-error {
+  color: $accent;
+  font-size: 0.8rem;
 }
 
 .generate-stat {

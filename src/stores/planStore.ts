@@ -36,19 +36,6 @@ export type GenerationIssueType =
 
 export type OffsShortReason = 'pool_depleted' | 'night_excluded' | 'no_eligible'
 
-// ---------------------------------------------------------------------------
-// Off-pool tagging
-// ---------------------------------------------------------------------------
-
-export type OffTag = 'breach+pal' | 'pal_off' | 'breach_off' | 'full_off'
-
-export interface OffPoolStats {
-  breachPal:   number   // breach + paladin
-  palOnly:     number   // full off + paladin (no breach)
-  breachOnly:  number   // breach, no paladin
-  fullOnly:    number   // regular full off
-}
-
 export interface GenerationIssue {
   targetCoords: string
   type: GenerationIssueType
@@ -116,8 +103,6 @@ export interface Target {
   enemyPlayer?: string   // owner player name (auto-filled from village map or manual)
   enemyAllyTag?: string  // owner tribe tag
   label?: string
-  palOffCount?: number      // how many pal-offs (breach+pal / pal_off) to assign
-  breachOffCount?: number   // how many breach-offs (breach_off) to assign separately
   nobleVillageCoords?: string  // manual noble village assignment
 }
 
@@ -150,7 +135,6 @@ export interface Attack {
 
 export interface PlayerData {
   player: string
-  offPaladins: number   // how many offensive paladin-offs player can send
   totalNobles: number   // total nobles player can build across all villages
 }
 
@@ -196,25 +180,6 @@ function totalPop(c: AttackComposition, pop: Record<string, number>): number {
   return (Object.keys(c) as Array<keyof AttackComposition>).reduce((sum, k) => sum + c[k] * (pop[k] ?? 1), 0)
 }
 
-// Flexible green escort: fill axe/light to targets, then heavy/spear/sword up to max.
-// Returns null (without mutating pool) if total escort < greenMin.
-function buildFlexGreen(a: VillageTroops, role: VillageRole): AttackComposition | null {
-  const max         = role.greenMax        ?? 999
-  const targetAxe   = role.greenTargetAxe  ?? 500
-  const targetLight = role.greenTargetLight ?? 250
-  const minEscort   = role.greenMin        ?? 0
-
-  const axeTake   = Math.min(a.axe,   targetAxe,   max)
-  const lightTake = Math.min(a.light, targetLight,  max - axeTake)
-
-  if (axeTake + lightTake < minEscort) return null
-
-  a.axe -= axeTake; a.light -= lightTake; a.snob -= 1
-
-  const c = emptyComposition()
-  c.snob = 1; c.axe = axeTake; c.light = lightTake
-  return c
-}
 
 function coordsToXY(coords: string): { x: number; y: number } | null {
   const m = coords.match(/^(\d+)\|(\d+)$/)
@@ -229,50 +194,6 @@ function genId(): string {
 // offFarm: offensive farm power — axe + LC + ram (catapult is a separate mechanic)
 function calcOffFarm(troops: { axe: number; light: number; ram: number }, pop: UnitPop): number {
   return troops.axe * pop.axe + troops.light * pop.light + troops.ram * pop.ram
-}
-
-// Assigns an OffTag to every full-off-capable village of each player.
-// Paladins are assigned: first to breach-capable villages (strongest first),
-// then to regular full-offs (strongest first).
-function buildPoolTags(
-  villages: Village[],
-  pdList: PlayerData[],
-  fullOffMinOffFarm: number,
-  breachMinRams: number,
-  unitPop: UnitPop,
-): Map<string, OffTag> {
-  const tags   = new Map<string, OffTag>()
-  const palMap = new Map<string, number>()
-  for (const pd of pdList) palMap.set(pd.player, pd.offPaladins)
-
-  const byPlayer = new Map<string, Village[]>()
-  for (const v of villages) {
-    if (!byPlayer.has(v.player)) byPlayer.set(v.player, [])
-    byPlayer.get(v.player)!.push(v)
-  }
-
-  const str = (v: Village) =>
-    v.troops.axe + v.troops.light + v.troops.heavy + v.troops.ram
-
-  for (const [player, pvils] of byPlayer) {
-    let palsLeft = palMap.get(player) ?? 0
-    const breach: Village[] = []
-    const full:   Village[] = []
-
-    for (const v of pvils) {
-      if (calcOffFarm(v.troops, unitPop) >= fullOffMinOffFarm) {
-        if (v.troops.ram >= breachMinRams) breach.push(v)
-        else                               full.push(v)
-      }
-    }
-
-    breach.sort((a, b) => str(b) - str(a) || b.troops.ram - a.troops.ram)
-    full.sort((a, b)   => str(b) - str(a))
-
-    for (const v of breach) tags.set(v.coords, palsLeft-- > 0 ? 'breach+pal' : 'breach_off')
-    for (const v of full)   tags.set(v.coords, palsLeft-- > 0 ? 'pal_off'    : 'full_off')
-  }
-  return tags
 }
 
 // Determine speed unit for a composition (slowest meaningful unit for attack type)
@@ -419,11 +340,11 @@ export const usePlanStore = defineStore('plan', () => {
   const spamNobleTargets = ref<Target[]>(loadSpamNobleTargets())
   const playerData = ref<PlayerData[]>(loadPlayerData())
   const watchtowerVillages = ref<WatchtowerVillage[]>(loadWatchtowerVillages())
-  const offDistribution = ref<'default' | 'fair'>(
-    (localStorage.getItem(LS_OFF_DISTRIBUTION) as 'default' | 'fair' | null) ?? 'default',
+  const offDistribution = ref<'default' | 'fair' | 'far_first'>(
+    (localStorage.getItem(LS_OFF_DISTRIBUTION) as 'default' | 'fair' | 'far_first' | null) ?? 'far_first',
   )
 
-  function setOffDistribution(mode: 'default' | 'fair') {
+  function setOffDistribution(mode: 'default' | 'fair' | 'far_first') {
     offDistribution.value = mode
     localStorage.setItem(LS_OFF_DISTRIBUTION, mode)
   }
@@ -587,14 +508,14 @@ export const usePlanStore = defineStore('plan', () => {
     if (existing) {
       Object.assign(existing, data)
     } else {
-      playerData.value.push({ player, offPaladins: 0, totalNobles: 0, ...data })
+      playerData.value.push({ player, totalNobles: 0, ...data })
     }
     savePlayerData()
   }
 
   function getPlayerData(player: string): PlayerData {
     return playerData.value.find((p) => p.player === player)
-      ?? { player, offPaladins: 0, totalNobles: 0 }
+      ?? { player, totalNobles: 0 }
   }
 
   const playerDataMap = computed(() => {
@@ -719,7 +640,6 @@ export const usePlanStore = defineStore('plan', () => {
     const now = new Date()
     const result: Attack[] = []
     const newNoblePlacements: NoblePlacement[] = []
-    const newPaladinPlacements: PaladinPlacement[] = []
     const genIssues: GenerationIssue[] = []
 
     // Pool: available troops per village (consumed as attacks are assigned)
@@ -727,32 +647,19 @@ export const usePlanStore = defineStore('plan', () => {
     for (const v of villages) pool.set(v.coords, { ...v.troops })
 
     // Virtual noble pool keyed by player — capacity depends on noblePollMode:
-    //   real:         sum of built snobs from CSV
-    //   real_virtual: max(built, totalNobles) — field = total known; use whichever is larger
-    //   virtual:      totalNobles only — fully trust the field, ignore built
+    //   real:    sum of built snobs from CSV
+    //   virtual: totalNobles only — fully trust the imported field, ignore CSV
     const noblePollMode = settings.noblePollMode ?? 'real'
     const virtualNoblePool = new Map<string, number>()
     for (const v of villages) {
       virtualNoblePool.set(v.player, (virtualNoblePool.get(v.player) ?? 0) + v.troops.snob)
     }
-    if (noblePollMode === 'real_virtual') {
-      for (const pd of playerData.value) {
-        if (!pd.totalNobles) continue
-        const built = virtualNoblePool.get(pd.player) ?? 0
-        virtualNoblePool.set(pd.player, Math.max(built, pd.totalNobles))
-      }
-    } else if (noblePollMode === 'virtual') {
+    if (noblePollMode === 'virtual') {
       for (const pd of playerData.value) {
         if (!pd.totalNobles) continue
         virtualNoblePool.set(pd.player, pd.totalNobles)
       }
     }
-
-    // Pool tags for pal/breach priority (based on original troop counts)
-    const poolTags = buildPoolTags(
-      villages, playerData.value,
-      presStore.fullOffMinOffFarm, presStore.breachMinRams, settings.unitPop,
-    )
 
     // Attacker points per player (for morale)
     const attackerPoints = new Map<string, number>()
@@ -875,9 +782,7 @@ export const usePlanStore = defineStore('plan', () => {
         const builtSnob = villages
           .filter(v => v.player === pd.player)
           .reduce((s, v) => s + (pool.get(v.coords)?.snob ?? 0), 0)
-        // real_virtual: totalNobles is total; budget = max(0, total - built)
-        // virtual: totalNobles is total; full value is the budget (built ignored)
-        const budget = noblePollMode === 'virtual' ? pd.totalNobles : pd.totalNobles - builtSnob
+        const budget = pd.totalNobles - builtSnob
         if (budget > 0) virtualNobleBudget.set(pd.player, budget)
       }
     }
@@ -927,13 +832,6 @@ export const usePlanStore = defineStore('plan', () => {
       return null
     }
 
-    // Pal/breach-tagged villages are reserved exclusively for the full_off slot.
-    // Pre-marked upfront so targets processed before a pal target can't steal nobles from them.
-    const dedicatedVillages = new Set<string>()
-    for (const [coords, tag] of poolTags) {
-      if (tag !== 'full_off') dedicatedVillages.add(coords)
-    }
-
     // Each noble village can be the source of at most one parovoz (one target).
     // Sending nobles from the same village to multiple targets reveals weakness to the enemy.
     const usedNobleVillages = new Set<string>()
@@ -960,14 +858,14 @@ export const usePlanStore = defineStore('plan', () => {
       }
       if (r.type === 'full_off')  return 2
       if (r.type === 'half_off')  return 3
-      if (r.type === 'spike')     return 4
-      return 10  // green_off, spam — own pool, doesn't compete
+      return 10  // spam — own pool, doesn't compete
     }
 
     // ── Pre-compute per-target data ───────────────────────────────────────
     // Only targets with valid coords participate in global assignment
     interface TargetData {
       byDist: Village[]
+      byDistFar: Village[]
       nobleVillages: Village[]
       distMap: Map<string, number>
       wtMap: Map<string, number>
@@ -991,8 +889,9 @@ export const usePlanStore = defineStore('plan', () => {
         const sb = (wtMap.get(b.coords) ?? 0) + (distMap.get(b.coords) ?? 0)
         return sa - sb
       })
+      const byDistFar = [...byDist].reverse()
       const nobleVillages = byDist.filter(v => (distMap.get(v.coords) ?? 0) <= settings.snobMaxDist)
-      targetDataMap.set(target.id, { byDist, nobleVillages, distMap, wtMap })
+      targetDataMap.set(target.id, { byDist, byDistFar, nobleVillages, distMap, wtMap })
     }
 
     // Score for (village, target) pair used in global assignment
@@ -1024,48 +923,15 @@ export const usePlanStore = defineStore('plan', () => {
 
       if (role.type === 'full_off') {
         // ── Build per-target ordered candidate lists ───────────────────
-        const strengthSort = (x: Village, y: Village) => {
-          const sx = x.troops.axe + x.troops.light + x.troops.heavy + x.troops.ram
-          const sy = y.troops.axe + y.troops.light + y.troops.heavy + y.troops.ram
-          return sy - sx || y.troops.ram - x.troops.ram
-        }
-
-        type TaggedVillage = { village: Village; tag: OffTag | undefined }
-        const candidatesByTarget = new Map<string, TaggedVillage[]>()
+        const candidatesByTarget = new Map<string, Village[]>()
         for (const target of gTargets) {
-          const { byDist } = targetDataMap.get(target.id)!
-          const tPal    = target.palOffCount    ?? 0
-          const tBreach = target.breachOffCount ?? 0
-
-          const bpList: Village[] = [], poList: Village[] = [], boList: Village[] = [], foList: Village[] = []
-          for (const v of byDist) {
-            const tag = poolTags.get(v.coords)
-            if      (tag === 'breach+pal') bpList.push(v)
-            else if (tag === 'pal_off')    poList.push(v)
-            else if (tag === 'breach_off') boList.push(v)
-            else if (tag === 'full_off')   foList.push(v)
-          }
-
-          const bpPriCount   = Math.min(bpList.length, Math.max(tPal, tBreach))
-          const palFromPo    = Math.max(0, tPal    - bpPriCount)
-          const breachFromBo = Math.max(0, tBreach - bpPriCount)
-
-          const ordered: TaggedVillage[] = [
-            ...bpList.slice(0, bpPriCount).sort(strengthSort),
-            ...poList.slice(0, palFromPo).sort(strengthSort),
-            ...boList.slice(0, breachFromBo).sort(strengthSort),
-            ...foList,
-            ...bpList.slice(bpPriCount),
-            ...poList.slice(palFromPo),
-            ...boList.slice(breachFromBo),
-          ].map(v => ({ village: v, tag: poolTags.get(v.coords) as OffTag | undefined }))
-
-          candidatesByTarget.set(target.id, ordered)
+          const td = targetDataMap.get(target.id)!
+          candidatesByTarget.set(target.id, offDistribution.value === 'far_first' ? td.byDistFar : td.byDist)
         }
 
         const pointers = new Map<string, number>()
 
-        if (offDistribution.value === 'fair') {
+        if (offDistribution.value !== 'default') {
           // Round-robin: each round every unfulfilled target picks its next available candidate
           let anyAssigned = true
           while (anyAssigned) {
@@ -1078,7 +944,7 @@ export const usePlanStore = defineStore('plan', () => {
               const slotArrT = slotArrTMap.get(target.id)!
               let assigned = false
               while (ptr < candidates.length && !assigned) {
-                const { village: v, tag } = candidates[ptr++]
+                const v = candidates[ptr++]
                 if (usedVillages.has(v.coords)) continue
                 const a = pool.get(v.coords)!
                 if (calcOffFarm(a, settings.unitPop) < presStore.fullOffMinOffFarm || a.ram === 0) {
@@ -1087,23 +953,17 @@ export const usePlanStore = defineStore('plan', () => {
                 if (nightExcludes(v, target, 'off', slotArrT)) {
                   targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
                 }
-                const isPal = tag === 'breach+pal' || tag === 'pal_off'
-                const label = tag === 'breach+pal' ? `${preset.name} (+Пал+Проб)` : tag === 'pal_off' ? `${preset.name} (+Пал)` : tag === 'breach_off' ? `${preset.name} (+Проб)` : preset.name
-                const atkType: AttackType = isPal ? 'paladin_off' : 'off'
                 const presetColor = preset.color ?? defaultColorForRole(preset.role.type, preset.role)
                 const c = emptyComposition()
                 c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
-                if (isPal) { c.knight = 1; a.knight = Math.max(0, a.knight - 1) }
                 if (role.nobleIncluded && a.snob > 0) { c.snob = 1; a.snob -= 1 }
                 a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
-                if (!pushAtk(atkType, v, target, c, slotArrT, label, presetColor)) {
+                if (!pushAtk('off', v, target, c, slotArrT, preset.name, presetColor)) {
                   a.axe = c.axe; a.light = c.light; a.heavy = c.heavy; a.ram = c.ram
-                  if (isPal) a.knight = (a.knight ?? 0) + 1
                   if (role.nobleIncluded && c.snob > 0) a.snob += c.snob
                   continue
                 }
                 usedVillages.add(v.coords)
-                if (isPal) newPaladinPlacements.push({ village: v, forTarget: target })
                 targetFilled.set(target.id, (targetFilled.get(target.id) ?? 0) + 1)
                 anyAssigned = true
                 assigned = true
@@ -1113,17 +973,17 @@ export const usePlanStore = defineStore('plan', () => {
           }
         } else {
           // Default (greedy): globally sorted by score
-          type Pair = { target: Target; village: Village; tag: OffTag | undefined; slotArrT: Date; score: number }
+          type Pair = { target: Target; village: Village; slotArrT: Date; score: number }
           const allPairs: Pair[] = []
           for (const target of gTargets) {
             const slotArrT = slotArrTMap.get(target.id)!
-            for (const { village: v, tag } of candidatesByTarget.get(target.id) ?? []) {
-              allPairs.push({ target, village: v, tag, slotArrT, score: pairScore(v.coords, target.id) })
+            for (const v of candidatesByTarget.get(target.id) ?? []) {
+              allPairs.push({ target, village: v, slotArrT, score: pairScore(v.coords, target.id) })
             }
           }
           allPairs.sort((a, b) => a.score - b.score)
 
-          for (const { target, village: v, tag, slotArrT } of allPairs) {
+          for (const { target, village: v, slotArrT } of allPairs) {
             const filled = targetFilled.get(target.id) ?? 0
             if (filled >= slot.count) continue
             if (usedVillages.has(v.coords)) continue
@@ -1134,116 +994,17 @@ export const usePlanStore = defineStore('plan', () => {
             if (nightExcludes(v, target, 'off', slotArrT)) {
               targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
             }
-            const isPal = tag === 'breach+pal' || tag === 'pal_off'
-            const label = tag === 'breach+pal' ? `${preset.name} (+Пал+Проб)` : tag === 'pal_off' ? `${preset.name} (+Пал)` : tag === 'breach_off' ? `${preset.name} (+Проб)` : preset.name
-            const atkType: AttackType = isPal ? 'paladin_off' : 'off'
             const presetColor = preset.color ?? defaultColorForRole(preset.role.type, preset.role)
             const c = emptyComposition()
             c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
-            if (isPal) { c.knight = 1; a.knight = Math.max(0, a.knight - 1) }
             if (role.nobleIncluded && a.snob > 0) { c.snob = 1; a.snob -= 1 }
             a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
-            if (!pushAtk(atkType, v, target, c, slotArrT, label, presetColor)) {
+            if (!pushAtk('off', v, target, c, slotArrT, preset.name, presetColor)) {
               a.axe = c.axe; a.light = c.light; a.heavy = c.heavy; a.ram = c.ram
-              if (isPal) a.knight = (a.knight ?? 0) + 1
               if (role.nobleIncluded && c.snob > 0) a.snob += c.snob
               continue
             }
             usedVillages.add(v.coords)
-            if (isPal) newPaladinPlacements.push({ village: v, forTarget: target })
-            targetFilled.set(target.id, filled + 1)
-          }
-        }
-
-      } else if (role.type === 'spike') {
-        const sRams  = role.spikeRams  ?? 100
-        const sSpy   = role.spikeSpy   ?? 1
-        const sAxe   = role.spikeAxe   ?? 0
-        const sLc    = role.spikeLight ?? 899
-        const sHeavy = role.spikeHeavy ?? 0
-        const sCat   = role.spikeCat   ?? 0
-
-        if (offDistribution.value === 'fair') {
-          // Round-robin: spike does NOT use usedVillages (troops not fully consumed)
-          const pointers2 = new Map<string, number>()
-          let anyAssigned = true
-          while (anyAssigned) {
-            anyAssigned = false
-            for (const target of gTargets) {
-              const filled = targetFilled.get(target.id) ?? 0
-              if (filled >= slot.count) continue
-              const { byDist } = targetDataMap.get(target.id)!
-              let ptr = pointers2.get(target.id) ?? 0
-              const slotArrT = slotArrTMap.get(target.id)!
-              let assigned = false
-              while (ptr < byDist.length && !assigned) {
-                const v = byDist[ptr++]
-                if (dedicatedVillages.has(v.coords)) continue
-                if (nightExcludes(v, target, 'off', slotArrT)) {
-                  targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
-                }
-                const a = pool.get(v.coords)!
-                if (sRams > 0 && a.ram < Math.min(sRams, 10)) {
-                  targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue
-                }
-                const c = emptyComposition()
-                c.ram      = Math.min(a.ram,      sRams)
-                c.spy      = Math.min(a.spy,      sSpy)
-                c.axe      = Math.min(a.axe,      sAxe)
-                c.light    = Math.min(a.light,    sLc)
-                c.heavy    = Math.min(a.heavy,    sHeavy)
-                c.catapult = Math.min(a.catapult, sCat)
-                a.ram -= c.ram; a.spy -= c.spy; a.axe -= c.axe
-                a.light -= c.light; a.heavy -= c.heavy; a.catapult -= c.catapult
-                if (!pushAtk('off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
-                  a.ram += c.ram; a.spy += c.spy; a.axe += c.axe
-                  a.light += c.light; a.heavy += c.heavy; a.catapult += c.catapult
-                  continue
-                }
-                targetFilled.set(target.id, (targetFilled.get(target.id) ?? 0) + 1)
-                anyAssigned = true
-                assigned = true
-              }
-              pointers2.set(target.id, ptr)
-            }
-          }
-        } else {
-          // Default (greedy): globally sorted
-          type SpikePair = { target: Target; village: Village; slotArrT: Date; score: number }
-          const allPairs: SpikePair[] = []
-          for (const target of gTargets) {
-            const { byDist } = targetDataMap.get(target.id)!
-            const slotArrT = slotArrTMap.get(target.id)!
-            for (const v of byDist) {
-              if (dedicatedVillages.has(v.coords)) continue
-              allPairs.push({ target, village: v, slotArrT, score: pairScore(v.coords, target.id) })
-            }
-          }
-          allPairs.sort((a, b) => a.score - b.score)
-          for (const { target, village: v, slotArrT } of allPairs) {
-            const filled = targetFilled.get(target.id) ?? 0
-            if (filled >= slot.count) continue
-            if (nightExcludes(v, target, 'off', slotArrT)) {
-              targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
-            }
-            const a = pool.get(v.coords)!
-            if (sRams > 0 && a.ram < Math.min(sRams, 10)) {
-              targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue
-            }
-            const c = emptyComposition()
-            c.ram      = Math.min(a.ram,      sRams)
-            c.spy      = Math.min(a.spy,      sSpy)
-            c.axe      = Math.min(a.axe,      sAxe)
-            c.light    = Math.min(a.light,    sLc)
-            c.heavy    = Math.min(a.heavy,    sHeavy)
-            c.catapult = Math.min(a.catapult, sCat)
-            a.ram -= c.ram; a.spy -= c.spy; a.axe -= c.axe
-            a.light -= c.light; a.heavy -= c.heavy; a.catapult -= c.catapult
-            if (!pushAtk('off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
-              a.ram += c.ram; a.spy += c.spy; a.axe += c.axe
-              a.light += c.light; a.heavy += c.heavy; a.catapult += c.catapult
-              continue
-            }
             targetFilled.set(target.id, filled + 1)
           }
         }
@@ -1252,7 +1013,7 @@ export const usePlanStore = defineStore('plan', () => {
         const midMin = presStore.halfOffMinOffFarm
         const midMax = presStore.fullOffMinOffFarm
 
-        if (offDistribution.value === 'fair') {
+        if (offDistribution.value !== 'default') {
           const pointers3 = new Map<string, number>()
           let anyAssigned = true
           while (anyAssigned) {
@@ -1260,13 +1021,13 @@ export const usePlanStore = defineStore('plan', () => {
             for (const target of gTargets) {
               const filled = targetFilled.get(target.id) ?? 0
               if (filled >= slot.count) continue
-              const { byDist } = targetDataMap.get(target.id)!
+              const td3 = targetDataMap.get(target.id)!
+              const halfList = offDistribution.value === 'far_first' ? td3.byDistFar : td3.byDist
               let ptr = pointers3.get(target.id) ?? 0
               const slotArrT = slotArrTMap.get(target.id)!
               let assigned = false
-              while (ptr < byDist.length && !assigned) {
-                const v = byDist[ptr++]
-                if (dedicatedVillages.has(v.coords)) continue
+              while (ptr < halfList.length && !assigned) {
+                const v = halfList[ptr++]
                 if (usedVillages.has(v.coords)) continue
                 const a = pool.get(v.coords)!
                 const of = calcOffFarm(a, settings.unitPop)
@@ -1307,7 +1068,6 @@ export const usePlanStore = defineStore('plan', () => {
             const { byDist } = targetDataMap.get(target.id)!
             const slotArrT = slotArrTMap.get(target.id)!
             for (const v of byDist) {
-              if (dedicatedVillages.has(v.coords)) continue
               allPairs.push({ target, village: v, slotArrT, score: pairScore(v.coords, target.id) })
             }
           }
@@ -1348,7 +1108,7 @@ export const usePlanStore = defineStore('plan', () => {
         const miniMin = presStore.smallOffMinOffFarm
         const miniMax = presStore.halfOffMinOffFarm
 
-        if (offDistribution.value === 'fair') {
+        if (offDistribution.value !== 'default') {
           const pointersMini = new Map<string, number>()
           let anyAssigned = true
           while (anyAssigned) {
@@ -1356,13 +1116,13 @@ export const usePlanStore = defineStore('plan', () => {
             for (const target of gTargets) {
               const filled = targetFilled.get(target.id) ?? 0
               if (filled >= slot.count) continue
-              const { byDist } = targetDataMap.get(target.id)!
+              const tdMini = targetDataMap.get(target.id)!
+              const miniList = offDistribution.value === 'far_first' ? tdMini.byDistFar : tdMini.byDist
               let ptr = pointersMini.get(target.id) ?? 0
               const slotArrT = slotArrTMap.get(target.id)!
               let assigned = false
-              while (ptr < byDist.length && !assigned) {
-                const v = byDist[ptr++]
-                if (dedicatedVillages.has(v.coords)) continue
+              while (ptr < miniList.length && !assigned) {
+                const v = miniList[ptr++]
                 if (usedVillages.has(v.coords)) continue
                 const a = pool.get(v.coords)!
                 const of = calcOffFarm(a, settings.unitPop)
@@ -1394,7 +1154,6 @@ export const usePlanStore = defineStore('plan', () => {
             const { byDist } = targetDataMap.get(target.id)!
             const slotArrT = slotArrTMap.get(target.id)!
             for (const v of byDist) {
-              if (dedicatedVillages.has(v.coords)) continue
               allPairs.push({ target, village: v, slotArrT, score: pairScore(v.coords, target.id) })
             }
           }
@@ -1441,7 +1200,7 @@ export const usePlanStore = defineStore('plan', () => {
         // Noble custom_off: village is exclusively assigned to one target (usedNobleVillages)
         const isNobleSlot = snobSpec > 0
 
-        if (offDistribution.value === 'fair') {
+        if (offDistribution.value !== 'default') {
           const pointers4 = new Map<string, number>()
           let anyAssigned = true
           while (anyAssigned) {
@@ -1449,28 +1208,28 @@ export const usePlanStore = defineStore('plan', () => {
             for (const target of gTargets) {
               const filled = targetFilled.get(target.id) ?? 0
               if (filled >= slot.count) continue
-              const { byDist } = targetDataMap.get(target.id)!
+              const td4 = targetDataMap.get(target.id)!
+              const customList = (offDistribution.value === 'far_first' && !isNobleSlot) ? td4.byDistFar : td4.byDist
               let ptr = pointers4.get(target.id) ?? 0
               const slotArrT = slotArrTMap.get(target.id)!
               let assigned = false
-              while (ptr < byDist.length && !assigned) {
-                const v = byDist[ptr++]
-                if (dedicatedVillages.has(v.coords)) continue
+              while (ptr < customList.length && !assigned) {
+                const v = customList[ptr++]
                 if (!isNobleSlot && usedVillages.has(v.coords)) continue
                 if (isNobleSlot && usedNobleVillages.has(v.coords)) continue
                 const a = pool.get(v.coords)!
-                if (snobSpec <= 0) {
+                {
                   let hasEnough = true
                   for (const k of unitKeys) {
-                    if (k === 'snob') continue
                     const pct  = (unitPct[k] as number | undefined) ?? 0
                     const spec = (units[k] as number | undefined) ?? -1
-                    if (pct > 0) continue  // pct always passes — take what's available
-                    if (spec > 0 && a[k] < spec) { hasEnough = false; break }
+                    if (pct > 0) continue
+                    if (spec <= 0) continue
+                    const av = k === 'snob' ? (noblePollMode === 'real' ? a[k] : (virtualNoblePool.get(v.player) ?? 0)) : a[k]
+                    if (av < spec) { hasEnough = false; break }
                   }
                   if (!hasEnough) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
                 }
-                if (snobSpec > 0 && (virtualNoblePool.get(v.player) ?? 0) < snobSpec) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
                 const c = emptyComposition()
                 for (const k of unitKeys) {
                   if (k === 'snob') continue
@@ -1526,7 +1285,6 @@ export const usePlanStore = defineStore('plan', () => {
             const { byDist } = targetDataMap.get(target.id)!
             const slotArrT = slotArrTMap.get(target.id)!
             for (const v of byDist) {
-              if (dedicatedVillages.has(v.coords)) continue
               allPairs.push({ target, village: v, slotArrT, score: pairScore(v.coords, target.id) })
             }
           }
@@ -1537,18 +1295,18 @@ export const usePlanStore = defineStore('plan', () => {
             if (!isNobleSlot && usedVillages.has(v.coords)) continue
             if (isNobleSlot && usedNobleVillages.has(v.coords)) continue
             const a = pool.get(v.coords)!
-            if (snobSpec <= 0) {
+            {
               let hasEnough = true
               for (const k of unitKeys) {
-                if (k === 'snob') continue
                 const pct  = (unitPct[k] as number | undefined) ?? 0
                 const spec = (units[k] as number | undefined) ?? -1
                 if (pct > 0) continue
-                if (spec > 0 && a[k] < spec) { hasEnough = false; break }
+                if (spec <= 0) continue
+                const av = k === 'snob' ? (virtualNoblePool.get(v.player) ?? 0) : a[k]
+                if (av < spec) { hasEnough = false; break }
               }
               if (!hasEnough) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
             }
-            if (snobSpec > 0 && (virtualNoblePool.get(v.player) ?? 0) < snobSpec) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
             const c = emptyComposition()
             for (const k of unitKeys) {
               if (k === 'snob') continue
@@ -1673,7 +1431,6 @@ export const usePlanStore = defineStore('plan', () => {
             let left = slot.count
             for (const v of byDist) {
               if (left <= 0) break
-              if (dedicatedVillages.has(v.coords)) continue
               const a = pool.get(v.coords)!
               const c = buildSpamComp(a)
               if (!c) continue
@@ -1692,38 +1449,8 @@ export const usePlanStore = defineStore('plan', () => {
           }
         }
 
-      } else if (role.type === 'green_off') {
-        // Sequential per target — preserve existing green_off logic
-        for (const target of validTargets) {
-          const { nobleVillages } = targetDataMap.get(target.id)!
-          const slotArrT = slotArrTMap.get(target.id)!
-          let left = slot.count
-          while (left > 0) {
-            const idx  = slot.count - left
-            const arrT = new Date(slotArrT.getTime() + idx * settings.snobIntervalMs)
-            const nv = pickNobleVillage(1, nobleVillages, target, arrT)
-            if (!nv) break
-            const a = pool.get(nv.coords)!
-            let c: AttackComposition | null
-            if (role.greenVariant === 'flexible') {
-              c = buildFlexGreen(a, role)
-            } else {
-              const eu = role.greenVariant === 'axes' ? 'axe' : 'light'
-              c = emptyComposition()
-              c.snob = 1; c[eu] = Math.min(a[eu], 999)
-              if (role.greenWithRams !== false) c.ram = Math.min(a.ram, Math.max(0, 999 - c.snob - c[eu]))
-              a.snob -= 1; a[eu] -= c[eu]; a.ram = Math.max(0, a.ram - c.ram)
-            }
-            if (!c) continue
-            pushAtk('noble_green_strong', nv, target, c, arrT)
-            trackNoble(nv)
-            left--
-          }
-          if (slot.count > 0 && left > 0) genIssues.push({ targetCoords: target.coords, type: 'NOBLES_SHORT', requested: slot.count, generated: slot.count - left, slotName: preset.name })
-        }
-
       } else {
-        // Global assignment: full_off, half_off, spike, custom_off
+        // Global assignment: full_off, half_off, custom_off
         globalAssignSlot(slot, role, preset, validTargets, slotArrTMap)
       }
     }
@@ -1731,7 +1458,6 @@ export const usePlanStore = defineStore('plan', () => {
     result.sort((a, b) => a.sendTime.getTime() - b.sendTime.getTime())
     attacks.value = result
     noblePlacements.value = newNoblePlacements
-    paladinPlacements.value = newPaladinPlacements
     generationIssues.value = genIssues
 
     // Noble recommendations: how many nobles each player needs to execute the plan
@@ -2006,22 +1732,6 @@ export const usePlanStore = defineStore('plan', () => {
     return m
   })
 
-  const offPoolStats = computed<OffPoolStats>(() => {
-    const presStore = usePresetsStore()
-    const tags = buildPoolTags(
-      villagesStore.villages, playerData.value,
-      presStore.fullOffMinOffFarm, presStore.breachMinRams, useWorldStore().settings.unitPop,
-    )
-    const stats: OffPoolStats = { breachPal: 0, palOnly: 0, breachOnly: 0, fullOnly: 0 }
-    for (const tag of tags.values()) {
-      if      (tag === 'breach+pal') stats.breachPal++
-      else if (tag === 'pal_off')    stats.palOnly++
-      else if (tag === 'breach_off') stats.breachOnly++
-      else                           stats.fullOnly++
-    }
-    return stats
-  })
-
   // ── Pool usage stats (total vs used after generation) ────────────────────
   const poolUsageStats = computed(() => {
     const presStore = usePresetsStore()
@@ -2181,10 +1891,11 @@ export const usePlanStore = defineStore('plan', () => {
     const usedVillages = new Set<string>()
     const orderedByTarget = new Map<string, UnusedEntry[]>()
     for (const target of validTargets) {
-      orderedByTarget.set(target.id, [...unused].sort((a, b) => score(a.v.coords, target.id) - score(b.v.coords, target.id)))
+      const sorted = [...unused].sort((a, b) => score(a.v.coords, target.id) - score(b.v.coords, target.id))
+      orderedByTarget.set(target.id, offDistribution.value === 'far_first' ? sorted.reverse() : sorted)
     }
 
-    if (offDistribution.value === 'fair') {
+    if (offDistribution.value !== 'default') {
       // Round-robin: each target picks its nearest available village per round
       const pointers = new Map<string, number>()
       let anyAssigned = true
@@ -2337,8 +2048,7 @@ export const usePlanStore = defineStore('plan', () => {
       for (const pd of playerData.value) {
         if (!pd.totalNobles) continue
         const built = perPlayer.get(pd.player) ?? 0
-        if (noblePollMode === 'virtual') totalNobles += pd.totalNobles - built
-        else totalNobles = totalNobles - built + Math.max(built, pd.totalNobles)
+        totalNobles += pd.totalNobles - built
       }
     }
     // Noble coverage: 1 village = 1 parovoz → count villages with snobs (not sum of snobs)
@@ -2360,11 +2070,10 @@ export const usePlanStore = defineStore('plan', () => {
       if (role.type === 'full_off')  poolSize = fullOffVils
       else if (role.type === 'half_off')  poolSize = halfOffVils
       else if (role.type === 'mini_off')  poolSize = miniOffVils
-      else if (role.type === 'green_off') poolSize = nobleVilsVirtual
       else if (role.type === 'custom_off') {
         const snobSpec = (role.customUnits?.snob as number | undefined) ?? -1
         poolSize = snobSpec > 0 ? nobleVilsVirtual : fullOffVils + halfOffVils + miniOffVils
-      } else continue  // spam/split: не ограничивают
+      } else continue  // spam: не ограничивает
 
       minTargets = Math.min(minTargets, Math.floor(poolSize / slot.count))
     }
@@ -2418,7 +2127,6 @@ export const usePlanStore = defineStore('plan', () => {
     openOrdersTo,
     generationIssues,
     uncoveredTargetCoords,
-    offPoolStats,
     poolUsageStats,
     coverageEstimate,
     fillRemainingOffs,

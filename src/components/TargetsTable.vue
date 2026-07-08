@@ -73,7 +73,6 @@
               v-for="t in block.targets" :key="t.id"
               :class="{
                 'row-has-tower': towerCoordsSet.has(t.coords),
-                'row-has-paloff': (t.palOffCount ?? 0) > 0,
                 'row-uncovered': planStore.uncoveredTargetCoords.has(t.coords),
               }"
             >
@@ -89,9 +88,7 @@
                   <span v-if="towerCoordsSet.has(t.coords)" class="tower-badge" :title="`Башня уровень ${targetTowerLevel(t.coords)}`">
                     <img :src="watchtowerIcon" class="tower-icon" />{{ targetTowerLevel(t.coords) }}
                   </span>
-                  <span v-if="(t.palOffCount ?? 0) > 0" class="paloff-badge" :title="`Пал-оффов: ${t.palOffCount}`">
-                    <img :src="knightIcon" class="knight-icon" />{{ t.palOffCount }}
-                  </span>
+
                 </div>
               </td>
               <td>
@@ -129,8 +126,7 @@ import { useCoordInput } from '@/composables/useCoordInput'
 import { usePlayerResolution } from '@/composables/usePlayerResolution'
 import { useTargetGroups } from '@/composables/useTargetGroups'
 import type { GroupBy } from '@/composables/useTargetGroups'
-import { UNIT_ICONS, watchtowerIcon } from '@/utils/unitIcons'
-const knightIcon = UNIT_ICONS.knight
+import { watchtowerIcon } from '@/utils/unitIcons'
 
 const planStore = usePlanStore()
 const enemyStore = useEnemyDataStore()
@@ -273,7 +269,6 @@ function onTargetFile(event: Event): void {
 .target-group-count  { color: $text-faint; font-size: 0.75rem; float: right; }
 
 .row-has-tower  { background: a($orange, 0.07) !important; border-left: 2px solid a($orange, 0.5); }
-.row-has-paloff { background: a($green,  0.07) !important; border-left: 2px solid a($green,  0.45); }
 .row-uncovered  { background: a($accent, 0.08) !important; border-left: 2px solid a($accent, 0.5); opacity: 0.7; }
 
 .coords-cell  { display: flex; align-items: center; gap: 0.4rem; }
@@ -287,15 +282,4 @@ function onTargetFile(event: Event): void {
   cursor: default;
   line-height: 1;
 }
-.paloff-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 0.72rem;
-  color: $green;
-  white-space: nowrap;
-  cursor: default;
-  margin-left: 2px;
-}
-.knight-icon { width: 14px; height: 14px; image-rendering: pixelated; }
 </style>

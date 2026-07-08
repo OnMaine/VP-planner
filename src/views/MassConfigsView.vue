@@ -271,14 +271,11 @@ const ROLE_GROUP: Record<string, string> = {
   full_off:   'Оффы',
   half_off:   'Оффы',
   mini_off:   'Оффы',
-  split:      'Оффы',
-  green_off:  'Зел. дворы',
   cat_squad:  'Каты',
-  spike:      'Колючки',
   spam:       'Спам',
   custom_off: 'Кастом',
 }
-const GROUP_ORDER = ['Оффы', 'Зел. дворы', 'Каты', 'Колючки', 'Спам', 'Кастом']
+const GROUP_ORDER = ['Оффы', 'Каты', 'Спам', 'Кастом']
 
 const presetGroups = computed<Array<{ label: string; presets: AttackPreset[] }>>(() => {
   const map = new Map<string, AttackPreset[]>()
@@ -583,7 +580,6 @@ function moveSlotDown(i: number) {
   white-space: nowrap;
 }
 .chip-off   { background: a($accent,   0.15); color: $accent;   border: 1px solid a($accent,   0.3); }
-.chip-spike { background: a($green,    0.12); color: $green;    border: 1px solid a($green,    0.3); }
 .chip-noble { background: a($purple,   0.15); color: $purple;   border: 1px solid a($purple,   0.3); }
 .chip-spam  { background: a($text-dim, 0.12); color: $text-dim; border: 1px solid a($text-dim, 0.2); }
 
@@ -703,7 +699,6 @@ function moveSlotDown(i: number) {
   border-radius: 0;
 
   &.chip-off   { color: $accent; }
-  &.chip-spike { color: $green; }
   &.chip-noble { color: $purple; }
   &.chip-spam  { color: $text-dim; }
 }

@@ -3,8 +3,8 @@
 
     <!-- Tab switcher -->
     <div class="results-tabs">
-      <button :class="['rtab', { active: tab === 'visual' }]" @click="tab = 'visual'">По игрокам</button>
       <button :class="['rtab', { active: tab === 'targets' }]" @click="tab = 'targets'">По деревням</button>
+      <button :class="['rtab', { active: tab === 'visual' }]" @click="tab = 'visual'">По игрокам</button>
       <button :class="['rtab', { active: tab === 'bbcode' }]" @click="tab = 'bbcode'">Текст (BBCode)</button>
     </div>
 
@@ -346,7 +346,7 @@ function formatDur(send: Date, arrival: Date): string {
 
 // ── Tab state ──────────────────────────────────────────────────────────────
 
-const tab = ref<'visual' | 'targets' | 'bbcode'>('visual')
+const tab = ref<'visual' | 'targets' | 'bbcode'>('targets')
 
 // ── Attack row grouping ────────────────────────────────────────────────────
 

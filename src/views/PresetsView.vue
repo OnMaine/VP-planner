@@ -101,38 +101,7 @@
       </template>
 
       <!-- Type-specific config -->
-      <!-- Type-specific config -->
-      <template v-if="form.role.type === 'spike'">
-        <h3 class="sub-head">Состав колючки</h3>
-        <div class="form-row">
-          <label class="f-label">
-            Тараны
-            <input v-model.number="form.role.spikeRams" type="number" min="0" class="input" />
-          </label>
-          <label class="f-label">
-            Лазутчики
-            <input v-model.number="form.role.spikeSpy" type="number" min="0" class="input" />
-          </label>
-          <label class="f-label">
-            Топоры
-            <input v-model.number="form.role.spikeAxe" type="number" min="0" class="input" />
-          </label>
-          <label class="f-label">
-            ЛК
-            <input v-model.number="form.role.spikeLight" type="number" min="0" class="input" />
-          </label>
-          <label class="f-label">
-            ТК
-            <input v-model.number="form.role.spikeHeavy" type="number" min="0" class="input" />
-          </label>
-          <label class="f-label">
-            Катапульты
-            <input v-model.number="form.role.spikeCat" type="number" min="0" class="input" />
-          </label>
-        </div>
-      </template>
-
-      <template v-else-if="form.role.type === 'half_off'">
+      <template v-if="form.role.type === 'half_off'">
         <h3 class="sub-head">Параметры</h3>
         <div class="form-row">
           <label class="f-label">
@@ -168,51 +137,6 @@
             </label>
           </div>
           <p class="hint-text">Берёт деревни с армией в диапазоне [мин–макс]. В фиксированном режиме отправляет не более указанного кол-ва каждого юнита.</p>
-        </template>
-      </template>
-
-      <template v-else-if="form.role.type === 'green_off'">
-        <h3 class="sub-head">Параметры</h3>
-        <div class="form-row">
-          <label class="f-label">
-            Тип эскорта
-            <select v-model="form.role.greenVariant" class="input">
-              <option value="light">ЛК (лёгкая кавалерия)</option>
-              <option value="axes">Топоры</option>
-              <option value="flexible">Гибкий (любые войска)</option>
-            </select>
-          </label>
-          <template v-if="form.role.greenVariant !== 'flexible'">
-            <label class="f-label f-checkbox">
-              <input v-model="form.role.greenWithRams" type="checkbox" />
-              Включить тараны (опционально)
-            </label>
-          </template>
-        </div>
-        <template v-if="form.role.greenVariant === 'flexible'">
-          <div class="form-row">
-            <label class="f-label">
-              Цель: топоры
-              <input v-model.number="form.role.greenTargetAxe" type="number" min="0" :max="form.role.greenMax ?? 999" class="input"
-                @change="clampFlexGreenFields()" />
-            </label>
-            <label class="f-label">
-              Цель: ЛК
-              <input v-model.number="form.role.greenTargetLight" type="number" min="0" :max="(form.role.greenMax ?? 999) - (form.role.greenTargetAxe ?? 0)" class="input"
-                @change="clampFlexGreenFields()" />
-            </label>
-            <label class="f-label">
-              Макс. эскорт
-              <input v-model.number="form.role.greenMax" type="number" min="1" max="999" class="input"
-                @change="clampFlexGreenFields()" />
-            </label>
-            <label class="f-label">
-              Мин. эскорт
-              <input v-model.number="form.role.greenMin" type="number" min="0" :max="form.role.greenMax ?? 999" class="input"
-                @change="clampFlexGreenFields()" />
-            </label>
-          </div>
-          <p class="hint-text">Заполняет: сначала топоры (до цели), затем ЛК (до цели), затем тяж.кав → мечи → копья. Деревня пропускается если эскорт &lt; мин.</p>
         </template>
       </template>
 
@@ -330,10 +254,7 @@ import attackSmall  from '@/assets/images/attack_small.webp'
 import customAttIcon from '@/assets/images/att.png'
 import catapultIcon from '@/assets/images/unit_catapult@2x.webp'
 import snobIcon     from '@/assets/images/unit_snob.webp'
-import knightIcon   from '@/assets/images/unit_knight.webp'
-import ramIcon      from '@/assets/images/unit_ram@2x.webp'
 import { UNIT_ICONS } from '@/utils/unitIcons'
-import lightIcon    from '@/assets/images/unit_light@2x.webp'
 
 const store = usePresetsStore()
 
@@ -370,10 +291,7 @@ function roleIcons(role: VillageRole): string[] {
     case 'full_off':   return role.nobleIncluded ? [attackLarge, snobIcon] : [attackLarge]
     case 'half_off':   return [attackMedium]
     case 'mini_off':   return [attackSmall]
-    case 'green_off':  return [attackSmall, snobIcon]
     case 'cat_squad':  return [catapultIcon]
-    case 'spike':      return [ramIcon, lightIcon]
-    case 'split':      return [attackMedium, snobIcon]
     case 'spam': {
       const base = role.spamStrength === 'full' ? attackLarge : role.spamStrength === 'strong' ? attackMedium : attackSmall
       return (role.spamNobleCount ?? 0) > 0 ? [base, snobIcon] : [base]
@@ -416,10 +334,7 @@ function roleChipClass(type: VillageRoleType): string {
     case 'full_off':   return 'chip-off'
     case 'half_off':   return 'chip-mid'
     case 'mini_off':   return 'chip-mini'
-    case 'green_off':
-    case 'cat_squad':
-    case 'spike':      return 'chip-green'
-    case 'split':      return 'chip-noble'
+    case 'cat_squad':  return 'chip-green'
     case 'spam':       return 'chip-spam'
     case 'custom_off': return 'chip-off'
     default:           return 'chip-detail'
@@ -432,13 +347,6 @@ function chip(label: string, warn?: true): DetailChip { return warn ? { label, w
 function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
   const d: DetailChip[] = []
   switch (role.type) {
-    case 'spike': {
-      if (role.spikeRams)  d.push(chip(`${role.spikeRams} тар.`))
-      if (role.spikeSpy)   d.push(chip(`${role.spikeSpy} лаз.`))
-      if (role.spikeLight) d.push(chip(`${role.spikeLight} ЛК`))
-      d.push(chip('≤1000 юн.'))
-      break
-    }
     case 'full_off':
       d.push(chip(`offFarm ≥ ${store.fullOffMinOffFarm}`))
       if (role.nobleIncluded) d.push(chip('1 двор'))
@@ -451,20 +359,6 @@ function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
     case 'mini_off':
       d.push(chip(`offFarm ${store.smallOffMinOffFarm}–${store.halfOffMinOffFarm}`))
       break
-    case 'green_off': {
-      const v = role.greenVariant ?? 'light'
-      d.push(chip('1 двор'))
-      if (v === 'flexible') {
-        d.push(chip(`топ.${role.greenTargetAxe ?? 500}+лк${role.greenTargetLight ?? 250}`))
-        d.push(chip(`≤${role.greenMax ?? 999} юн.`))
-        if ((role.greenMin ?? 0) > 0) d.push(chip(`мин.${role.greenMin}`))
-      } else {
-        d.push(chip(v === 'axes' ? 'Топоры' : 'ЛК'))
-        if (role.greenWithRams) d.push(chip('+ тар.'))
-        d.push(chip('= 1000'))
-      }
-      break
-    }
     case 'cat_squad': {
       const minC = builtIn ? store.catMinSize : (role.catMinCats ?? 50)
       const maxC = builtIn ? store.catMaxSize : (role.catMaxEscort ?? 200)
@@ -480,9 +374,6 @@ function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
       d.push(chip('= 1000'))
       break
     }
-    case 'split':
-      d.push(chip('1001–5001 юн.'))
-      break
     case 'spam': {
       const s = role.spamStrength ?? 'weak'
       if (s === 'strong') { d.push(chip('Медиум офф')); d.push(chip('1001–5001 юн.')) }
@@ -561,15 +452,6 @@ function onCustomImageUpload(e: Event): void {
   reader.readAsDataURL(file)
 }
 
-function clampFlexGreenFields(): void {
-  const max = Math.max(1, Math.min(form.role.greenMax ?? 999, 999))
-  form.role.greenMax       = max
-  const axe  = Math.max(0, Math.min(form.role.greenTargetAxe  ?? 0, max))
-  const light = Math.max(0, Math.min(form.role.greenTargetLight ?? 0, max - axe))
-  form.role.greenTargetAxe   = axe
-  form.role.greenTargetLight = light
-  form.role.greenMin         = Math.max(0, Math.min(form.role.greenMin ?? 0, max))
-}
 
 const customColor = computed({
   get: () => form.color ?? '#e07b39',

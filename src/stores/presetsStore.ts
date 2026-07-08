@@ -9,28 +9,15 @@ export type VillageRoleType =
   | 'full_off'    // Фулл офф — все офф войска: топоры + ЛК + тараны
   | 'half_off'    // Медиум офф — offFarm между halfOff и fullOff порогами
   | 'mini_off'    // Мини офф — offFarm между smallOff и halfOff порогами
-  | 'green_off'   // Зеленка — 50 таранов + ≤999 ЛК/топоров (сопровождение двора)
   | 'cat_squad'   // Кат отряд — катапульты + сопровождение
-  | 'spike'       // Колючка — зелёный спам-отряд для пробива дефа (тараны + лаз + ЛК)
-  | 'split'       // Поделёнка — войска делятся поровну между дворянами
   | 'spam'        // Спам — много фейк-атак и/или спам-дворян
   | 'custom_off'  // Кастомный — полностью настраиваемый состав атаки
 
-export type GreenVariant = 'light' | 'axes' | 'flexible'
 
 export interface VillageRole {
   type: VillageRoleType
-  // split
-  nobleCount?: number
   // full_off / half_off — optional noble in the attack
   nobleIncluded?: boolean
-  // spike
-  spikeRams?: number   // тараны (def 100)
-  spikeSpy?: number    // лазутчики (def 1)
-  spikeLight?: number  // ЛК (def 899)
-  spikeAxe?: number    // топоры (def 0)
-  spikeHeavy?: number  // ТК (def 0)
-  spikeCat?: number    // катапульты (def 0)
   // custom_off — per-unit: -1 = take all, 0 = skip, positive = fixed count, pct overrides via customUnitPct
   customMin?: number
   customMax?: number
@@ -47,14 +34,7 @@ export interface VillageRole {
   halfFixedLight?: number
   halfFixedHeavy?: number
   halfFixedRam?: number
-  // green_off
-  greenVariant?: GreenVariant  // тип эскорта (def 'light')
-  greenWithRams?: boolean      // тараны (def true)
-  greenMin?: number            // мин. эскорт юнитов для flexible (def 0)
-  greenMax?: number            // макс. эскорт юнитов (def 999)
-  greenTargetAxe?: number      // цель: топоры для flexible (def 500)
-  greenTargetLight?: number    // цель: ЛК для flexible (def 250)
-  minRams?: number  // мин тараны — для breach-пресетов
+  minRams?: number
   // cat_squad
   catMinCats?: number    // мин катапульт для отряда (def 50)
   catMaxEscort?: number  // макс юнитов сопровождения всего (def 999)
@@ -69,16 +49,13 @@ export const ROLE_LABELS: Record<VillageRoleType, string> = {
   full_off:   'Full_OFF',
   half_off:   'Mid_OFF',
   mini_off:   'Mini_OFF',
-  green_off:  'Зеленка',
   cat_squad:  'Кат отряд',
-  spike:      'Колючка',
-  split:      'Поделёнка',
   spam:       'Спам',
   custom_off: 'Кастомный',
 }
 
 export const ALL_ROLE_TYPES: VillageRoleType[] = [
-  'full_off', 'half_off', 'mini_off', 'green_off', 'cat_squad', 'spike', 'split', 'spam', 'custom_off',
+  'full_off', 'half_off', 'mini_off', 'cat_squad', 'spam', 'custom_off',
 ]
 
 // ---------------------------------------------------------------------------
@@ -115,10 +92,7 @@ export function defaultRoleForType(type: VillageRoleType): VillageRole {
   switch (type) {
     case 'half_off':   return { type, halfMin: 1001, halfMax: 5000, halfFixedComp: false }
     case 'custom_off': return { type, customMin: 0, customMax: 99999, customColor: '#e07b39', customUnits: { spear: 0, sword: 0, axe: -1, spy: 0, light: -1, heavy: -1, ram: -1, catapult: 0, knight: 0, snob: 0 } }
-    case 'green_off':  return { type, greenVariant: 'flexible', greenMin: 100, greenMax: 999, greenTargetAxe: 500, greenTargetLight: 250, greenWithRams: false }
-    case 'spike':      return { type, spikeRams: 100, spikeSpy: 1, spikeLight: 899 }
     case 'cat_squad':  return { type, catMinCats: 50, catMaxEscort: 999 }
-    case 'split':      return { type, nobleCount: 2 }
     case 'spam':       return { type, spamCount: 10, spamStrength: 'weak', spamNobleCount: 0, spamTrainSize: 0 }
     default:           return { type }
   }

@@ -70,18 +70,16 @@
       <div class="v-sep" />
 
       <span class="opts-label">Распределение</span>
-      <div class="dist-toggle-group">
-        <button
-          :class="['dist-toggle-btn', { active: planStore.offDistribution === 'default' }]"
-          title="Жадно: глобально сортирует все пары деревня→цель по дистанции и силе, затем жадно разбирает сверху вниз. Первые цели получают ближайшие/сильнейшие деревни, последним достаётся остаток."
-          @click="planStore.setOffDistribution('default')"
-        >Жадно</button>
-        <button
-          :class="['dist-toggle-btn', { active: planStore.offDistribution === 'fair' }]"
-          title="Справедливо: round-robin — каждый раунд каждая неукомплектованная цель забирает по одной деревне по очереди. Деревни распределяются равномерно между целями."
-          @click="planStore.setOffDistribution('fair')"
-        >Справедливо</button>
-      </div>
+      <select
+        class="input dist-select"
+        :value="planStore.offDistribution"
+        title="Алгоритм распределения офов по целям"
+        @change="planStore.setOffDistribution(($event.target as HTMLSelectElement).value as 'default' | 'fair' | 'far_first')"
+      >
+        <option value="far_first">Дальние</option>
+        <option value="fair">Справедливо</option>
+        <option value="default">Жадно</option>
+      </select>
 
       <div class="v-sep" />
 
@@ -89,11 +87,10 @@
       <select
         class="input dist-select"
         :value="worldStore.settings.noblePollMode ?? 'real'"
-        @change="worldStore.updateSettings({ noblePollMode: ($event.target as HTMLSelectElement).value as 'real' | 'real_virtual' | 'virtual' })"
+        @change="worldStore.updateSettings({ noblePollMode: ($event.target as HTMLSelectElement).value as 'real' | 'virtual' })"
         title="Источник дворян для расчёта пула"
       >
         <option value="real">Реальные</option>
-        <option value="real_virtual">Реал + вирт.</option>
         <option value="virtual">Виртуальные</option>
       </select>
     </div>
@@ -127,9 +124,7 @@ const { toDatetimeLocal } = useDateFormat()
 
 function slotChipClass(presetId: string): string {
   const type = presetsStore.all.find(p => p.id === presetId)?.role.type
-  if (type === 'green_off') return 'chip-noble'
   if (type === 'spam') return 'chip-spam'
-  if (type === 'spike') return 'chip-spike'
   if (type === 'half_off') return 'chip-mid'
   if (type === 'mini_off') return 'chip-mini'
   return 'chip-off'
@@ -325,29 +320,6 @@ function applyArrivalTime(): void {
 .night-sep  { font-size: 0.8rem; color: $text-dim; }
 .night-unit { font-size: 0.75rem; color: $text-faint; }
 
-.dist-toggle-group { display: flex; }
-
-.dist-toggle-btn {
-  background: a($text-dim, 0.06);
-  border: 1px solid $border;
-  color: $text-faint;
-  cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.18rem 0.6rem;
-  transition: all 0.12s;
-  white-space: nowrap;
-  &:first-child { border-radius: 20px 0 0 20px; }
-  &:last-child  { border-radius: 0 20px 20px 0; margin-left: -1px; }
-  &:hover { z-index: 1; border-color: $text-dim; color: $text-dim; }
-  &.active {
-    z-index: 2;
-    background: a($text-dim, 0.18);
-    border-color: $text-dim;
-    color: $text;
-    font-weight: 700;
-  }
-}
 
 .dist-select {
   font-size: 0.8rem;

@@ -352,7 +352,7 @@ const showLabels      = ref(true)
 const filterPlayer    = ref('')
 
 // ── Village pool filter ───────────────────────────────────────────────
-type VillageFilter = 'all' | 'offs' | 'full_off' | 'mid_off' | 'mini_off' | 'breach' | 'pal_off' | 'nobles'
+type VillageFilter = 'all' | 'offs' | 'full_off' | 'mid_off' | 'mini_off' | 'breach' | 'nobles'
 const villageFilter = ref<VillageFilter>('all')
 
 const VFILTER_OPTS: Array<{ value: VillageFilter; label: string; color?: string; hint: string }> = [
@@ -362,7 +362,6 @@ const VFILTER_OPTS: Array<{ value: VillageFilter; label: string; color?: string;
   { value: 'mid_off',  label: 'Mid_OFF',  color: '#c87d3e', hint: 'Mid_OFF — средний офф (между порогами Mid и Full)' },
   { value: 'mini_off', label: 'Mini_OFF', color: '#b8a832', hint: 'Mini_OFF — мини офф (между порогами Mini и Mid)' },
   { value: 'breach',   label: 'Пробой',   color: '#89b4fa', hint: 'Full_OFF с таранами ≥ порога пробоя (могут пробить стену)' },
-  { value: 'pal_off',  label: 'Пал-офф',  color: '#a78bfa', hint: 'Full_OFF деревни с паладином внутри' },
   { value: 'nobles',   label: 'Дворяне',  color: '#a78bfa', hint: 'Деревни с дворянами (snob ≥ 1)' },
 ]
 
@@ -377,7 +376,6 @@ function villageMatchesFilter(v: Village): boolean {
     case 'mid_off':  return offFarm >= ps.halfOffMinOffFarm && offFarm < ps.fullOffMinOffFarm
     case 'mini_off': return offFarm >= ps.smallOffMinOffFarm && offFarm < ps.halfOffMinOffFarm
     case 'breach':   return offFarm >= ps.fullOffMinOffFarm && v.troops.ram >= ps.breachMinRams
-    case 'pal_off':  return offFarm >= ps.fullOffMinOffFarm && v.troops.knight > 0
     case 'nobles':   return v.troops.snob >= 1
     default:         return true
   }
