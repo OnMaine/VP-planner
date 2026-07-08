@@ -116,6 +116,22 @@ export const useVillagesStore = defineStore('villages', () => {
     return { count: parsed.length, playerCount: new Set(parsed.map((v) => v.player)).size }
   }
 
+  function upsertVillage(v: Village): boolean {
+    const idx = villages.value.findIndex(u => u.coords === v.coords)
+    if (idx >= 0) {
+      villages.value[idx] = v
+    } else {
+      villages.value.push(v)
+    }
+    save()
+    return idx >= 0
+  }
+
+  function removeVillage(coords: string): void {
+    villages.value = villages.value.filter(v => v.coords !== coords)
+    save()
+  }
+
   function clear() {
     villages.value = []
     save()
@@ -125,6 +141,8 @@ export const useVillagesStore = defineStore('villages', () => {
     villages,
     playerCount,
     parseCSV,
+    upsertVillage,
+    removeVillage,
     clear,
     save,
   }

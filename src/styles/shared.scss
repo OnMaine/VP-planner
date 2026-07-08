@@ -49,13 +49,15 @@ h3 { color: $text-md; font-size: 0.95rem; margin: 0 0 0.5rem; }
   cursor: pointer;
   transition: opacity 0.2s;
 
-  &-primary  { background: $accent; color: #fff; &:hover { opacity: 0.85; } }
-  &-secondary { background: $border; color: $text; &:hover { opacity: 0.85; } }
-  &-danger   { background: a($accent, 0.18); color: $accent; border: 1px solid a($accent, 0.4); &:hover { background: a($accent, 0.32); } }
+  &-primary  { background: $green; color: #0d1b2e; &:hover:not(:disabled) { opacity: 0.85; } }
+  &-secondary { background: $border; color: $text; &:hover:not(:disabled) { opacity: 0.85; } }
+  &-danger   { background: a($accent, 0.18); color: $accent; border: 1px solid a($accent, 0.4); &:hover:not(:disabled) { background: a($accent, 0.32); } }
   &-sm       { padding: 0.2rem 0.55rem; font-size: 0.8rem; }
-  &-active   { background: a($green, 0.18); color: $green; border: 1px solid a($green, 0.4); &:hover { opacity: 0.85; } }
+  &-active   { background: a($green, 0.18); color: $green; border: 1px solid a($green, 0.4); &:hover:not(:disabled) { opacity: 0.85; } }
   &-generate { font-size: 1.1rem; padding: 0.65rem 2rem; }
   &-row      { display: flex; gap: 0.75rem; align-items: center; }
+
+  &:disabled { opacity: 0.35; cursor: not-allowed; }
 }
 
 .file-btn   { cursor: pointer; }

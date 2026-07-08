@@ -27,11 +27,12 @@ export function calcSendTime(arrival: Date, travelSec: number): Date {
  */
 export function formatDuration(sec: number): string {
   if (!isFinite(sec) || sec < 0) return '--:--:--'
-  const totalSec = Math.round(sec)
-  const h = Math.floor(totalSec / 3600)
-  const m = Math.floor((totalSec % 3600) / 60)
-  const s = totalSec % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  const ms  = Math.round(sec * 1000)
+  const h   = Math.floor(ms / 3_600_000)
+  const m   = Math.floor((ms % 3_600_000) / 60_000)
+  const s   = Math.floor((ms % 60_000) / 1000)
+  const msr = ms % 1000
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(msr).padStart(3, '0')}`
 }
 
 /**

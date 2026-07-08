@@ -12,14 +12,12 @@
         v-for="cfg in store.all"
         :key="cfg.id"
         :class="['cfg-card', {
-          'cfg-active':   store.activeId === cfg.id,
-          'cfg-builtin':  cfg.builtIn,
-          'cfg-editing':  editingId === cfg.id,
+          'cfg-active':  store.activeId === cfg.id,
+          'cfg-editing': editingId === cfg.id,
         }]"
       >
         <div class="card-head">
           <span class="card-name">{{ cfg.name }}</span>
-          <span v-if="cfg.builtIn" class="badge-builtin">встроенный</span>
           <span v-if="store.activeId === cfg.id" class="badge-active">активный</span>
         </div>
 
@@ -27,7 +25,7 @@
 
         <div class="card-chips">
           <template v-for="slot in cfg.slots" :key="slot.id">
-            <span v-if="slot.enabled" class="chip" :class="slotChipClass(slot.presetId)">
+            <span v-if="slot.enabled" class="chip" :style="slotChipStyle(slot.presetId)">
               {{ presetShortName(slot.presetId) }} ×{{ slot.count }}
             </span>
           </template>
@@ -39,9 +37,9 @@
             class="btn btn-primary btn-sm"
             @click="store.setActive(cfg.id)"
           >Выбрать</button>
-          <button v-if="!cfg.builtIn" class="btn btn-secondary btn-sm" @click="openEdit(cfg.id)">Изменить</button>
-          <button class="btn btn-secondary btn-sm" @click="store.clone(cfg.id)">{{ cfg.builtIn ? 'Клонировать' : 'Копия' }}</button>
-          <button v-if="!cfg.builtIn" class="btn btn-danger btn-sm" @click="confirmRemove(cfg.id)">✕</button>
+          <button class="btn btn-secondary btn-sm" @click="openEdit(cfg.id)">Изменить</button>
+          <button class="btn btn-secondary btn-sm" @click="store.clone(cfg.id)">Копия</button>
+          <button class="btn btn-danger btn-sm" @click="confirmRemove(cfg.id)">✕</button>
         </div>
       </div>
     </div>
@@ -180,10 +178,10 @@
               <span>T — тайминг цели</span>
             </div>
             <div v-else class="tl-entry">
-              <div class="tl-dot" :class="item.chipClass"></div>
+              <div class="tl-dot" :style="{ background: item.color }"></div>
               <div class="tl-body">
                 <div class="tl-row">
-                  <span class="tl-chip" :class="item.chipClass">{{ item.label }} ×{{ item.count }}</span>
+                  <span class="tl-chip" :style="{ background: item.color + '22', color: item.color, border: `1px solid ${item.color}4d` }">{{ item.label }} ×{{ item.count }}</span>
                   <span class="tl-time">{{ item.timeLabel }}</span>
                 </div>
                 <div v-if="item.isRange" class="tl-range-row">
@@ -204,7 +202,7 @@
 import { ref, reactive, computed, type ComputedRef } from 'vue'
 import { useMassConfigStore, blankMassConfig, defaultMassSlot } from '@/stores/massConfigStore'
 import type { MassSlot } from '@/stores/massConfigStore'
-import { usePresetsStore } from '@/stores/presetsStore'
+import { usePresetsStore, defaultColorForRole } from '@/stores/presetsStore'
 import type { AttackPreset } from '@/stores/presetsStore'
 
 const store        = useMassConfigStore()
@@ -216,16 +214,20 @@ function presetShortName(presetId: string): string {
   return presetsStore.all.find(p => p.id === presetId)?.name ?? presetId
 }
 
-function slotChipClass(presetId: string): string {
-  const type = presetsStore.all.find(p => p.id === presetId)?.role.type
-  if (type === 'train' || type === 'green_off') return 'chip-noble'
-  if (type === 'spam') return 'chip-spam'
-  if (type === 'spike') return 'chip-spike'
-  return 'chip-off'
+function slotColor(presetId: string): string {
+  const p = presetsStore.all.find(pr => pr.id === presetId)
+  if (!p) return '#e94560'
+  return p.color ?? defaultColorForRole(p.role.type, p.role)
+}
+
+function slotChipStyle(presetId: string): Record<string, string> {
+  const c = slotColor(presetId)
+  return { background: c + '1a', color: c, border: `1px solid ${c}4d` }
 }
 
 function isSpamPreset(presetId: string): boolean {
-  return presetsStore.all.find(p => p.id === presetId)?.role.type === 'spam'
+  const p = presetsStore.all.find(pr => pr.id === presetId)
+  return p?.role.type === 'spam' || !!p?.role.customIsSpam
 }
 
 function hasSpamWindow(slot: FormSlot): boolean {
@@ -266,22 +268,22 @@ function toggleOffsetSign(slot: FormSlot): void {
 
 // Grouped presets for the slot select
 const ROLE_GROUP: Record<string, string> = {
-  train:     'Паровозы',
-  green_off: 'Зел. дворы',
-  full_off:  'Оффы',
-  breach_off:'Оффы',
-  pal_off:   'Оффы',
-  half_off:  'Оффы',
-  custom_off:'Кастом',
-  spike:     'Колючки',
-  spam:      'Спам',
+  full_off:   'Оффы',
+  half_off:   'Оффы',
+  mini_off:   'Оффы',
+  split:      'Оффы',
+  green_off:  'Зел. дворы',
+  cat_squad:  'Каты',
+  spike:      'Колючки',
+  spam:       'Спам',
+  custom_off: 'Кастом',
 }
-const GROUP_ORDER = ['Паровозы', 'Зел. дворы', 'Оффы', 'Колючки', 'Спам', 'Кастом']
+const GROUP_ORDER = ['Оффы', 'Зел. дворы', 'Каты', 'Колючки', 'Спам', 'Кастом']
 
 const presetGroups = computed<Array<{ label: string; presets: AttackPreset[] }>>(() => {
   const map = new Map<string, AttackPreset[]>()
   for (const p of presetsStore.all) {
-    const grp = ROLE_GROUP[p.role.type] ?? 'Прочее'
+    const grp = p.role.customIsSpam ? 'Спам' : (ROLE_GROUP[p.role.type] ?? 'Прочее')
     if (!map.has(grp)) map.set(grp, [])
     map.get(grp)!.push(p)
   }
@@ -311,7 +313,7 @@ interface TLSlot {
   kind: 'slot'
   id: string
   label: string
-  chipClass: string
+  color: string
   count: number
   signedOffsetMs: number
   isRange: boolean
@@ -335,7 +337,7 @@ const previewItems = computed<TLItem[]>(() => {
         kind:            'slot' as const,
         id:              s.id,
         label:           presetShortName(s.presetId),
-        chipClass:       slotChipClass(s.presetId),
+        color:           slotColor(s.presetId),
         count:           s.count,
         signedOffsetMs:  off,
         isRange,
@@ -384,11 +386,10 @@ interface FormSlot {
 interface FormData {
   name: string
   description: string
-  noblePriority: 'distance' | 'built'
   slots: FormSlot[]
 }
 
-const form = reactive<FormData>({ name: '', description: '', noblePriority: 'distance', slots: [] })
+const form = reactive<FormData>({ name: '', description: '', slots: [] })
 
 const canSave = computed(() => form.name.trim().length > 0 && form.slots.length > 0)
 
@@ -420,7 +421,6 @@ function formSlotToMassSlot(s: FormSlot): MassSlot {
 function openNew() {
   form.name          = ''
   form.description   = ''
-  form.noblePriority = 'distance'
   form.slots         = []
   editingId.value    = null
   editorOpen.value   = true
@@ -432,7 +432,6 @@ function openEdit(id: string) {
   if (!cfg) return
   form.name          = cfg.name
   form.description   = cfg.description
-  form.noblePriority = cfg.noblePriority ?? 'distance'
   form.slots         = cfg.slots.map(slotToForm)
   editingId.value    = id
   editorOpen.value   = true
@@ -447,10 +446,9 @@ function closeEditor() {
 function save() {
   if (!canSave.value) return
   const data = {
-    name:          form.name.trim(),
-    description:   form.description.trim(),
-    noblePriority: form.noblePriority,
-    slots:         form.slots.map(formSlotToMassSlot),
+    name:        form.name.trim(),
+    description: form.description.trim(),
+    slots:       form.slots.map(formSlotToMassSlot),
   }
   if (editingId.value) {
     store.update(editingId.value, data)
@@ -535,7 +533,6 @@ function moveSlotDown(i: number) {
   gap: 0.6rem;
   transition: border-color 0.15s;
 
-  &.cfg-builtin  { border-color: a($accent, 0.3); }
   &.cfg-active   { border-color: $green; box-shadow: 0 0 0 2px a($green, 0.15); }
   &.cfg-editing  { border-color: $accent; box-shadow: 0 0 0 2px a($accent, 0.2); }
 }
@@ -552,17 +549,6 @@ function moveSlotDown(i: number) {
   font-size: 1rem;
   color: $text;
   flex: 1;
-}
-
-.badge-builtin {
-  font-size: 0.65rem;
-  background: a($accent, 0.15);
-  color: $accent;
-  border: 1px solid a($accent, 0.3);
-  border-radius: 10px;
-  padding: 0.1rem 0.45rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .badge-active {
@@ -693,11 +679,6 @@ function moveSlotDown(i: number) {
   border-radius: 50%;
   flex-shrink: 0;
   margin-top: 0.3rem;
-
-  &.chip-off   { background: $accent; }
-  &.chip-spike { background: $green; }
-  &.chip-noble { background: $purple; }
-  &.chip-spam  { background: $text-dim; }
 }
 
 .tl-body {

@@ -10,9 +10,10 @@ export function useDateFormat() {
 
   function toDatetimeLocal(d: Date): string {
     const p = (n: number) => String(n).padStart(2, '0')
+    const p3 = (n: number) => String(n).padStart(3, '0')
     return (
       `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
-      `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+      `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p3(d.getMilliseconds())}`
     )
   }
 

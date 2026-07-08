@@ -15,6 +15,8 @@
         <RouterLink to="/planner">Планер</RouterLink>
         <RouterLink to="/presets">Пресеты войск</RouterLink>
         <RouterLink to="/mass-configs">Пресеты масса</RouterLink>
+        <RouterLink to="/attack-map">Карта атак</RouterLink>
+        <RouterLink to="/world-map">Карта мира</RouterLink>
       </nav>
     </header>
     <main class="app-main">

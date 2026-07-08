@@ -34,6 +34,16 @@ const router = createRouter({
       name: 'mass-configs',
       component: () => import('@/views/MassConfigsView.vue'),
     },
+    {
+      path: '/attack-map',
+      name: 'attack-map',
+      component: () => import('@/views/AttackMapView.vue'),
+    },
+    {
+      path: '/world-map',
+      name: 'world-map',
+      component: () => import('@/views/WorldMapView.vue'),
+    },
   ],
 })
 

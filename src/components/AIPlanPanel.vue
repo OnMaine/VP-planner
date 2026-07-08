@@ -52,6 +52,24 @@
     <!-- Proposal result -->
     <template v-if="status === 'done' && proposal">
       <div class="ai-reasoning">{{ proposal.reasoning }}</div>
+
+      <!-- Custom presets preview -->
+      <div v-if="proposal.custom_presets?.length" class="ai-presets-preview">
+        <span class="ai-presets-label">Создаст пресеты:</span>
+        <span
+          v-for="pr in proposal.custom_presets" :key="pr.ref_id"
+          class="ai-preset-badge"
+        >{{ pr.name }}</span>
+      </div>
+
+      <!-- Slots preview -->
+      <div v-if="proposal.slots?.length" class="ai-slots-preview">
+        <span
+          v-for="(sl, i) in proposal.slots" :key="i"
+          class="ai-slot-chip"
+        >{{ resolvePresetName(sl.preset_ref) }} ×{{ sl.count }}</span>
+      </div>
+
       <div class="ai-actions">
         <button class="btn btn-primary" @click="onApplyAndGenerate">Применить и сгенерировать</button>
         <button class="btn btn-secondary" @click="aiStore.applyProposal()">Только применить</button>
@@ -181,6 +199,15 @@ function onAsk() {
   aiStore.ask(request.value, buildContext())
 }
 
+function resolvePresetName(refOrId: string): string {
+  // Check if it's a custom_presets ref_id from the current proposal
+  const customMatch = proposal.value?.custom_presets?.find(p => p.ref_id === refOrId)
+  if (customMatch) return customMatch.name
+  // Otherwise look up by built-in preset ID
+  const preset = presetsStore.all.find(p => p.id === refOrId)
+  return preset?.name ?? refOrId
+}
+
 function onApplyAndGenerate() {
   aiStore.applyProposal()
   emit('generate')
@@ -307,6 +334,46 @@ function onApplyAndGenerate() {
   text-align: center;
 }
 .diff-num-changed { border-color: $orange; color: $orange; font-weight: 700; }
+
+.ai-presets-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.ai-presets-label {
+  font-size: 0.78rem;
+  color: $text-faint;
+  white-space: nowrap;
+}
+
+.ai-preset-badge {
+  background: a($green, 0.15);
+  border: 1px solid a($green, 0.35);
+  border-radius: 4px;
+  color: $green;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+}
+
+.ai-slots-preview {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.ai-slot-chip {
+  background: a($accent, 0.1);
+  border: 1px solid a($accent, 0.3);
+  border-radius: 4px;
+  color: $text-dim;
+  font-size: 0.78rem;
+  padding: 0.1rem 0.45rem;
+}
 
 .ai-actions {
   display: flex;

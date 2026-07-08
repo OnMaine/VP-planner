@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Механика башни наблюдения</title>
+<style>
+  body { background: #0f1117; margin: 0; font-family: monospace; color: #cdd6f4; }
+  h2 { text-align: center; padding: 1rem 0 0; color: #cba6f7; font-size: 1.1rem; letter-spacing: 0.05em; }
+  .wrap { display: flex; flex-direction: column; align-items: center; gap: 2rem; padding: 1rem 2rem 3rem; }
+  .row { display: flex; gap: 3rem; flex-wrap: wrap; justify-content: center; }
+  .card { background: #1e2030; border: 1px solid #313244; border-radius: 12px; padding: 1rem 1.5rem; }
+  .card h3 { margin: 0 0 0.5rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; color: #89b4fa; }
+  .legend { display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.82rem; }
+  .leg { display: flex; align-items: center; gap: 0.6rem; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .line-sample { width: 28px; height: 3px; flex-shrink: 0; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h2>Механика башни наблюдения — принцип работы</h2>
+<div class="wrap">
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- ROW 1: Scheme 1 + Scheme 2                                            -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="row">
+
+<!-- ── Scheme 1: target = tower village ─────────────────────────────────── -->
+<!-- T=(310,200), R=100                                                      -->
+<!-- A=(50,200)  entry=(210,200)  chord=R                                    -->
+<!-- B=(80,40)   entry=(228,143)  chord=R                                    -->
+<!-- C=(80,365)  entry=(229,258)  chord=R                                    -->
+<!-- D=(250,182) inside (dist≈63) chord<R                                   -->
+<div class="card">
+  <h3>Схема 1 — цель имеет башню: все атаки засвечены</h3>
+  <svg width="500" height="410" viewBox="0 0 500 410">
+    <defs>
+      <marker id="s1ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#f38ba8"/>
+      </marker>
+      <marker id="s1ao" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#fab387"/>
+      </marker>
+    </defs>
+    <!-- grid -->
+    <g stroke="#313244" stroke-width="0.5" opacity="0.35">
+      <line x1="0" y1="50" x2="500" y2="50"/><line x1="0" y1="100" x2="500" y2="100"/>
+      <line x1="0" y1="150" x2="500" y2="150"/><line x1="0" y1="200" x2="500" y2="200"/>
+      <line x1="0" y1="250" x2="500" y2="250"/><line x1="0" y1="300" x2="500" y2="300"/>
+      <line x1="0" y1="350" x2="500" y2="350"/><line x1="0" y1="400" x2="500" y2="400"/>
+      <line x1="50" y1="0" x2="50" y2="410"/><line x1="100" y1="0" x2="100" y2="410"/>
+      <line x1="150" y1="0" x2="150" y2="410"/><line x1="200" y1="0" x2="200" y2="410"/>
+      <line x1="250" y1="0" x2="250" y2="410"/><line x1="300" y1="0" x2="300" y2="410"/>
+      <line x1="350" y1="0" x2="350" y2="410"/><line x1="400" y1="0" x2="400" y2="410"/>
+      <line x1="450" y1="0" x2="450" y2="410"/>
+    </g>
+
+    <!-- Tower radius R=100 at T=(310,200) -->
+    <circle cx="310" cy="200" r="100" fill="#f38ba8" fill-opacity="0.05"/>
+    <circle cx="310" cy="200" r="100" fill="none" stroke="#f38ba8" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7"/>
+    <!-- R indicator -->
+    <line x1="310" y1="200" x2="310" y2="100" stroke="#f38ba8" stroke-width="1" stroke-dasharray="3 2" opacity="0.4"/>
+    <text x="317" y="153" fill="#f38ba8" font-size="9" opacity="0.8">R</text>
+
+    <!-- Path A: (50,200)→T=(310,200) horizontal. Entry=(210,200). Chord=R=100 -->
+    <line x1="50" y1="200" x2="292" y2="200" stroke="#f38ba8" stroke-width="2.5" marker-end="url(#s1ar)" opacity="0.9"/>
+    <!-- chord highlight A -->
+    <rect x="210" y="193" width="100" height="14" rx="2" fill="#f38ba8" opacity="0.13"/>
+    <circle cx="210" cy="200" r="4" fill="#f38ba8"/>
+    <text x="260" y="190" text-anchor="middle" fill="#f38ba8" font-size="10">хорда = R</text>
+
+    <!-- Path B: (80,40)→T=(310,200). Entry≈(228,143). Chord=R -->
+    <!-- Direction=(230,160). 78500(t-1)²=10000 → t=0.6431 → x=228,y=143 -->
+    <line x1="80" y1="40" x2="294" y2="191" stroke="#f38ba8" stroke-width="2.5" marker-end="url(#s1ar)" opacity="0.9"/>
+    <circle cx="228" cy="143" r="4" fill="#f38ba8"/>
+    <!-- chord highlight B: (228,143)→(310,200) -->
+    <line x1="228" y1="143" x2="310" y2="200" stroke="#f38ba8" stroke-width="5" opacity="0.13"/>
+    <text x="284" y="135" text-anchor="middle" fill="#f38ba8" font-size="10">хорда = R</text>
+
+    <!-- Path C: (80,365)→T=(310,200). Entry≈(229,258). Chord=R -->
+    <!-- Direction=(230,-165). 80125(t-1)²=10000 → t=0.6467 → x=229,y=258 -->
+    <line x1="80" y1="365" x2="294" y2="209" stroke="#f38ba8" stroke-width="2.5" marker-end="url(#s1ar)" opacity="0.9"/>
+    <circle cx="229" cy="258" r="4" fill="#f38ba8"/>
+    <!-- chord highlight C: (229,258)→(310,200) -->
+    <line x1="229" y1="258" x2="310" y2="200" stroke="#f38ba8" stroke-width="5" opacity="0.13"/>
+    <text x="283" y="272" text-anchor="middle" fill="#f38ba8" font-size="10">хорда = R</text>
+
+    <!-- Village D: (250,182) INSIDE radius. dist≈63. Chord<R -->
+    <!-- (dashed to indicate "special case / exception") -->
+    <line x1="250" y1="182" x2="299" y2="199" stroke="#fab387" stroke-width="2" marker-end="url(#s1ao)" stroke-dasharray="5 3" opacity="0.9"/>
+    <line x1="250" y1="182" x2="310" y2="200" stroke="#fab387" stroke-width="4" opacity="0.18"/>
+    <text x="252" y="163" text-anchor="middle" fill="#fab387" font-size="8">хорда ≈ 63 &lt; R</text>
+
+    <!-- Tower/Target T -->
+    <rect x="299" y="189" width="22" height="22" rx="3" fill="#1e2030" stroke="#f38ba8" stroke-width="2"/>
+    <text x="310" y="204" text-anchor="middle" fill="#f38ba8" font-size="13">🏰</text>
+    <text x="310" y="232" text-anchor="middle" fill="#cdd6f4" font-size="11" font-weight="bold">Цель + Башня</text>
+
+    <!-- Village A -->
+    <circle cx="50" cy="200" r="11" fill="#313244" stroke="#89b4fa" stroke-width="2"/>
+    <text x="50" y="204" text-anchor="middle" fill="#89b4fa" font-size="10" font-weight="bold">A</text>
+    <text x="50" y="222" text-anchor="middle" fill="#f38ba8" font-size="9">ЗАСВЕТ</text>
+
+    <!-- Village B -->
+    <circle cx="80" cy="40" r="11" fill="#313244" stroke="#89b4fa" stroke-width="2"/>
+    <text x="80" y="44" text-anchor="middle" fill="#89b4fa" font-size="10" font-weight="bold">B</text>
+    <text x="80" y="62" text-anchor="middle" fill="#f38ba8" font-size="9">ЗАСВЕТ</text>
+
+    <!-- Village C -->
+    <circle cx="80" cy="365" r="11" fill="#313244" stroke="#89b4fa" stroke-width="2"/>
+    <text x="80" y="369" text-anchor="middle" fill="#89b4fa" font-size="10" font-weight="bold">C</text>
+    <text x="80" y="387" text-anchor="middle" fill="#f38ba8" font-size="9">ЗАСВЕТ</text>
+
+    <!-- Village D (inside) -->
+    <circle cx="250" cy="182" r="11" fill="#313244" stroke="#fab387" stroke-width="2"/>
+    <text x="250" y="186" text-anchor="middle" fill="#fab387" font-size="10" font-weight="bold">D</text>
+    <text x="250" y="174" text-anchor="middle" fill="#fab387" font-size="8">внутри R</text>
+
+    <!-- Annotation box -->
+    <rect x="12" y="12" width="268" height="74" rx="6" fill="#313244" stroke="#45475a"/>
+    <text x="22" y="30" fill="#cba6f7" font-size="11" font-weight="bold">⚠ Цель = деревня с башней</text>
+    <text x="22" y="45" fill="#cdd6f4" font-size="9">Все атаки засвечены (путь заканчивается</text>
+    <text x="22" y="57" fill="#cdd6f4" font-size="9">в центре круга). Хорда A = B = C = R</text>
+    <text x="22" y="69" fill="#cdd6f4" font-size="9">→ оптимизация по хорде невозможна</text>
+    <text x="22" y="79" fill="#fab387" font-size="8">Исключение D: внутри R → хорда &lt; R (меньше времени у защитника)</text>
+
+  </svg>
+</div>
+
+<!-- ── Scheme 2: transit — tower at W, not at target ────────────────────── -->
+<!-- W=(230,180), R=100, Target T=(420,310)                                  -->
+<!-- A=(40,60):   entry=(144,129) exit=(311,238) chord≈199 ЗАСВЕТ           -->
+<!-- B=(40,370):  path doesn't cross W  SAFE                                 -->
+<!-- C=(50,225):  entry=(159,250) exit=(264,274) chord≈108 ЗАСВЕТ           -->
+<div class="card">
+  <h3>Схема 2 — башня на соседней деревне (транзитный засвет)</h3>
+  <svg width="480" height="410" viewBox="0 0 480 410">
+    <defs>
+      <marker id="s2ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#f38ba8"/>
+      </marker>
+      <marker id="s2ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#a6e3a1"/>
+      </marker>
+      <marker id="s2ay" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#f9e2af"/>
+      </marker>
+    </defs>
+    <!-- grid -->
+    <g stroke="#313244" stroke-width="0.5" opacity="0.35">
+      <line x1="0" y1="50" x2="480" y2="50"/><line x1="0" y1="100" x2="480" y2="100"/>
+      <line x1="0" y1="150" x2="480" y2="150"/><line x1="0" y1="200" x2="480" y2="200"/>
+      <line x1="0" y1="250" x2="480" y2="250"/><line x1="0" y1="300" x2="480" y2="300"/>
+      <line x1="0" y1="350" x2="480" y2="350"/><line x1="0" y1="400" x2="480" y2="400"/>
+      <line x1="50" y1="0" x2="50" y2="410"/><line x1="100" y1="0" x2="100" y2="410"/>
+      <line x1="150" y1="0" x2="150" y2="410"/><line x1="200" y1="0" x2="200" y2="410"/>
+      <line x1="250" y1="0" x2="250" y2="410"/><line x1="300" y1="0" x2="300" y2="410"/>
+      <line x1="350" y1="0" x2="350" y2="410"/><line x1="400" y1="0" x2="400" y2="410"/>
+      <line x1="450" y1="0" x2="450" y2="410"/>
+    </g>
+
+    <!-- Tower W=(230,180), R=100 -->
+    <circle cx="230" cy="180" r="100" fill="#f38ba8" fill-opacity="0.05"/>
+    <circle cx="230" cy="180" r="100" fill="none" stroke="#f38ba8" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7"/>
+    <rect x="219" y="169" width="22" height="22" rx="3" fill="#1e2030" stroke="#f38ba8" stroke-width="2"/>
+    <text x="230" y="184" text-anchor="middle" fill="#f38ba8" font-size="13">🏰</text>
+    <text x="230" y="207" text-anchor="middle" fill="#f38ba8" font-size="10" font-weight="bold">Башня W</text>
+    <text x="230" y="218" text-anchor="middle" fill="#6c7086" font-size="9">(не цель)</text>
+
+    <!-- Target T=(420,310) — no tower -->
+    <rect x="409" y="299" width="22" height="22" rx="3" fill="#1e2030" stroke="#a6e3a1" stroke-width="2"/>
+    <text x="420" y="314" text-anchor="middle" fill="#a6e3a1" font-size="13">🏘</text>
+    <text x="420" y="335" text-anchor="middle" fill="#cdd6f4" font-size="11" font-weight="bold">Цель T</text>
+    <text x="420" y="346" text-anchor="middle" fill="#6c7086" font-size="9">(без башни)</text>
+
+    <!-- Path A=(40,60)→T=(420,310): crosses W -->
+    <!-- entry=(144,129) exit=(311,238) chord≈199 -->
+    <line x1="40" y1="60" x2="407" y2="301" stroke="#f38ba8" stroke-width="2.5" marker-end="url(#s2ar)" opacity="0.9"/>
+    <line x1="144" y1="129" x2="311" y2="238" stroke="#f38ba8" stroke-width="5" opacity="0.2"/>
+    <circle cx="144" cy="129" r="4" fill="#f38ba8"/>
+    <circle cx="311" cy="238" r="4" fill="#f38ba8"/>
+    <text x="90" y="118" fill="#f38ba8" font-size="9">вход</text>
+    <text x="315" y="232" fill="#f38ba8" font-size="9">выход*</text>
+    <text x="195" y="174" text-anchor="middle" fill="#f38ba8" font-size="9" font-weight="bold">хорда A (длинная ≈2R)</text>
+
+    <!-- Path B=(40,370)→T=(420,310): safe -->
+    <line x1="40" y1="370" x2="407" y2="312" stroke="#a6e3a1" stroke-width="2.5" marker-end="url(#s2ah)" opacity="0.9"/>
+
+    <!-- Path C=(50,225)→T=(420,310): clips W -->
+    <!-- entry≈(159,250) exit≈(264,274) chord≈108 -->
+    <line x1="50" y1="225" x2="407" y2="307" stroke="#f9e2af" stroke-width="2.5" marker-end="url(#s2ay)" opacity="0.9"/>
+    <line x1="159" y1="250" x2="264" y2="274" stroke="#f9e2af" stroke-width="5" opacity="0.22"/>
+    <circle cx="159" cy="250" r="3" fill="#f9e2af" opacity="0.9"/>
+    <circle cx="264" cy="274" r="3" fill="#f9e2af" opacity="0.9"/>
+    <text x="200" y="295" text-anchor="middle" fill="#f9e2af" font-size="9">хорда C (короткая ≈R)</text>
+
+    <!-- Village labels -->
+    <circle cx="40" cy="60" r="11" fill="#313244" stroke="#89b4fa" stroke-width="2"/>
+    <text x="40" y="64" text-anchor="middle" fill="#89b4fa" font-size="10" font-weight="bold">A</text>
+    <text x="40" y="82" text-anchor="middle" fill="#f38ba8" font-size="9">ЗАСВЕТ</text>
+    <text x="40" y="92" text-anchor="middle" fill="#f38ba8" font-size="8">хорда макс.</text>
+
+    <circle cx="40" cy="370" r="11" fill="#313244" stroke="#89b4fa" stroke-width="2"/>
+    <text x="40" y="374" text-anchor="middle" fill="#89b4fa" font-size="10" font-weight="bold">B</text>
+    <text x="40" y="392" text-anchor="middle" fill="#a6e3a1" font-size="9">БЕЗОПАСНО ✓</text>
+    <text x="40" y="402" text-anchor="middle" fill="#6c7086" font-size="8">обходит радиус</text>
+
+    <circle cx="50" cy="225" r="11" fill="#313244" stroke="#89b4fa" stroke-width="2"/>
+    <text x="50" y="229" text-anchor="middle" fill="#89b4fa" font-size="10" font-weight="bold">C</text>
+    <text x="50" y="247" text-anchor="middle" fill="#f9e2af" font-size="9">ЗАСВЕТ</text>
+    <text x="50" y="257" text-anchor="middle" fill="#f9e2af" font-size="8">хорда мин.</text>
+
+    <!-- Priority box -->
+    <rect x="265" y="12" width="205" height="72" rx="6" fill="#313244" stroke="#45475a"/>
+    <text x="275" y="29" fill="#cba6f7" font-size="10" font-weight="bold">Приоритет деревни:</text>
+    <text x="275" y="44" fill="#a6e3a1" font-size="9">1 ✓ B: маршрут не пересекает R</text>
+    <text x="275" y="57" fill="#f9e2af" font-size="9">2 ~ C: пересекает, хорда мин.</text>
+    <text x="275" y="70" fill="#f38ba8" font-size="9">3 ✗ A: пересекает, хорда макс.</text>
+
+    <!-- Footnote -->
+    <text x="240" y="402" text-anchor="middle" fill="#6c7086" font-size="8">* отметка сохраняется навсегда после входа в радиус</text>
+
+  </svg>
+</div>
+</div><!-- /row 1 -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- ROW 2: Scheme 3 (NEW) + Geometry + Legend                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="row">
+
+<!-- ── Scheme 3 (NEW): our village INSIDE enemy tower radius ─────────────── -->
+<!-- W=(195,150), R=90, Target T=(440,300)                                   -->
+<!-- A=(165,130): inside W (dist≈36). Exits at ≈(272,196). Chord≈126        -->
+<!-- B=(50,340):  outside W. Path doesn't cross. SAFE                        -->
+<!-- C=(30,80):   outside W. Path crosses W. Entry≈(109,123) Exit≈(265,206) -->
+<div class="card">
+  <h3>Схема 3 — наша деревня уже внутри вражеского радиуса</h3>
+  <svg width="510" height="390" viewBox="0 0 510 390">
+    <defs>
+      <marker id="s3ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#f38ba8"/>
+      </marker>
+      <marker id="s3ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#a6e3a1"/>
+      </marker>
+      <marker id="s3ao" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#fab387"/>
+      </marker>
+    </defs>
+    <!-- grid -->
+    <g stroke="#313244" stroke-width="0.5" opacity="0.35">
+      <line x1="0" y1="50" x2="510" y2="50"/><line x1="0" y1="100" x2="510" y2="100"/>
+      <line x1="0" y1="150" x2="510" y2="150"/><line x1="0" y1="200" x2="510" y2="200"/>
+      <line x1="0" y1="250" x2="510" y2="250"/><line x1="0" y1="300" x2="510" y2="300"/>
+      <line x1="0" y1="350" x2="510" y2="350"/>
+      <line x1="50" y1="0" x2="50" y2="390"/><line x1="100" y1="0" x2="100" y2="390"/>
+      <line x1="150" y1="0" x2="150" y2="390"/><line x1="200" y1="0" x2="200" y2="390"/>
+      <line x1="250" y1="0" x2="250" y2="390"/><line x1="300" y1="0" x2="300" y2="390"/>
+      <line x1="350" y1="0" x2="350" y2="390"/><line x1="400" y1="0" x2="400" y2="390"/>
+      <line x1="450" y1="0" x2="450" y2="390"/><line x1="500" y1="0" x2="500" y2="390"/>
+    </g>
+
+    <!-- Tower W=(195,150), R=90 -->
+    <circle cx="195" cy="150" r="90" fill="#f38ba8" fill-opacity="0.06"/>
+    <circle cx="195" cy="150" r="90" fill="none" stroke="#f38ba8" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7"/>
+    <rect x="184" y="139" width="22" height="22" rx="3" fill="#1e2030" stroke="#f38ba8" stroke-width="2"/>
+    <text x="195" y="154" text-anchor="middle" fill="#f38ba8" font-size="13">🏰</text>
+    <text x="195" y="176" text-anchor="middle" fill="#f38ba8" font-size="10" font-weight="bold">Башня W</text>
+    <text x="195" y="188" text-anchor="middle" fill="#6c7086" font-size="9">(не цель)</text>
+    <!-- R indicator -->
+    <line x1="195" y1="150" x2="195" y2="60" stroke="#f38ba8" stroke-width="1" stroke-dasharray="3 2" opacity="0.35"/>
+    <text x="202" y="108" fill="#f38ba8" font-size="9" opacity="0.7">R=90</text>
+
+    <!-- Target T=(440,300) — no tower -->
+    <rect x="429" y="289" width="22" height="22" rx="3" fill="#1e2030" stroke="#a6e3a1" stroke-width="2"/>
+    <text x="440" y="304" text-anchor="middle" fill="#a6e3a1" font-size="13">🏘</text>
+    <text x="440" y="323" text-anchor="middle" fill="#cdd6f4" font-size="11" font-weight="bold">Цель T</text>
+    <text x="440" y="334" text-anchor="middle" fill="#6c7086" font-size="9">(без башни)</text>
+
+    <!-- Village A=(165,130): INSIDE W. Attacks T=(440,300). -->
+    <!-- A is inside → detected from moment of send.                   -->
+    <!-- Path exits W at ≈(272,196). Chord = from A to exit point ≈126 -->
+    <line x1="165" y1="130" x2="427" y2="291" stroke="#fab387" stroke-width="2.5" marker-end="url(#s3ao)" opacity="0.9"/>
+    <!-- Chord highlight A: (165,130)→(272,196) -->
+    <line x1="165" y1="130" x2="272" y2="196" stroke="#fab387" stroke-width="5" opacity="0.22"/>
+    <circle cx="272" cy="196" r="4" fill="#f38ba8" opacity="0.9"/>
+    <text x="290" y="207" fill="#fab387" font-size="9">выход из R</text>
+    <text x="210" y="117" text-anchor="middle" fill="#fab387" font-size="9">хорда ≈ 126 (A→выход)</text>
+    <!-- Village A icon — red border = inside enemy radius -->
+    <circle cx="165" cy="130" r="12" fill="#1e2030" stroke="#f38ba8" stroke-width="2.5"/>
+    <text x="165" y="134" text-anchor="middle" fill="#f38ba8" font-size="10" font-weight="bold">A</text>
+    <text x="165" y="112" text-anchor="middle" fill="#f38ba8" font-size="9" font-weight="bold">ЗАСВЕТ</text>
+    <text x="165" y="101" text-anchor="middle" fill="#f38ba8" font-size="8">(в момент отправки)</text>
+    <!-- "inside radius" fill indicator -->
+    <circle cx="165" cy="130" r="12" fill="#f38ba8" fill-opacity="0.15"/>
+
+    <!-- Village B=(50,340): outside W, path B→T doesn't cross W. SAFE -->
+    <line x1="50" y1="340" x2="427" y2="302" stroke="#a6e3a1" stroke-width="2.5" marker-end="url(#s3ah)" opacity="0.9"/>
+    <circle cx="50" cy="340" r="11" fill="#313244" stroke="#89b4fa" stroke-width="2"/>
+    <text x="50" y="344" text-anchor="middle" fill="#89b4fa" font-size="10" font-weight="bold">B</text>
+    <text x="50" y="362" text-anchor="middle" fill="#a6e3a1" font-size="9">БЕЗОПАСНО ✓</text>
+    <text x="50" y="373" text-anchor="middle" fill="#6c7086" font-size="8">вне R, путь</text>
+    <text x="50" y="383" text-anchor="middle" fill="#6c7086" font-size="8">не пересекает</text>
+
+    <!-- Village C=(30,80): outside W, path crosses W. -->
+    <!-- Entry≈(109,123) Exit≈(265,206). Chord≈177. -->
+    <line x1="30" y1="80" x2="427" y2="291" stroke="#f38ba8" stroke-width="2" marker-end="url(#s3ar)" opacity="0.85" stroke-dasharray="5 3"/>
+    <line x1="109" y1="123" x2="265" y2="206" stroke="#f38ba8" stroke-width="4" opacity="0.18"/>
+    <circle cx="109" cy="123" r="3" fill="#f38ba8" opacity="0.8"/>
+    <circle cx="265" cy="206" r="3" fill="#f38ba8" opacity="0.8"/>
+    <circle cx="30" cy="80" r="11" fill="#313244" stroke="#89b4fa" stroke-width="2"/>
+    <text x="30" y="84" text-anchor="middle" fill="#89b4fa" font-size="10" font-weight="bold">C</text>
+    <text x="30" y="67" text-anchor="middle" fill="#f38ba8" font-size="9">ЗАСВЕТ</text>
+    <text x="30" y="56" text-anchor="middle" fill="#6c7086" font-size="8">вне R, но путь</text>
+    <text x="30" y="46" text-anchor="middle" fill="#6c7086" font-size="8">пересекает</text>
+
+    <!-- Annotation box -->
+    <rect x="295" y="12" width="205" height="96" rx="6" fill="#313244" stroke="#45475a"/>
+    <text x="305" y="29" fill="#cba6f7" font-size="10" font-weight="bold">Алгоритм выбора деревни:</text>
+    <text x="305" y="44" fill="#a6e3a1" font-size="9">1 ✓ B: вне R, маршрут не пересекает</text>
+    <text x="305" y="57" fill="#f9e2af" font-size="9">2 ~ C: вне R, пересекает — мин. хорда</text>
+    <text x="305" y="70" fill="#fab387" font-size="9">3 ✗ A: уже в R — засвет при отправке</text>
+    <text x="305" y="86" fill="#6c7086" font-size="8">  хорда A = от деревни до выхода из R</text>
+    <text x="305" y="99" fill="#6c7086" font-size="8">  (время реакции защитника минимальное)</text>
+
+  </svg>
+</div>
+
+<!-- ── Geometry + Legend (stacked) ──────────────────────────────────────── -->
+<div style="display:flex;flex-direction:column;gap:1.5rem;">
+
+<div class="card">
+  <h3>Геометрия хорды — скоринговая формула</h3>
+  <svg width="580" height="260" viewBox="0 0 580 260">
+    <!-- grid lines (horizontal) -->
+    <g stroke="#313244" stroke-width="0.5" opacity="0.3">
+      <line x1="0" y1="70" x2="580" y2="70"/>
+      <line x1="0" y1="140" x2="580" y2="140"/>
+      <line x1="0" y1="210" x2="580" y2="210"/>
+    </g>
+
+    <!-- Case 1: path through center → chord=2R (max) -->
+    <circle cx="120" cy="130" r="75" fill="none" stroke="#f38ba8" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.7"/>
+    <circle cx="120" cy="130" r="75" fill="#f38ba8" fill-opacity="0.05"/>
+    <line x1="15" y1="130" x2="215" y2="130" stroke="#f38ba8" stroke-width="2.5" opacity="0.9"/>
+    <!-- chord = 2R markers -->
+    <line x1="45" y1="120" x2="45" y2="142" stroke="#f38ba8" stroke-width="1.5" opacity="0.7"/>
+    <line x1="195" y1="120" x2="195" y2="142" stroke="#f38ba8" stroke-width="1.5" opacity="0.7"/>
+    <rect x="45" y="123" width="150" height="14" rx="2" fill="#f38ba8" opacity="0.15"/>
+    <text x="120" y="118" text-anchor="middle" fill="#f38ba8" font-size="11">← хорда = 2R →</text>
+    <text x="120" y="165" text-anchor="middle" fill="#f38ba8" font-size="10" font-weight="bold">Удар через центр</text>
+    <text x="120" y="178" text-anchor="middle" fill="#f38ba8" font-size="9">ранний засвет, макс. реакция</text>
+    <circle cx="120" cy="130" r="5" fill="#f38ba8"/>
+    <text x="120" y="22" text-anchor="middle" fill="#f38ba8" font-size="12" font-weight="bold">❌ Максимальный засвет</text>
+
+    <!-- Case 2: offset path → shorter chord -->
+    <circle cx="310" cy="130" r="75" fill="none" stroke="#f9e2af" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.7"/>
+    <circle cx="310" cy="130" r="75" fill="#f9e2af" fill-opacity="0.05"/>
+    <!-- path offset by d -->
+    <line x1="210" y1="168" x2="410" y2="168" stroke="#f9e2af" stroke-width="2.5" opacity="0.9"/>
+    <!-- chord segment inside: (x-310)²+(168-130)²=75² → (x-310)²=75²-38²=5625-1444=4181 → x=310±64.7 -->
+    <line x1="245" y1="158" x2="375" y2="158" stroke="#f9e2af" stroke-width="5" opacity="0.2"/>
+    <line x1="245" y1="158" x2="245" y2="178" stroke="#f9e2af" stroke-width="1.5" opacity="0.7"/>
+    <line x1="375" y1="158" x2="375" y2="178" stroke="#f9e2af" stroke-width="1.5" opacity="0.7"/>
+    <text x="310" y="153" text-anchor="middle" fill="#f9e2af" font-size="11">← хорда короче →</text>
+    <text x="310" y="197" text-anchor="middle" fill="#f9e2af" font-size="10" font-weight="bold">Смещённый маршрут</text>
+    <text x="310" y="210" text-anchor="middle" fill="#f9e2af" font-size="9">поздний засвет, мало времени</text>
+    <circle cx="310" cy="130" r="5" fill="#f9e2af"/>
+    <line x1="310" y1="130" x2="310" y2="168" stroke="#f9e2af" stroke-width="1" stroke-dasharray="3 2" opacity="0.5"/>
+    <text x="320" y="153" fill="#f9e2af" font-size="9">d</text>
+    <text x="310" y="22" text-anchor="middle" fill="#f9e2af" font-size="12" font-weight="bold">⚠ Частичный засвет</text>
+
+    <!-- Case 3: path misses → no chord -->
+    <circle cx="500" cy="130" r="75" fill="none" stroke="#a6e3a1" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.7"/>
+    <circle cx="500" cy="130" r="75" fill="#a6e3a1" fill-opacity="0.05"/>
+    <line x1="400" y1="222" x2="580" y2="222" stroke="#a6e3a1" stroke-width="2.5" opacity="0.9"/>
+    <text x="500" y="248" text-anchor="middle" fill="#a6e3a1" font-size="10" font-weight="bold">Маршрут в стороне</text>
+    <text x="500" y="260" text-anchor="middle" fill="#a6e3a1" font-size="9">нет пересечения — не засвечен ✓</text>
+    <circle cx="500" cy="130" r="5" fill="#a6e3a1"/>
+    <line x1="500" y1="130" x2="500" y2="220" stroke="#a6e3a1" stroke-width="1" stroke-dasharray="3 2" opacity="0.45"/>
+    <text x="510" y="185" fill="#a6e3a1" font-size="9">d &gt; R</text>
+    <text x="500" y="22" text-anchor="middle" fill="#a6e3a1" font-size="12" font-weight="bold">✅ Нет засвета</text>
+
+    <!-- Score formula box -->
+    <rect x="80" y="228" width="418" height="28" rx="5" fill="#313244" stroke="#45475a"/>
+    <text x="289" y="244" text-anchor="middle" fill="#cba6f7" font-size="10">score = (засвет ? 1 000 000 + хорда : 0) + дистанция до цели</text>
+  </svg>
+</div>
+
+<div class="card">
+  <h3>Легенда</h3>
+  <div class="legend">
+    <div class="leg"><div class="dot" style="background:#f38ba8"></div> Засвеченный маршрут</div>
+    <div class="leg"><div class="dot" style="background:#a6e3a1"></div> Безопасный маршрут</div>
+    <div class="leg"><div class="dot" style="background:#f9e2af"></div> Касательный / мин. засвет</div>
+    <div class="leg"><div class="dot" style="background:#fab387"></div> Деревня уже внутри радиуса</div>
+    <div class="leg"><div class="line-sample" style="background:#f38ba8;opacity:0.35"></div> Хорда (участок внутри радиуса)</div>
+    <div class="leg"><div class="dot" style="background:#f38ba8;border-radius:2px"></div> 🏰 Деревня с башней</div>
+    <div class="leg"><div class="dot" style="background:#a6e3a1;border-radius:2px"></div> 🏘 Цель атаки (без башни)</div>
+    <div class="leg"><div class="dot" style="background:#89b4fa"></div> A, B, C — деревни атакующего</div>
+    <hr style="border-color:#313244;margin:0.4rem 0"/>
+    <div style="font-size:0.8rem;color:#6c7086">Башня светит атаки:</div>
+    <div style="font-size:0.8rem;padding-left:0.8rem">• идущие <b style="color:#cdd6f4">в</b> деревни её игрока</div>
+    <div style="font-size:0.8rem;padding-left:0.8rem">• проходящие <b style="color:#cdd6f4">через</b> её радиус (транзит)</div>
+    <div style="font-size:0.8rem;padding-left:0.8rem;color:#6c7086">• отметка сохраняется навсегда</div>
+    <div style="font-size:0.8rem;padding-left:0.8rem;color:#6c7086">• башни союзников — не светят</div>
+  </div>
+</div>
+
+</div><!-- /stacked right col -->
+</div><!-- /row 2 -->
+
+</div><!-- /wrap -->
+</body>
+</html>

@@ -3,22 +3,43 @@
     <button class="collapse-toggle" @click="open = !open">
       <span class="panel-title-row">
         <img :src="knightIcon" class="knight-icon" />
-        Пал-оффы
-        <span v-if="totalAssigned > 0" class="tower-count-badge">{{ totalAssigned }} назначено</span>
+        Пал-оффы и Пробои
+        <span v-if="totalPalAssigned > 0 || totalBreachAssigned > 0" class="tower-count-badge">
+          <span v-if="totalPalAssigned > 0">{{ totalPalAssigned }} пал</span>
+          <span v-if="totalPalAssigned > 0 && totalBreachAssigned > 0"> · </span>
+          <span v-if="totalBreachAssigned > 0">{{ totalBreachAssigned }} проб</span>
+        </span>
       </span>
       <span class="collapse-icon">{{ open ? '▲' : '▼' }}</span>
     </button>
 
     <div v-if="open" class="mt">
+
+      <!-- Pool summary -->
+      <div class="pool-summary">
+        <span class="pool-chip pool-bp" :title="'Пробой + паладин'">
+          <img :src="knightIcon" class="chip-icon" />+Пробой: {{ planStore.offPoolStats.breachPal }}
+        </span>
+        <span class="pool-chip pool-pal" :title="'Паладин-офф (без пробоя)'">
+          <img :src="knightIcon" class="chip-icon" />Пал: {{ planStore.offPoolStats.palOnly }}
+        </span>
+        <span class="pool-chip pool-breach" :title="'Пробой (без паладина)'">
+          Пробой: {{ planStore.offPoolStats.breachOnly }}
+        </span>
+        <span class="pool-chip pool-full" :title="'Обычный фулл-офф'">
+          Обычные: {{ planStore.offPoolStats.fullOnly }}
+        </span>
+      </div>
+
       <div class="paloff-layout">
 
         <div class="paloff-troops">
           <table class="results-table" style="width:100%">
             <thead>
-              <tr><th style="text-align:left">Игрок</th><th style="text-align:right">#</th></tr>
+              <tr><th style="text-align:left">Игрок</th><th style="text-align:right">Пал</th></tr>
               <tr v-if="planStore.playerData.length > 0" class="tfoot-row">
                 <td><strong>Всего</strong></td>
-                <td style="text-align:right"><strong>{{ totalAvailable }}</strong></td>
+                <td style="text-align:right"><strong>{{ totalPalAvailable }}</strong></td>
               </tr>
             </thead>
             <tbody>
@@ -35,19 +56,21 @@
 
         <div class="paloff-assign">
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.5rem">
-            <button class="btn btn-secondary btn-sm" @click="distributeEvenly">Распределить равномерно</button>
-            <button class="btn btn-secondary btn-sm" @click="clearAssignments">Сбросить</button>
+            <button class="btn btn-secondary btn-sm" @click="distributePalEvenly">Пал: равномерно</button>
+            <button class="btn btn-secondary btn-sm" @click="distributeBreachEvenly">Пробой: равномерно</button>
+            <button class="btn btn-secondary btn-sm" @click="clearAssignments">Сбросить всё</button>
             <button class="btn btn-secondary btn-sm" @click="bulkOpen = !bulkOpen">
               {{ bulkOpen ? '▲' : '▼' }} Массовая вставка
             </button>
             <span class="muted-text" style="font-size:0.8rem;margin-left:auto">
-              Назначено: {{ totalAssigned }} / {{ totalAvailable }}
+              Пал: {{ totalPalAssigned }}/{{ totalPalAvailable }}
+              · Пробой: {{ totalBreachAssigned }}/{{ totalBreachAvailable }}
             </span>
           </div>
 
           <div v-if="bulkOpen" style="margin-bottom:0.75rem">
-            <p class="bulk-hint">Формат: <code>координаты,количество</code> (или только координаты — для равномерного распределения)</p>
-            <textarea class="bulk-textarea" rows="5" v-model="bulkText" placeholder="416|535,3&#10;416|536,2&#10;416|537"></textarea>
+            <p class="bulk-hint">Формат: <code>координаты,пал,пробои</code> (0 = не менять)</p>
+            <textarea class="bulk-textarea" rows="5" v-model="bulkText" placeholder="416|535,3,1&#10;416|536,2,0&#10;416|537,1,2"></textarea>
             <div v-if="bulkError" class="status-msg status-err">{{ bulkError }}</div>
             <button class="btn btn-primary btn-sm mt" @click="applyBulk">Применить</button>
           </div>
@@ -56,7 +79,8 @@
             <thead><tr>
               <th style="text-align:left">Координаты</th>
               <th style="text-align:left">Игрок (цель)</th>
-              <th style="text-align:right">Пал-оффов</th>
+              <th style="text-align:right" title="Пал-оффов (pal_off + breach+pal)">Пал</th>
+              <th style="text-align:right" title="Пробоев (breach_off)">Проб</th>
             </tr></thead>
             <tbody>
               <tr v-for="t in planStore.targets" :key="t.id">
@@ -69,16 +93,23 @@
                   </div>
                 </td>
                 <td class="muted-small">{{ resolveTargetPlayer(t) || '—' }}</td>
-                <td style="text-align:right;width:90px">
+                <td style="text-align:right;width:70px">
                   <input
-                    type="number" class="input" style="width:70px;text-align:right" min="0"
+                    type="number" class="input" style="width:54px;text-align:right" min="0"
                     :value="t.palOffCount ?? 0"
                     @change="planStore.updateTarget(t.id, { palOffCount: +($event.target as HTMLInputElement).value || undefined })"
                   />
                 </td>
+                <td style="text-align:right;width:70px">
+                  <input
+                    type="number" class="input" style="width:54px;text-align:right" min="0"
+                    :value="t.breachOffCount ?? 0"
+                    @change="planStore.updateTarget(t.id, { breachOffCount: +($event.target as HTMLInputElement).value || undefined })"
+                  />
+                </td>
               </tr>
               <tr v-if="planStore.targets.length === 0">
-                <td colspan="3" class="muted-text" style="text-align:center">Нет целей</td>
+                <td colspan="4" class="muted-text" style="text-align:center">Нет целей</td>
               </tr>
             </tbody>
           </table>
@@ -111,55 +142,65 @@ function targetTowerLevel(coords: string): number | null {
   return wt?.level ?? null
 }
 
-const totalAvailable = computed(() =>
+const totalPalAvailable = computed(() =>
   planStore.playerData.reduce((s, pd) => s + pd.offPaladins, 0),
 )
-const totalAssigned = computed(() =>
+const totalBreachAvailable = computed(() =>
+  planStore.offPoolStats.breachPal + planStore.offPoolStats.breachOnly,
+)
+const totalPalAssigned = computed(() =>
   planStore.targets.reduce((s, t) => s + (t.palOffCount ?? 0), 0),
 )
+const totalBreachAssigned = computed(() =>
+  planStore.targets.reduce((s, t) => s + (t.breachOffCount ?? 0), 0),
+)
 
-function distributeEvenly(): void {
+function distributePalEvenly(): void {
   const targets = planStore.targets.filter((t) => t.coords)
   if (!targets.length) return
-  const perTarget = Math.floor(totalAvailable.value / targets.length)
-  const remainder = totalAvailable.value - perTarget * targets.length
+  const total = totalPalAvailable.value
+  const perTarget = Math.floor(total / targets.length)
+  const remainder = total - perTarget * targets.length
   targets.forEach((t, i) =>
     planStore.updateTarget(t.id, { palOffCount: perTarget + (i < remainder ? 1 : 0) || undefined }),
   )
 }
 
+function distributeBreachEvenly(): void {
+  const targets = planStore.targets.filter((t) => t.coords)
+  if (!targets.length) return
+  const total = totalBreachAvailable.value
+  const perTarget = Math.floor(total / targets.length)
+  const remainder = total - perTarget * targets.length
+  targets.forEach((t, i) =>
+    planStore.updateTarget(t.id, { breachOffCount: perTarget + (i < remainder ? 1 : 0) || undefined }),
+  )
+}
+
 function clearAssignments(): void {
-  for (const t of planStore.targets) planStore.updateTarget(t.id, { palOffCount: undefined })
+  for (const t of planStore.targets) {
+    planStore.updateTarget(t.id, { palOffCount: undefined, breachOffCount: undefined })
+  }
 }
 
 function applyBulk(): void {
   bulkError.value = ''
   const lines = bulkText.value.split('\n').map((l) => l.trim()).filter(Boolean)
   if (!lines.length) { bulkError.value = 'Введите хотя бы одну строку'; return }
-  const parsed: { coords: string; count: number | null }[] = []
   for (const line of lines) {
     const parts = line.split(',')
     const coords = parts[0].trim()
     if (!/^\d+\|\d+$/.test(coords)) { bulkError.value = `Неверный формат: ${line}`; return }
-    const count = parts[1] ? parseInt(parts[1].trim(), 10) : null
-    if (parts[1] && isNaN(count!)) { bulkError.value = `Неверное количество: ${line}`; return }
-    parsed.push({ coords, count })
-  }
-  const withCount = parsed.filter((p) => p.count !== null)
-  const noCount = parsed.filter((p) => p.count === null)
-  for (const { coords, count } of withCount) {
+    const palCount    = parts[1] ? parseInt(parts[1].trim(), 10) : null
+    const breachCount = parts[2] ? parseInt(parts[2].trim(), 10) : null
+    if (palCount !== null && isNaN(palCount))    { bulkError.value = `Неверное кол-во пал: ${line}`; return }
+    if (breachCount !== null && isNaN(breachCount)) { bulkError.value = `Неверное кол-во пробоев: ${line}`; return }
     const t = planStore.targets.find((t) => t.coords === coords)
-    if (t) planStore.updateTarget(t.id, { palOffCount: count! || undefined })
-  }
-  if (noCount.length > 0) {
-    const assigned = withCount.reduce((s, p) => s + (p.count ?? 0), 0)
-    const remaining = Math.max(0, totalAvailable.value - assigned)
-    const perTarget = Math.floor(remaining / noCount.length)
-    const mod = remaining - perTarget * noCount.length
-    noCount.forEach(({ coords }, i) => {
-      const t = planStore.targets.find((t) => t.coords === coords)
-      if (t) planStore.updateTarget(t.id, { palOffCount: perTarget + (i < mod ? 1 : 0) || undefined })
-    })
+    if (!t) continue
+    const patch: { palOffCount?: number; breachOffCount?: number } = {}
+    if (palCount !== null)    patch.palOffCount    = palCount    || undefined
+    if (breachCount !== null) patch.breachOffCount = breachCount || undefined
+    planStore.updateTarget(t.id, patch)
   }
   bulkOpen.value = false
   bulkText.value = ''
@@ -184,4 +225,29 @@ function applyBulk(): void {
   font-size: 0.85rem;
   padding: 4px 8px;
 }
+
+.pool-summary {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.pool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.chip-icon { width: 13px; height: 13px; image-rendering: pixelated; }
+
+.pool-bp     { background: rgba(100, 80, 200, 0.15); border-color: rgba(100, 80, 200, 0.4); color: #a99ef0; }
+.pool-pal    { background: rgba(100, 80, 200, 0.08); border-color: rgba(100, 80, 200, 0.25); color: #8878cc; }
+.pool-breach { background: rgba(220, 120, 40, 0.12); border-color: rgba(220, 120, 40, 0.35); color: $orange; }
+.pool-full   { background: rgba(255,255,255,0.04); border-color: $border; color: $text-dim; }
 </style>

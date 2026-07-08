@@ -1,18 +1,62 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { callAI, type AIProvider, type AITool } from '@/utils/aiProviders'
-import { useMassConfigStore, blankMassConfig } from './massConfigStore'
+import { useMassConfigStore, type MassSlot } from './massConfigStore'
+import { usePresetsStore, defaultRoleForType, type VillageRoleType, type GreenVariant } from './presetsStore'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+export interface AIPresetSpec {
+  ref_id: string                       // temporary ref used inside slots[]
+  name: string
+  description?: string
+  type: VillageRoleType
+  // half_off
+  halfMin?: number
+  halfMax?: number
+  minRams?: number
+  // green_off
+  greenVariant?: GreenVariant
+  greenMin?: number
+  greenMax?: number
+  greenTargetAxe?: number
+  greenTargetLight?: number
+  // cat_squad
+  catMinCats?: number
+  catMaxEscort?: number
+  // spike
+  spikeRams?: number
+  spikeSpy?: number
+  spikeLight?: number
+  nobleIncluded?: boolean
+  // split
+  nobleCount?: number
+  // spam
+  spamCount?: number
+  spamStrength?: 'weak' | 'strong' | 'full'
+  spamNobleCount?: number
+  spamTrainSize?: number
+}
+
+export interface AISlotSpec {
+  preset_ref: string       // built-in preset ID or ref_id from custom_presets
+  count: number
+  offset_min?: number      // arrival offset in minutes (may be negative)
+  window_before_min?: number  // spam only
+  window_after_min?: number   // spam only
+}
+
 export interface AIMassProposal {
   reasoning: string
   name?: string
+  // Explicit presets + slots (preferred for custom scenarios)
+  custom_presets?: AIPresetSpec[]
+  slots?: AISlotSpec[]
+  // High-level shorthand (simple cases, fallback when slots not given)
   offs_enabled?: boolean; offs_count?: number
   spikes_enabled?: boolean; spikes_count?: number
-  noble_train_enabled?: boolean; noble_train_count?: number; noble_train_offset_ms?: number
   green_nobles_enabled?: boolean; green_nobles_count?: number; green_nobles_offset_ms?: number
   spam_train_enabled?: boolean; spam_train_count?: number; spam_train_offset_ms?: number
   spam_enabled?: boolean; spam_count?: number
@@ -24,22 +68,80 @@ export interface AIMassProposal {
 // ---------------------------------------------------------------------------
 
 const SYSTEM = `Ты — ИИ-помощник для планирования массовых атак в игре Tribal Wars.
-Настрой параметры масс-атаки на основе запроса игрока и доступных данных.
+Настрой параметры масс-атаки и при необходимости создай кастомные пресеты атак.
 
-Термины: Офф — топоры+лёгкая кав+тараны. Паровоз — цепочка дворян. Колючка — атака на защитника. Зелёный двор — двор с малым эскортом. Спам — фейк-атаки. Спам-паровоз — фейковые дворяне.
+Термины:
+- Офф (full_off) — все атак. войска: топоры + лёгкая кав + тараны
+- Медиум офф (half_off) — часть оффа, halfMin–halfMax юнитов
+- Зелёнка (green_off) — двор + ≤999 эскорт (flexible = топоры+ЛК+добивка)
+- Поделёнка (split) — офф делится между nobleCount дворянами
+- Кат отряд (cat_squad) — катапульты + сопровождение
+- Колючка (spike) — тараны+лаз+ЛК ≤1000 (пробив дефа)
+- Спам (spam) — weak=фейки, strong=1000+, full=фуллоффы; spamNobleCount=фейк-дворяне
 
-Рекомендации по offs_count: 1–2 если мало войск, 3–4 стандарт, 5+ если много.
-spam_count — сколько фейков на цель (10–20 стандарт). Фейки приходят случайно в окне [оффы − window_before_off_sec … захват + window_after_noble_sec].
+Встроенные пресеты (используй в slots[].preset_ref):
+  bi_full_off, bi_half_off, bi_green, bi_cat_squad,
+  bi_spike, bi_split, bi_red_noble,
+  bi_spam_weak, bi_spam_strong, bi_spam_full, bi_noble_spam, bi_spam_train
 
-Отвечай ТОЛЬКО через инструмент configure_mass_attack. Объяснение reasoning на русском.`
+Когда использовать custom_presets:
+- Нужен медиум офф с конкретными пороговыми значениями
+- Нужен спам с особым количеством дворян или фуллоффами
+- Нестандартное сочетание параметров
+
+Стратегии: offs_count 1–2=мало войск, 3–4=стандарт, 5+=много. spam_count 10–20 стандарт.
+Offset: оффы прилетают первыми (offset 0), зелёные дворы/поделёнки через 500–2000 мс после.
+
+Отвечай ТОЛЬКО через инструмент configure_mass_attack. reasoning на русском.`
 
 // ---------------------------------------------------------------------------
 // Tool definition
 // ---------------------------------------------------------------------------
 
+const PRESET_SPEC_SCHEMA = {
+  type: 'object',
+  properties: {
+    ref_id:       { type: 'string', description: 'Временный ID для использования в slots[].preset_ref' },
+    name:         { type: 'string', description: 'Название пресета' },
+    description:  { type: 'string', description: 'Описание пресета' },
+    type:         { type: 'string', enum: ['full_off','half_off','green_off','cat_squad','spike','split','spam','custom_off'], description: 'Тип пресета' },
+    halfMin:      { type: 'number', description: 'Мин. юнитов (half_off)' },
+    halfMax:      { type: 'number', description: 'Макс. юнитов (half_off)' },
+    greenVariant: { type: 'string', enum: ['light','axes','flexible'], description: 'Тип эскорта (green_off)' },
+    greenMin:     { type: 'number' },
+    greenMax:     { type: 'number' },
+    greenTargetAxe:   { type: 'number' },
+    greenTargetLight: { type: 'number' },
+    catMinCats:   { type: 'number', description: 'Мин. катапульт (cat_squad)' },
+    catMaxEscort: { type: 'number', description: 'Макс. сопровождения (cat_squad)' },
+    spikeRams:    { type: 'number' },
+    spikeSpy:     { type: 'number' },
+    spikeLight:   { type: 'number' },
+    nobleIncluded: { type: 'boolean', description: 'Включить двор в атаку (full_off)' },
+    nobleCount:   { type: 'number', description: 'Кол-во дворян (split)' },
+    spamCount:    { type: 'number', description: 'Кол-во спам атак (spam)' },
+    spamStrength: { type: 'string', enum: ['weak','strong','full'] },
+    spamNobleCount: { type: 'number' },
+    spamTrainSize:  { type: 'number' },
+  },
+  required: ['ref_id', 'name', 'type'],
+}
+
+const SLOT_SPEC_SCHEMA = {
+  type: 'object',
+  properties: {
+    preset_ref:       { type: 'string', description: 'ID встроенного пресета (bi_full_off и т.д.) или ref_id из custom_presets' },
+    count:            { type: 'number', description: 'Кол-во атак на цель' },
+    offset_min:       { type: 'number', description: 'Смещение прилёта в минутах (может быть отрицательным)' },
+    window_before_min:{ type: 'number', description: 'Только для спама: окно до оффов в минутах' },
+    window_after_min: { type: 'number', description: 'Только для спама: окно после захвата в минутах' },
+  },
+  required: ['preset_ref', 'count'],
+}
+
 const CONFIGURE_TOOL: AITool = {
   name: 'configure_mass_attack',
-  description: 'Настроить параметры массовой атаки',
+  description: 'Настроить параметры массовой атаки, при необходимости создав кастомные пресеты',
   input_schema: {
     type: 'object',
     properties: {
@@ -51,74 +153,30 @@ const CONFIGURE_TOOL: AITool = {
         type: 'string',
         description: 'Название конфигурации (краткое, без префикса AI)',
       },
-      offs_enabled: {
-        type: 'boolean',
-        description: 'Включить оффы (топоры + лёгкая кавалерия + тараны)',
+      custom_presets: {
+        type: 'array',
+        items: PRESET_SPEC_SCHEMA,
+        description: 'Кастомные пресеты для создания. Используй когда нужен нестандартный паровоз, специфичные пороги или особые параметры.',
       },
-      offs_count: {
-        type: 'number',
-        description: 'Количество оффов на цель (1–10)',
+      slots: {
+        type: 'array',
+        items: SLOT_SPEC_SCHEMA,
+        description: 'Явные слоты конфига. Если задан — используется вместо высокоуровневых полей offs_count и т.д. Порядок: сначала спам, потом пробой/оффы, потом паровоз.',
       },
-      spikes_enabled: {
-        type: 'boolean',
-        description: 'Включить колючки (атаки на защитников)',
-      },
-      spikes_count: {
-        type: 'number',
-        description: 'Количество колючек на цель',
-      },
-      noble_train_enabled: {
-        type: 'boolean',
-        description: 'Включить паровоз (цепочка дворян)',
-      },
-      noble_train_count: {
-        type: 'number',
-        description: 'Количество паровозов на цель',
-      },
-      noble_train_offset_ms: {
-        type: 'number',
-        description: 'Смещение прилёта паровоза в миллисекундах после оффов',
-      },
-      green_nobles_enabled: {
-        type: 'boolean',
-        description: 'Включить зелёные дворы (дворяне с малым эскортом)',
-      },
-      green_nobles_count: {
-        type: 'number',
-        description: 'Количество зелёных дворов на цель',
-      },
-      green_nobles_offset_ms: {
-        type: 'number',
-        description: 'Смещение прилёта зелёных дворов в миллисекундах',
-      },
-      spam_train_enabled: {
-        type: 'boolean',
-        description: 'Включить спам-паровоз (фейковые дворяне)',
-      },
-      spam_train_count: {
-        type: 'number',
-        description: 'Количество спам-паровозов на цель',
-      },
-      spam_train_offset_ms: {
-        type: 'number',
-        description: 'Смещение прилёта спам-паровоза в миллисекундах',
-      },
-      spam_enabled: {
-        type: 'boolean',
-        description: 'Включить спам (фейк-атаки)',
-      },
-      spam_count: {
-        type: 'number',
-        description: 'Количество фейк-атак на цель (1–50)',
-      },
-      spam_window_before_off_min: {
-        type: 'number',
-        description: 'Окно до оффов в минутах (default 60)',
-      },
-      spam_window_after_noble_min: {
-        type: 'number',
-        description: 'Окно после захвата в минутах (default 60)',
-      },
+      offs_enabled: { type: 'boolean', description: 'Включить оффы' },
+      offs_count:   { type: 'number',  description: 'Количество оффов на цель (1–10)' },
+      spikes_enabled: { type: 'boolean', description: 'Включить колючки' },
+      spikes_count:   { type: 'number',  description: 'Количество колючек на цель' },
+      green_nobles_enabled:  { type: 'boolean', description: 'Включить зелёные дворы' },
+      green_nobles_count:    { type: 'number',  description: 'Количество зелёных дворов на цель' },
+      green_nobles_offset_ms:{ type: 'number',  description: 'Смещение прилёта зелёных дворов в миллисекундах' },
+      spam_train_enabled:  { type: 'boolean', description: 'Включить спам-паровоз' },
+      spam_train_count:    { type: 'number',  description: 'Количество спам-паровозов на цель' },
+      spam_train_offset_ms:{ type: 'number',  description: 'Смещение прилёта спам-паровоза в миллисекундах' },
+      spam_enabled: { type: 'boolean', description: 'Включить спам (фейк-атаки)' },
+      spam_count:   { type: 'number',  description: 'Количество фейк-атак на цель (1–50)' },
+      spam_window_before_off_min:  { type: 'number', description: 'Окно до оффов в минутах (default 60)' },
+      spam_window_after_noble_min: { type: 'number', description: 'Окно после захвата в минутах (default 60)' },
     },
     required: ['reasoning'],
   },
@@ -192,23 +250,92 @@ export const useAIPlanStore = defineStore('aiPlan', () => {
   function applyProposal(): void {
     if (!proposal.value) return
 
-    const massStore = useMassConfigStore()
-    const p = proposal.value
-    const activeRaw = massStore.active
+    const massStore  = useMassConfigStore()
+    const presStore  = usePresetsStore()
+    const p          = proposal.value
 
-    const base = activeRaw
-      ? {
-          name: p.name ? `AI: ${p.name}` : 'AI конфиг',
-          description: p.reasoning.slice(0, 200),
-          slots: activeRaw.slots.map(s => ({ ...s })),
+    // Step 1: create custom presets, build ref_id → real ID map
+    const refMap: Record<string, string> = {}
+    if (p.custom_presets?.length) {
+      for (const spec of p.custom_presets) {
+        const base = defaultRoleForType(spec.type as VillageRoleType)
+        const role = {
+          ...base,
+          ...(spec.halfMin        != null ? { halfMin:        spec.halfMin }        : {}),
+          ...(spec.halfMax        != null ? { halfMax:        spec.halfMax }        : {}),
+          ...(spec.minRams        != null ? { minRams:        spec.minRams }        : {}),
+          ...(spec.greenVariant   != null ? { greenVariant:   spec.greenVariant as GreenVariant } : {}),
+          ...(spec.greenMin       != null ? { greenMin:       spec.greenMin }       : {}),
+          ...(spec.greenMax       != null ? { greenMax:       spec.greenMax }       : {}),
+          ...(spec.greenTargetAxe != null ? { greenTargetAxe: spec.greenTargetAxe } : {}),
+          ...(spec.greenTargetLight != null ? { greenTargetLight: spec.greenTargetLight } : {}),
+          ...(spec.catMinCats     != null ? { catMinCats:     spec.catMinCats }     : {}),
+          ...(spec.catMaxEscort   != null ? { catMaxEscort:   spec.catMaxEscort }   : {}),
+          ...(spec.spikeRams      != null ? { spikeRams:      spec.spikeRams }      : {}),
+          ...(spec.spikeSpy       != null ? { spikeSpy:       spec.spikeSpy }       : {}),
+          ...(spec.spikeLight     != null ? { spikeLight:     spec.spikeLight }     : {}),
+          ...(spec.nobleIncluded  != null ? { nobleIncluded:  spec.nobleIncluded }  : {}),
+          ...(spec.nobleCount     != null ? { nobleCount:     spec.nobleCount }     : {}),
+          ...(spec.spamCount      != null ? { spamCount:      spec.spamCount }      : {}),
+          ...(spec.spamStrength   != null ? { spamStrength:   spec.spamStrength }   : {}),
+          ...(spec.spamNobleCount != null ? { spamNobleCount: spec.spamNobleCount } : {}),
+          ...(spec.spamTrainSize  != null ? { spamTrainSize:  spec.spamTrainSize }  : {}),
         }
-      : { ...blankMassConfig(), name: p.name ? `AI: ${p.name}` : 'AI конфиг', description: p.reasoning.slice(0, 200) }
+        const created = presStore.add({
+          name: spec.name,
+          description: spec.description ?? '',
+          role,
+        })
+        refMap[spec.ref_id] = created.id
+      }
+    }
 
-    const created = massStore.add(base)
-    massStore.setActive(created.id)
+    // Step 2: build slots
+    function _slotId() { return `sl_${Date.now()}_${Math.random().toString(36).slice(2, 5)}` }
+
+    let slots: MassSlot[]
+    if (p.slots?.length) {
+      // Explicit slot list from AI
+      slots = p.slots.map(s => ({
+        id: _slotId(),
+        presetId: refMap[s.preset_ref] ?? s.preset_ref,
+        count:    s.count,
+        offsetMs: (s.offset_min ?? 0) * 60_000,
+        enabled:  true,
+        ...(s.window_before_min != null ? { windowBeforeMin: s.window_before_min } : {}),
+        ...(s.window_after_min  != null ? { windowAfterMin:  s.window_after_min  } : {}),
+      }))
+    } else {
+      // Fall back to high-level shorthand fields
+      slots = []
+      if (p.spam_enabled && (p.spam_count ?? 0) > 0) {
+        slots.push({ id: _slotId(), presetId: 'bi_spam_weak', count: p.spam_count!, offsetMs: 0, enabled: true,
+          windowBeforeMin: p.spam_window_before_off_min ?? 60,
+          windowAfterMin:  p.spam_window_after_noble_min ?? 60 })
+      }
+      if (p.spikes_enabled && (p.spikes_count ?? 0) > 0) {
+        slots.push({ id: _slotId(), presetId: 'bi_spike', count: p.spikes_count!, offsetMs: 0, enabled: true })
+      }
+      if (p.offs_enabled && (p.offs_count ?? 0) > 0) {
+        slots.push({ id: _slotId(), presetId: 'bi_full_off', count: p.offs_count!, offsetMs: 0, enabled: true })
+      }
+      if (p.green_nobles_enabled && (p.green_nobles_count ?? 0) > 0) {
+        slots.push({ id: _slotId(), presetId: 'bi_green', count: p.green_nobles_count!, offsetMs: p.green_nobles_offset_ms ?? 0, enabled: true })
+      }
+      if (p.spam_train_enabled && (p.spam_train_count ?? 0) > 0) {
+        slots.push({ id: _slotId(), presetId: 'bi_spam_train', count: p.spam_train_count!, offsetMs: p.spam_train_offset_ms ?? 0, enabled: true })
+      }
+    }
+
+    const cfg = massStore.add({
+      name:        p.name ? `AI: ${p.name}` : 'AI конфиг',
+      description: p.reasoning.slice(0, 200),
+      slots,
+    })
+    massStore.setActive(cfg.id)
 
     proposal.value = null
-    status.value = 'idle'
+    status.value   = 'idle'
   }
 
   function updateProposal(patch: Partial<AIMassProposal>): void {

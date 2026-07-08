@@ -4,10 +4,10 @@
       <h2>Статистика</h2>
       <div class="settings-bar">
         <div class="settings-group">
-          <span class="sg-label">Топоры</span>
-          <label class="sg-field">фулл <input v-model.number="presetsStore.fullOffMinAxe"  type="number" min="1" class="inline-input sg-input" /></label>
-          <label class="sg-field">med  <input v-model.number="presetsStore.halfOffMinAxe"  type="number" min="1" class="inline-input sg-input" /></label>
-          <label class="sg-field">мини <input v-model.number="presetsStore.smallOffMinAxe" type="number" min="1" class="inline-input sg-input" /></label>
+          <span class="sg-label" title="Офф-ферм = топоры×1 + лк×4 + тараны×5">Офф-ферм</span>
+          <label class="sg-field">фулл <input v-model.number="presetsStore.fullOffMinOffFarm"  type="number" min="1" class="inline-input sg-input" /></label>
+          <label class="sg-field">med  <input v-model.number="presetsStore.halfOffMinOffFarm"  type="number" min="1" class="inline-input sg-input" /></label>
+          <label class="sg-field">мини <input v-model.number="presetsStore.smallOffMinOffFarm" type="number" min="1" class="inline-input sg-input" /></label>
         </div>
         <div class="settings-group">
           <span class="sg-label">Пробой</span>
@@ -33,13 +33,14 @@
         <span class="stat-num">{{ villagesStore.playerCount }}</span>
         <span class="stat-label">Игроков</span>
       </div>
-      <div class="stat-card stat-card--accent">
-        <span class="stat-num">{{ totals.breakOff }}</span>
-        <span class="stat-label">Пробой</span>
-      </div>
       <div class="stat-card stat-card--red">
         <span class="stat-num">{{ totals.fullOff }}</span>
         <span class="stat-label">Фулл офф</span>
+      </div>
+      <div class="stat-card stat-card--accent" :title="`Подмножество фулл оффов: офф-ферм ≥ ${presetsStore.fullOffMinOffFarm} И тараны ≥ ${presetsStore.breachMinRams}`">
+        <span class="stat-num">{{ totals.breakOff }}</span>
+        <span class="stat-label">Пробой</span>
+        <span class="stat-sublabel">(из фулл)</span>
       </div>
       <div class="stat-card stat-card--orange">
         <span class="stat-num">{{ totals.halfOff }}</span>
@@ -74,11 +75,12 @@
       <table class="mini-table players-table">
         <thead>
           <tr>
+            <th></th>
             <th>Игрок</th>
-            <th :title="`топоры ≥ ${presetsStore.fullOffMinAxe} и тараны ≥ ${presetsStore.breachMinRams}`">Пробой</th>
-            <th :title="`топоры ≥ ${presetsStore.fullOffMinAxe} (без пробойных)`">Фулл офф</th>
-            <th :title="`топоры ${presetsStore.halfOffMinAxe}–${presetsStore.fullOffMinAxe - 1}`">Медиум офф</th>
-            <th :title="`топоры ${presetsStore.smallOffMinAxe}–${presetsStore.halfOffMinAxe - 1}`">Мини</th>
+            <th :title="`подмножество фулл оффов: офф-ферм ≥ ${presetsStore.fullOffMinOffFarm} И тараны ≥ ${presetsStore.breachMinRams}`">Пробой</th>
+            <th :title="`офф-ферм ≥ ${presetsStore.fullOffMinOffFarm} (включая пробойные)`">Фулл офф</th>
+            <th :title="`офф-ферм ${presetsStore.halfOffMinOffFarm}–${presetsStore.fullOffMinOffFarm - 1}`">Медиум офф</th>
+            <th :title="`офф-ферм ${presetsStore.smallOffMinOffFarm}–${presetsStore.halfOffMinOffFarm - 1}`">Мини</th>
             <th>
               Каты
               <span class="th-info-icon" @mouseenter="showThTooltip('cats', $event)" @mouseleave="hideThTooltip">ⓘ</span>
@@ -99,17 +101,17 @@
         </thead>
         <tbody>
           <tr v-for="p in allPlayers" :key="p.player">
+            <td class="td-remove"><button class="remove-btn" title="Удалить игрока и все его деревни" @click="removePlayer(p.player)">×</button></td>
             <td class="player-name">{{ p.player }}</td>
             <td class="num" :class="{ 'num-accent': p.breakOff > 0 }">{{ p.breakOff || '—' }}</td>
             <td class="num" :class="{ 'num-hi': p.fullOff > 0 }">
               {{ p.fullOff || '—' }}
               <span v-if="p.breakOff > 0" class="total-hint">
-                ({{ p.fullOff + p.breakOff }})
                 <span class="info-anchor">ⓘ
                   <span class="info-popup">
-                    <span class="info-row"><span class="info-lbl">Фулл офф</span><span class="info-val">{{ p.fullOff }}</span></span>
-                    <span class="info-row"><span class="info-lbl">Офф пробой</span><span class="info-val accent">{{ p.breakOff }}</span></span>
-                    <span class="info-row info-row--total"><span class="info-lbl">Итого</span><span class="info-val">{{ p.fullOff + p.breakOff }}</span></span>
+                    <span class="info-row"><span class="info-lbl">Фулл офф (всего)</span><span class="info-val">{{ p.fullOff }}</span></span>
+                    <span class="info-row"><span class="info-lbl">в т.ч. пробой</span><span class="info-val accent">{{ p.breakOff }}</span></span>
+                    <span class="info-row"><span class="info-lbl">в т.ч. чистый офф</span><span class="info-val">{{ p.fullOff - p.breakOff }}</span></span>
                   </span>
                 </span>
               </span>
@@ -175,6 +177,7 @@
       <table class="mini-table">
         <thead>
           <tr>
+            <th></th>
             <th>Игрок</th>
             <th>Координаты</th>
             <th>Очки</th>
@@ -191,29 +194,30 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(v, i) in villagesStore.villages" :key="i" :class="{ 'row-highlighted': v.coords === props.highlight }">
+          <tr v-for="v in villagesStore.villages" :key="v.coords" :class="{ 'row-highlighted': v.coords === props.highlight }">
+            <td class="td-remove"><button class="remove-btn" title="Удалить деревню" @click="villagesStore.removeVillage(v.coords)">×</button></td>
             <td>{{ v.player }}</td>
             <td>{{ v.coords }}</td>
-            <td>{{ v.points }}</td>
-            <td>{{ v.troops.spear }}</td>
-            <td>{{ v.troops.sword }}</td>
-            <td>{{ v.troops.axe }}</td>
-            <td>{{ v.troops.spy }}</td>
-            <td>{{ v.troops.light }}</td>
-            <td>{{ v.troops.heavy }}</td>
-            <td>{{ v.troops.ram }}</td>
-            <td>
-              <template v-if="catSquads(v.troops.catapult) > 0">
-                <span class="num-hi">{{ catSquads(v.troops.catapult) }}</span>
-                <span class="cat-squads">({{ v.troops.catapult }})</span>
-              </template>
-              <template v-else-if="v.troops.catapult > 0">
-                <span class="cat-below-min">{{ v.troops.catapult }}</span>
-              </template>
-              <template v-else>0</template>
+            <td class="cell-editable" @click="startEdit(v.coords, 'points', v.points)">
+              <input v-if="editingCell?.coords === v.coords && editingCell?.field === 'points'"
+                v-model="editingValue" type="number" min="0" class="cell-input"
+                @blur="commitEdit" @keydown="onEditKeydown" @click.stop />
+              <span v-else>{{ v.points }}</span>
             </td>
-            <td>{{ v.troops.knight }}</td>
-            <td>{{ v.troops.snob }}</td>
+            <td v-for="key in TROOP_KEYS" :key="key" class="cell-editable" @click="startEdit(v.coords, key, v.troops[key])">
+              <input v-if="editingCell?.coords === v.coords && editingCell?.field === key"
+                v-model="editingValue" type="number" min="0" class="cell-input"
+                @blur="commitEdit" @keydown="onEditKeydown" @click.stop />
+              <template v-else-if="key === 'catapult'">
+                <template v-if="catSquads(v.troops.catapult) > 0">
+                  <span class="num-hi">{{ catSquads(v.troops.catapult) }}</span>
+                  <span class="cat-squads">({{ v.troops.catapult }})</span>
+                </template>
+                <span v-else-if="v.troops.catapult > 0" class="cat-below-min">{{ v.troops.catapult }}</span>
+                <span v-else>0</span>
+              </template>
+              <span v-else>{{ v.troops[key] }}</span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -275,15 +279,23 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useVillagesStore } from '@/stores/villagesStore'
+import type { VillageTroops } from '@/stores/villagesStore'
 import { usePlanStore } from '@/stores/planStore'
 import { usePresetsStore } from '@/stores/presetsStore'
+import { useWorldStore } from '@/stores/worldStore'
 import { UNIT_ICONS } from '@/utils/unitIcons'
 
 const props = defineProps<{ highlight?: string }>()
 
 const villagesStore = useVillagesStore()
-const planStore = usePlanStore()
-const presetsStore = usePresetsStore()
+const planStore     = usePlanStore()
+const presetsStore  = usePresetsStore()
+const worldStore    = useWorldStore()
+
+function offFarm(troops: { axe: number; light: number; ram: number }): number {
+  const pop = worldStore.settings.unitPop
+  return troops.axe * pop.axe + troops.light * pop.light + troops.ram * pop.ram
+}
 
 function catSquads(cats: number): number {
   if (cats < presetsStore.catMinSize) return 0
@@ -295,6 +307,45 @@ function catSquadsForPlayer(player: string): number {
     .filter((v) => v.player === player)
     .reduce((sum, v) => sum + catSquads(v.troops.catapult), 0)
 }
+
+const TROOP_KEYS = ['spear', 'sword', 'axe', 'spy', 'light', 'heavy', 'ram', 'catapult', 'knight', 'snob'] as const
+
+// ── Inline editing ─────────────────────────────────────────────────────────
+type EditField = keyof VillageTroops | 'points'
+const editingCell = ref<{ coords: string; field: EditField } | null>(null)
+const editingValue = ref('')
+
+watch(editingCell, () => {
+  if (!editingCell.value) return
+  nextTick(() => {
+    const el = document.querySelector<HTMLInputElement>('.cell-input')
+    el?.focus(); el?.select()
+  })
+})
+
+function startEdit(coords: string, field: EditField, currentVal: number) {
+  editingCell.value = { coords, field }
+  editingValue.value = String(currentVal)
+}
+
+function commitEdit() {
+  if (!editingCell.value) return
+  const { coords, field } = editingCell.value
+  const val = Math.max(0, parseInt(editingValue.value, 10) || 0)
+  const v = villagesStore.villages.find(u => u.coords === coords)
+  if (v) {
+    if (field === 'points') villagesStore.upsertVillage({ ...v, points: val })
+    else villagesStore.upsertVillage({ ...v, troops: { ...v.troops, [field]: val } })
+  }
+  editingCell.value = null
+}
+
+function onEditKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter') commitEdit()
+  if (e.key === 'Escape') editingCell.value = null
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 
 const previewRef = ref<HTMLElement | null>(null)
 
@@ -335,12 +386,16 @@ const allPlayers = computed<PlayerStat[]>(() => {
       s = { player: v.player, breakOff: 0, fullOff: 0, halfOff: 0, smallOff: 0, snobsCsv: 0, knightsCsv: 0, catapultsCsv: 0 }
       map.set(v.player, s)
     }
-    const axe = v.troops.axe
+    const of = offFarm(v.troops)
     const ram = v.troops.ram
-    if (axe >= presetsStore.fullOffMinAxe && ram >= presetsStore.breachMinRams) s.breakOff++
-    else if (axe >= presetsStore.fullOffMinAxe)                                s.fullOff++
-    else if (axe >= presetsStore.halfOffMinAxe)                                s.halfOff++
-    else if (axe >= presetsStore.smallOffMinAxe)                               s.smallOff++
+    if (of >= presetsStore.fullOffMinOffFarm) {
+      s.fullOff++
+      if (ram >= presetsStore.breachMinRams) s.breakOff++
+    } else if (of >= presetsStore.halfOffMinOffFarm) {
+      s.halfOff++
+    } else if (of >= presetsStore.smallOffMinOffFarm) {
+      s.smallOff++
+    }
     s.snobsCsv     += v.troops.snob
     s.knightsCsv   += v.troops.knight
     s.catapultsCsv += v.troops.catapult
@@ -351,12 +406,16 @@ const allPlayers = computed<PlayerStat[]>(() => {
 const totals = computed(() => {
   let breakOff = 0, fullOff = 0, halfOff = 0, smallOff = 0, catapults = 0
   for (const v of villagesStore.villages) {
-    const axe = v.troops.axe
+    const of = offFarm(v.troops)
     const ram = v.troops.ram
-    if (axe >= presetsStore.fullOffMinAxe && ram >= presetsStore.breachMinRams) breakOff++
-    else if (axe >= presetsStore.fullOffMinAxe)                                fullOff++
-    else if (axe >= presetsStore.halfOffMinAxe)                                halfOff++
-    else if (axe >= presetsStore.smallOffMinAxe)                               smallOff++
+    if (of >= presetsStore.fullOffMinOffFarm) {
+      fullOff++
+      if (ram >= presetsStore.breachMinRams) breakOff++
+    } else if (of >= presetsStore.halfOffMinOffFarm) {
+      halfOff++
+    } else if (of >= presetsStore.smallOffMinOffFarm) {
+      smallOff++
+    }
     catapults += v.troops.catapult
   }
   const catSquadsTotal = villagesStore.villages.reduce((sum, v) => sum + catSquads(v.troops.catapult), 0)
@@ -364,6 +423,13 @@ const totals = computed(() => {
   const trains = allPlayers.value.reduce((sum, p) => sum + Math.floor(planStore.getPlayerData(p.player).totalNobles / 5), 0)
   return { breakOff, fullOff, halfOff, smallOff, snobs, trains, catapults, catSquadsTotal }
 })
+
+function removePlayer(player: string) {
+  const coords = villagesStore.villages
+    .filter(v => v.player === player)
+    .map(v => v.coords)
+  coords.forEach(c => villagesStore.removeVillage(c))
+}
 
 function prefillMissing() {
   for (const p of allPlayers.value) {
@@ -596,6 +662,51 @@ defineExpose({ prefillAll })
   background: a($accent, 0.15) !important;
   outline: 1px solid a($accent, 0.5);
   td { color: $text !important; }
+}
+
+.cell-editable {
+  cursor: pointer;
+  &:hover { background: a($accent, 0.06); }
+}
+
+.td-remove {
+  width: 20px;
+  padding: 0 2px;
+}
+
+.remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: $text-faint;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s;
+
+  tr:hover & { opacity: 1; }
+  &:hover { color: $accent; }
+}
+
+
+.cell-input {
+  width: 100%;
+  min-width: 48px;
+  padding: 0 2px;
+  font-size: inherit;
+  font-family: inherit;
+  color: $text;
+  background: a($accent, 0.1);
+  border: 1px solid a($accent, 0.5);
+  border-radius: 3px;
+  outline: none;
+  text-align: right;
 }
 </style>
 

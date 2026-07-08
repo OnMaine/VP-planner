@@ -43,7 +43,7 @@
         <div class="bulk-time">
           <label>
             Дата и время прилёта
-            <input v-model="bulkDatetime" type="datetime-local" class="input" step="1" />
+            <input v-model="bulkDatetime" type="datetime-local" class="input" step="0.001" />
           </label>
           <button class="btn btn-primary" @click="doBulkAdd">Добавить</button>
         </div>
@@ -105,7 +105,7 @@
               <td class="muted-small">{{ enemyStore.lookupCoords(t.coords)?.ally?.tag ?? t.enemyAllyTag ?? '—' }}</td>
               <td>
                 <input
-                  type="datetime-local" class="input" style="width:185px" step="1"
+                  type="datetime-local" class="input" style="width:185px" step="0.001"
                   :value="toDatetimeLocal(t.arrivalTime)"
                   @change="onDatetimeChange(t.id, ($event.target as HTMLInputElement).value)"
                 />
@@ -145,7 +145,7 @@ const { resolveTargetPlayer } = usePlayerResolution()
 // UI state
 const bulkOpen = ref(false)
 const bulkText = ref('')
-const bulkDatetime = ref(toDatetimeLocal(new Date(Date.now() + 3600_000)))
+const bulkDatetime = ref(toDatetimeLocal(new Date(Math.floor((Date.now() + 3600_000) / 1000) * 1000)))
 const bulkError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 

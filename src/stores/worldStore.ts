@@ -16,6 +16,8 @@ export interface UnitTimes {
 
 export type UnitPop = UnitTimes  // same shape — population (farm space) per unit
 
+export type NoblePollMode = 'real' | 'real_virtual' | 'virtual'
+
 export interface WorldSettings {
   worldCode: string
   worldSpeed: number
@@ -30,6 +32,7 @@ export interface WorldSettings {
   snobIntervalMs: number
   minAttackSize: number   // minimum farm-space sum for any attack
   watchtowerEnabled: boolean
+  noblePollMode: NoblePollMode
   unitTimes: UnitTimes
   unitPop: UnitPop
 }
@@ -94,6 +97,7 @@ function defaultSettings(): WorldSettings {
     snobIntervalMs: 100,
     minAttackSize: 100,
     watchtowerEnabled: false,
+    noblePollMode: 'real' as NoblePollMode,
     unitTimes: { ...DEFAULT_UNIT_TIMES },
     unitPop: { ...DEFAULT_UNIT_POP },
   }
