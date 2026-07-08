@@ -95,6 +95,7 @@
                     <th>Тип</th>
                     <th>Отправка</th>
                     <th>Прибытие</th>
+                    <th>В пути</th>
                     <th>От → До</th>
                     <th>Юниты</th>
                     <th>⚠</th>
@@ -108,22 +109,18 @@
                     :style="rowStyle(row.representative)"
                   >
                     <td>
-                      <template v-if="row.representative.trainGroupId">
-                        <span class="type-badge badge-off">Паровоз ×1</span>
-                      </template>
-                      <template v-else>
-                        <span v-if="row.representative.type === 'noble_red'" class="type-badge badge-off">Фулл</span>
-                        <span
-                          :class="['type-badge', row.representative.customColor ? '' : typeBadgeClass(row.representative.type)]"
-                          :style="row.representative.customColor ? customBadgeStyle(row.representative.customColor) : {}"
-                        >{{ attackLabel(row.representative) }}<template v-if="row.attacks.length > 1"> ×{{ row.attacks.length }}</template></span>
-                      </template>
+                      <span v-if="row.representative.type === 'noble_red'" class="type-badge badge-off">Фулл</span>
+                      <span
+                        :class="['type-badge', row.representative.color ? '' : typeBadgeClass(row.representative.type)]"
+                        :style="row.representative.color ? customBadgeStyle(row.representative.color) : {}"
+                      >{{ attackLabel(row.representative) }}</span>
                     </td>
                     <td class="mono">{{ formatDT(row.representative.sendTime) }}</td>
                     <td class="mono">
                       {{ formatDT(row.representative.arrivalTime) }}
-                      <span v-if="row.attacks.length > 1" class="arr-range">– {{ formatDT(row.attacks[row.attacks.length - 1].arrivalTime) }}</span>
+                      <span v-if="row.lastArrival && row.lastArrival > row.representative.arrivalTime" class="train-range"> – {{ formatTime(row.lastArrival) }}</span>
                     </td>
+                    <td class="mono dur">{{ formatDur(row.representative.sendTime, row.representative.arrivalTime) }}</td>
                     <td class="mono nowrap">
                       <RouterLink :to="`/import?highlight=${row.representative.fromVillage.coords}`" class="coords-link">{{ row.representative.fromVillage.coords }}</RouterLink> → {{ row.representative.target.coords }}
                       <span v-if="row.representative.target.label" class="muted-small">({{ row.representative.target.label }})</span>
@@ -132,15 +129,36 @@
                       <span class="wt-icon">
                         <img :src="attackSizeIcon(row.representative.watchtowerColor)" class="attack-size-icon" />
                       </span>
-                      <span class="units-count">{{ groupedTotalUnits(row).toLocaleString() }}</span>
-                      <span class="units-sep">·</span>
-                      <span class="units-detail">
-                        <span v-for="p in groupedCompParts(row)" :key="p.key" class="comp-unit">
-                          <img :src="p.icon" class="unit-icon-xs" :title="p.key" />{{ p.count.toLocaleString() }}<template v-if="p.mult"> ×{{ p.mult }}</template>
+                      <template v-if="row.lastArrival">
+                        <span class="train-count">×{{ row.attacks.length }}</span>
+                        <template v-if="row.nobleCount">
+                          <span class="units-sep">·</span>
+                          <span class="comp-unit">
+                            <img :src="UNIT_ICONS.snob" class="unit-icon-xs" title="snob" />{{ row.nobleCount }}
+                          </span>
+                        </template>
+                      </template>
+                      <template v-else>
+                        <span class="units-count">{{ row.representative.totalUnits.toLocaleString() }}</span>
+                        <span class="units-sep">·</span>
+                        <span class="units-detail">
+                          <span v-for="p in compParts(row.representative.composition)" :key="p.key" class="comp-unit">
+                            <img :src="p.icon" class="unit-icon-xs" :title="p.key" />{{ p.count.toLocaleString() }}
+                          </span>
                         </span>
-                      </span>
+                      </template>
                     </td>
                     <td>
+                      <span
+                        v-if="row.representative.buildNobles"
+                        class="warn-badge badge-build-nobles"
+                        :title="`Построить ${row.representative.buildNobles} дв. в ${row.representative.fromVillage.coords} до отправки`"
+                      >🔨{{ row.representative.buildNobles }}</span>
+                      <span
+                        v-if="row.representative.buildPaladin"
+                        class="warn-badge badge-build-paladin"
+                        :title="`Завербовать паладина в ${row.representative.fromVillage.coords} до отправки`"
+                      >🔨Пал</span>
                       <span
                         v-for="w in row.representative.warnings" :key="w"
                         :class="['warn-badge', warnBadgeClass(w)]"
@@ -148,7 +166,7 @@
                       >{{ warnBadgeLabel(w) }}</span>
                     </td>
                     <td class="center-cell">
-                      <input type="checkbox" :checked="row.representative.excluded" @change="row.attacks.forEach(a => { if (a.excluded !== row.representative.excluded) planStore.toggleExclude(a.id) }); planStore.toggleExclude(row.representative.id)" />
+                      <input type="checkbox" :checked="row.representative.excluded" @change="row.attacks.forEach(a => planStore.toggleExclude(a.id))" />
                     </td>
                   </tr>
                 </tbody>
@@ -185,6 +203,7 @@
                     <th>Тип</th>
                     <th>Отправка</th>
                     <th>Прибытие</th>
+                    <th>В пути</th>
                     <th>От</th>
                     <th>Игрок</th>
                     <th>Юниты</th>
@@ -199,22 +218,18 @@
                     :style="rowStyle(row.representative)"
                   >
                     <td>
-                      <template v-if="row.representative.trainGroupId">
-                        <span class="type-badge badge-off">Паровоз ×1</span>
-                      </template>
-                      <template v-else>
-                        <span v-if="row.representative.type === 'noble_red'" class="type-badge badge-off">Фулл</span>
-                        <span
-                          :class="['type-badge', row.representative.customColor ? '' : typeBadgeClass(row.representative.type)]"
-                          :style="row.representative.customColor ? customBadgeStyle(row.representative.customColor) : {}"
-                        >{{ attackLabel(row.representative) }}<template v-if="row.attacks.length > 1"> ×{{ row.attacks.length }}</template></span>
-                      </template>
+                      <span v-if="row.representative.type === 'noble_red'" class="type-badge badge-off">Фулл</span>
+                      <span
+                        :class="['type-badge', row.representative.color ? '' : typeBadgeClass(row.representative.type)]"
+                        :style="row.representative.color ? customBadgeStyle(row.representative.color) : {}"
+                      >{{ attackLabel(row.representative) }}</span>
                     </td>
                     <td class="mono">{{ formatDT(row.representative.sendTime) }}</td>
                     <td class="mono">
                       {{ formatDT(row.representative.arrivalTime) }}
-                      <span v-if="row.attacks.length > 1" class="arr-range">– {{ formatDT(row.attacks[row.attacks.length - 1].arrivalTime) }}</span>
+                      <span v-if="row.lastArrival && row.lastArrival > row.representative.arrivalTime" class="train-range"> – {{ formatTime(row.lastArrival) }}</span>
                     </td>
+                    <td class="mono dur">{{ formatDur(row.representative.sendTime, row.representative.arrivalTime) }}</td>
                     <td class="mono nowrap">
                       <RouterLink :to="`/import?highlight=${row.representative.fromVillage.coords}`" class="coords-link">{{ row.representative.fromVillage.coords }}</RouterLink>
                     </td>
@@ -223,15 +238,36 @@
                       <span class="wt-icon">
                         <img :src="attackSizeIcon(row.representative.watchtowerColor)" class="attack-size-icon" />
                       </span>
-                      <span class="units-count">{{ groupedTotalUnits(row).toLocaleString() }}</span>
-                      <span class="units-sep">·</span>
-                      <span class="units-detail">
-                        <span v-for="p in groupedCompParts(row)" :key="p.key" class="comp-unit">
-                          <img :src="p.icon" class="unit-icon-xs" :title="p.key" />{{ p.count.toLocaleString() }}<template v-if="p.mult"> ×{{ p.mult }}</template>
+                      <template v-if="row.lastArrival">
+                        <span class="train-count">×{{ row.attacks.length }}</span>
+                        <template v-if="row.nobleCount">
+                          <span class="units-sep">·</span>
+                          <span class="comp-unit">
+                            <img :src="UNIT_ICONS.snob" class="unit-icon-xs" title="snob" />{{ row.nobleCount }}
+                          </span>
+                        </template>
+                      </template>
+                      <template v-else>
+                        <span class="units-count">{{ row.representative.totalUnits.toLocaleString() }}</span>
+                        <span class="units-sep">·</span>
+                        <span class="units-detail">
+                          <span v-for="p in compParts(row.representative.composition)" :key="p.key" class="comp-unit">
+                            <img :src="p.icon" class="unit-icon-xs" :title="p.key" />{{ p.count.toLocaleString() }}
+                          </span>
                         </span>
-                      </span>
+                      </template>
                     </td>
                     <td>
+                      <span
+                        v-if="row.representative.buildNobles"
+                        class="warn-badge badge-build-nobles"
+                        :title="`Построить ${row.representative.buildNobles} дв. в ${row.representative.fromVillage.coords} до отправки`"
+                      >🔨{{ row.representative.buildNobles }}</span>
+                      <span
+                        v-if="row.representative.buildPaladin"
+                        class="warn-badge badge-build-paladin"
+                        :title="`Завербовать паладина в ${row.representative.fromVillage.coords} до отправки`"
+                      >🔨Пал</span>
                       <span
                         v-for="w in row.representative.warnings" :key="w"
                         :class="['warn-badge', warnBadgeClass(w)]"
@@ -239,7 +275,7 @@
                       >{{ warnBadgeLabel(w) }}</span>
                     </td>
                     <td class="center-cell">
-                      <input type="checkbox" :checked="row.representative.excluded" @change="row.attacks.forEach(a => { if (a.excluded !== row.representative.excluded) planStore.toggleExclude(a.id) }); planStore.toggleExclude(row.representative.id)" />
+                      <input type="checkbox" :checked="row.representative.excluded" @change="row.attacks.forEach(a => planStore.toggleExclude(a.id))" />
                     </td>
                   </tr>
                 </tbody>
@@ -260,6 +296,10 @@
               <option value="">Все игроки</option>
               <option v-for="p in allPlayers" :key="p" :value="p">{{ p }}</option>
             </select>
+          </label>
+          <label class="bbcode-toggle" title="Добавить спойлер с картой всех атак на каждую цель — игрок видит свою очередность среди атак других игроков">
+            <input type="checkbox" v-model="includeAttackMap" />
+            Карта атак
           </label>
           <button class="btn btn-secondary" @click="copyBBCode">
             {{ copied ? 'Скопировано ✓' : 'Копировать' }}
@@ -290,26 +330,49 @@ const planStore = usePlanStore()
 const enemyStore = useEnemyDataStore()
 const { formatDT } = useDateFormat()
 
+function formatTime(d: Date): string {
+  const p2 = (n: number) => String(n).padStart(2, '0')
+  const p3 = (n: number) => String(n).padStart(3, '0')
+  return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}.${p3(d.getMilliseconds())}`
+}
+
+function formatDur(send: Date, arrival: Date): string {
+  const s = Math.round((arrival.getTime() - send.getTime()) / 1000)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = s % 60
+  return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+}
+
 // ── Tab state ──────────────────────────────────────────────────────────────
 
 const tab = ref<'visual' | 'targets' | 'bbcode'>('visual')
 
-// ── Train grouping ─────────────────────────────────────────────────────────
+// ── Attack row grouping ────────────────────────────────────────────────────
 
 interface AttackRow {
-  attacks: Attack[]   // 1 = single, >1 = grouped train
+  attacks: Attack[]
   representative: Attack
+  lastArrival?: Date   // set when trainGroupId groups multiple attacks
+  nobleCount?: number  // number of spam_noble attacks in group
 }
 
 function groupAttacks(list: Attack[]): AttackRow[] {
   const rows: AttackRow[] = []
-  const seen = new Set<string>()
+  const seen = new Map<string, AttackRow>()
   for (const atk of list) {
     if (atk.trainGroupId) {
-      if (seen.has(atk.trainGroupId)) continue
-      seen.add(atk.trainGroupId)
-      const group = list.filter(a => a.trainGroupId === atk.trainGroupId)
-      rows.push({ attacks: group, representative: atk })
+      const existing = seen.get(atk.trainGroupId)
+      if (existing) {
+        existing.attacks.push(atk)
+        if (atk.arrivalTime > (existing.lastArrival ?? existing.representative.arrivalTime))
+          existing.lastArrival = atk.arrivalTime
+        existing.nobleCount = (existing.nobleCount ?? 0) + (atk.composition.snob ?? 0)
+        continue
+      }
+      const row: AttackRow = { attacks: [atk], representative: atk, lastArrival: atk.arrivalTime, nobleCount: atk.composition.snob ?? 0 }
+      seen.set(atk.trainGroupId, row)
+      rows.push(row)
     } else {
       rows.push({ attacks: [atk], representative: atk })
     }
@@ -320,24 +383,27 @@ function groupAttacks(list: Attack[]): AttackRow[] {
 // ── Generation issues ──────────────────────────────────────────────────────
 
 function issueLabel(issue: GenerationIssue): string {
+  const slot = issue.slotName ? `[${issue.slotName}] ` : ''
   switch (issue.type) {
-    case 'OFFS_SHORT':
-      return issue.generated === 0
-        ? `Оффы: нет подходящих деревень (запрошено ${issue.requested})`
-        : `Оффы: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
-    case 'NOBLE_TRAIN_MISSING':
-      return `Паровоз: нет деревни с достаточным кол-вом дворян (запрошено ${issue.requested})`
-    case 'NOBLE_TRAIN_PARTIAL':
-      return `Паровоз: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
+    case 'OFFS_SHORT': {
+      if (issue.generated > 0)
+        return `${slot}Оффы: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
+      const reason =
+        issue.offsReason === 'pool_depleted' ? 'все оффы уже заняты предыдущими целями' :
+        issue.offsReason === 'night_excluded' ? 'все деревни заблокированы ночным режимом' :
+        issue.offsReason === 'no_eligible'    ? 'нет деревень с подходящим составом' :
+        'нет подходящих деревень'
+      return `${slot}Оффы: ${reason} (запрошено ${issue.requested})`
+    }
     case 'NOBLES_SHORT':
-      return `Зел. дворы: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
+      return `${slot}Зел. дворы: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
     case 'SPAM_SHORT':
-      return `Спам: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
+      return `${slot}Спам: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
   }
 }
 
 function issueSeverity(issue: GenerationIssue): string {
-  if (issue.type === 'NOBLE_TRAIN_MISSING' || (issue.type === 'OFFS_SHORT' && issue.generated === 0)) return 'issue-critical'
+  if (issue.type === 'OFFS_SHORT' && issue.generated === 0) return 'issue-critical'
   return 'issue-warn'
 }
 
@@ -386,13 +452,11 @@ function playerTypeChips(attacks: Attack[]): TypeChip[] {
   const rows = groupAttacks(attacks.filter(a => !a.excluded))
   const counts = new Map<string, { label: string; count: number; cls: string }>()
   for (const row of rows) {
-    const isTrain = !!row.representative.trainGroupId
-    const label   = isTrain ? 'Паровоз' : (row.representative.label ?? typeLabel(row.representative.type))
-    const cls     = isTrain ? 'badge-off' : typeBadgeClass(row.representative.type)
-    const n       = isTrain ? 1 : row.attacks.length
-    const prev    = counts.get(label)
-    if (prev) prev.count += n
-    else counts.set(label, { label, count: n, cls })
+    const label = row.representative.label ?? typeLabel(row.representative.type)
+    const cls   = typeBadgeClass(row.representative.type)
+    const prev  = counts.get(label)
+    if (prev) prev.count++
+    else counts.set(label, { label, count: 1, cls })
   }
   return [...counts.values()]
 }
@@ -488,36 +552,18 @@ function attackSizeIcon(color: 'green' | 'orange' | 'red'): string {
   return attackLarge
 }
 
-function groupedTotalUnits(row: AttackRow): number {
-  if (row.attacks.length <= 1) return row.representative.totalUnits
-  return row.attacks.reduce((sum, a) => sum + a.totalUnits, 0)
-}
-
-function compParts(c: AttackComposition): Array<{ key: string; icon: string; count: number; mult?: number }> {
+function compParts(c: AttackComposition): Array<{ key: string; icon: string; count: number }> {
   const order: Array<keyof AttackComposition> = [
     'axe', 'light', 'heavy', 'ram', 'spear', 'sword', 'spy', 'catapult', 'knight', 'snob',
   ]
   return order.filter((k) => c[k] > 0).map((k) => ({ key: k, icon: UNIT_ICONS[k], count: c[k] }))
 }
 
-function groupedCompParts(row: AttackRow): Array<{ key: string; icon: string; count: number; mult?: number }> {
-  const N = row.attacks.length
-  const order: Array<keyof AttackComposition> = [
-    'axe', 'light', 'heavy', 'ram', 'spear', 'sword', 'spy', 'catapult', 'knight', 'snob',
-  ]
-  return order.flatMap((k) => {
-    const counts = row.attacks.map((a) => a.composition[k])
-    const total  = counts.reduce((s, v) => s + v, 0)
-    if (total === 0) return []
-    const allSame = N > 1 && counts.every((v) => v === counts[0])
-    return [{ key: k, icon: UNIT_ICONS[k], count: allSame ? counts[0] : total, mult: allSame ? N : undefined }]
-  })
-}
-
 // ── BBCode tab ─────────────────────────────────────────────────────────────
 
-const bbcodePlayer = ref('')
-const copied = ref(false)
+const bbcodePlayer    = ref('')
+const copied          = ref(false)
+const includeAttackMap = ref(false)
 
 const allPlayers = computed(() => [...planStore.attacksByPlayer.keys()])
 
@@ -561,34 +607,23 @@ function bbAttackLink(atk: Attack): string {
 
 const WT_COLOR: Record<string, string> = { green: '#009900', orange: '#ff8800', red: '#ff0000' }
 
+function attackBBColor(atk: Attack): string {
+  return atk.color ?? '#e94560'
+}
+
 function attackToLine(atk: Attack): string {
-  const base = attackBBMeta(atk.type)
+  const base  = attackBBMeta(atk.type)
   const unit  = base.unit
-  const label = atk.customColor
-    ? (atk.label ?? 'КАСТОМ').toUpperCase().replace(/ /g, '_')
-    : base.label
-  const color = atk.customColor ?? WT_COLOR[atk.watchtowerColor]
+  const raw   = atk.label ?? base.label
+  const label = raw.toUpperCase().replace(/ /g, '_')
+  const color = attackBBColor(atk)
   const sd = bbDate(atk.sendTime), st = bbTime(atk.sendTime)
   const ad = bbDate(atk.arrivalTime), at = bbTime(atk.arrivalTime)
   return `[unit]${unit}[/unit]    [b][color=${color}]${label}[/color][/b]    |    ${sd}    [b]${st}[/b]    |    ${ad}    ${at}    |    ${atk.fromVillage.coords} -> ${atk.target.coords}    |    ${bbAttackLink(atk)}`
 }
 
-function trainToLine(row: AttackRow): string {
-  const rep   = row.representative
-  const n     = row.attacks.length
-  const label = `ПАРОВОЗ_[ДВОР×${n}]`
-  const sd = bbDate(rep.sendTime), st = bbTime(rep.sendTime)
-  const first = rep.arrivalTime, last = row.attacks[row.attacks.length - 1].arrivalTime
-  const arrStr = last.getTime() !== first.getTime()
-    ? `${bbDate(first)}    ${bbTime(first)} – ${bbTime(last)}`
-    : `${bbDate(first)}    ${bbTime(first)}`
-  const totalUnits = row.attacks.reduce((s, a) => s + a.totalUnits, 0)
-  const color = totalUnits <= 1000 ? WT_COLOR.green : totalUnits <= 5000 ? WT_COLOR.orange : WT_COLOR.red
-  return `[unit]snob[/unit]    [b][color=${color}]${label}[/color][/b]    |    ${sd}    [b]${st}[/b]    |    ${arrStr}    |    ${rep.fromVillage.coords} -> ${rep.target.coords}    |    ${bbAttackLink(rep)}`
-}
-
 function rowToLine(row: AttackRow): string {
-  return row.representative.trainGroupId ? trainToLine(row) : attackToLine(row.representative)
+  return attackToLine(row.representative)
 }
 
 function openOrdersBlock(player: string): string {
@@ -599,64 +634,152 @@ function openOrdersBlock(player: string): string {
 }
 
 function buildInstructionsBBCode(filterPlayer?: string): string {
-  const nobles = filterPlayer
-    ? planStore.noblePlacements.filter((np) => np.village.player === filterPlayer)
-    : planStore.noblePlacements
-  const paladins = filterPlayer
-    ? planStore.paladinPlacements.filter((pp) => pp.village.player === filterPlayer)
-    : planStore.paladinPlacements
+  const active = planStore.attacks.filter(a =>
+    !a.excluded && (filterPlayer ? a.fromVillage.player === filterPlayer : true)
+  )
 
-  if (nobles.length === 0 && paladins.length === 0) return ''
+  // Nobles: sum snob count per village across all attacks
+  const nobleMap = new Map<string, { coords: string; player: string; count: number }>()
+  for (const a of active) {
+    const snobs = a.composition.snob ?? 0
+    if (snobs === 0) continue
+    const ex = nobleMap.get(a.fromVillage.coords)
+    if (ex) ex.count += snobs
+    else nobleMap.set(a.fromVillage.coords, { coords: a.fromVillage.coords, player: a.fromVillage.player, count: snobs })
+  }
+
+  // Paladins: unique villages that send a paladin (knight > 0)
+  const palMap = new Map<string, string>()
+  for (const a of active) {
+    if ((a.composition.knight ?? 0) > 0) palMap.set(a.fromVillage.coords, a.fromVillage.coords)
+  }
+
+  if (nobleMap.size === 0 && palMap.size === 0) return ''
 
   const lines: string[] = [`[b]━━━ Инструкции по строительству ━━━[/b]`]
 
-  if (nobles.length > 0) {
+  if (nobleMap.size > 0) {
     lines.push('[b]Дворяне (где строить)[/b]')
-    for (const np of nobles) {
-      lines.push(`[player]${np.village.player}[/player]    [coord]${np.village.coords}[/coord]    ×${np.count}`)
+    for (const np of nobleMap.values()) {
+      lines.push(`[player]${np.player}[/player]    [coord]${np.coords}[/coord]    ×${np.count}`)
     }
   }
 
-  if (paladins.length > 0) {
-    if (nobles.length > 0) lines.push('')
-    lines.push('[b]Паладины (для какой цели)[/b]')
-    for (const pp of paladins) {
-      const tgt = pp.forTarget.label
-        ? `${pp.forTarget.label} [coord]${pp.forTarget.coords}[/coord]`
-        : `[coord]${pp.forTarget.coords}[/coord]`
-      lines.push(`[player]${pp.village.player}[/player]    [coord]${pp.village.coords}[/coord]    → ${tgt}`)
+  if (palMap.size > 0) {
+    if (nobleMap.size > 0) lines.push('')
+    lines.push('[b]Паладины[/b]')
+    for (const coords of palMap.keys()) {
+      lines.push(`[coord]${coords}[/coord] - Офф паладин`)
     }
   }
 
   return lines.join('\n')
 }
 
+function attackMapBlock(filterPlayer?: string): string {
+  const relevantTargetIds = filterPlayer
+    ? new Set(
+        planStore.attacks
+          .filter(a => !a.excluded && a.fromVillage.player === filterPlayer)
+          .map(a => a.target.id)
+      )
+    : null
+
+  const targets = planStore.targets.filter(t =>
+    t.coords && (relevantTargetIds ? relevantTargetIds.has(t.id) : true)
+  )
+  if (targets.length === 0) return ''
+
+  const blocks: string[] = []
+
+  for (const t of targets) {
+    const atks = (planStore.attacksByTarget.get(t.id) ?? [])
+      .filter(a => !a.excluded)
+      .slice()
+      .sort((a, b) => a.arrivalTime.getTime() - b.arrivalTime.getTime())
+    if (atks.length === 0) continue
+
+    const tgtLabel = t.label ? `${t.label} ` : ''
+    const tgtOwner = t.enemyPlayer ? ` (${t.enemyPlayer})` : ''
+    const header = `[b]${tgtLabel}[coord]${t.coords}[/coord]${tgtOwner}[/b]`
+
+    const rows: string[] = []
+    for (const a of atks) {
+      const d  = a.arrivalTime
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mm = String(d.getMinutes()).padStart(2, '0')
+      const ss = String(d.getSeconds()).padStart(2, '0')
+      const mo = String(d.getMonth() + 1).padStart(2, '0')
+      const dy = String(d.getDate()).padStart(2, '0')
+      const time    = `${dy}.${mo} ${hh}:${mm}:${ss}`
+      const label   = a.label ?? atkTypeLabelShort(a.type)
+      const isMine  = filterPlayer ? a.fromVillage.player === filterPlayer : false
+      const mark    = isMine ? '► ' : ''
+      const typeCol = isMine ? `[b]${mark}${label}[/b]` : `${label}`
+      const playerCol = filterPlayer
+        ? (isMine ? '' : `[player]${a.fromVillage.player}[/player]`)
+        : `[player]${a.fromVillage.player}[/player]`
+      rows.push(`[*]${time}[|]${typeCol}[|][coord]${a.fromVillage.coords}[/coord][|]${playerCol}`)
+    }
+
+    blocks.push(`${header}\n[table]\n[**]Время[||]Тип[||]Деревня[||]Игрок[/**]\n${rows.join('\n')}\n[/table]`)
+  }
+
+  if (blocks.length === 0) return ''
+  return `[spoiler=Карта атак]\n${blocks.join('\n\n')}\n[/spoiler]`
+}
+
+function atkTypeLabelShort(type: string): string {
+  if (type === 'paladin_off')        return 'Пал-Офф'
+  if (type === 'off')                return 'Офф'
+  if (type === 'noble_red')          return 'Кр. двор'
+  if (type === 'noble_orange')       return 'Ор. двор'
+  if (type === 'noble_green_strong') return 'Зел. двор'
+  if (type === 'noble_green_weak')   return 'Зел. двор~'
+  if (type === 'spam_noble')         return 'Спам-двор'
+  if (type === 'spam')               return 'Спам'
+  if (type === 'split_off_rams')     return 'Медиум'
+  if (type === 'split_off_rest')     return 'Медиум-'
+  return type
+}
+
 const bbcodeOutput = computed(() => {
+  const bySendTime = (a: Attack, b: Attack) => a.sendTime.getTime() - b.sendTime.getTime()
+
   if (bbcodePlayer.value) {
     const playerAttacks = planStore.attacksByPlayer.get(bbcodePlayer.value) ?? []
-    const active = playerAttacks.filter((a) => !a.excluded)
+    const active = playerAttacks.filter((a) => !a.excluded).slice().sort(bySendTime)
     const lines: string[] = []
     const instructions = buildInstructionsBBCode(bbcodePlayer.value)
-    if (instructions) lines.push(instructions)
+    if (instructions) { lines.push(instructions); lines.push('') }
     const orders = openOrdersBlock(bbcodePlayer.value)
-    if (orders) lines.push(orders)
+    if (orders) { lines.push(orders); lines.push('') }
     lines.push('[b]━━━ План атак ━━━[/b]')
     groupAttacks(active).forEach((row) => lines.push(rowToLine(row)))
+    if (includeAttackMap.value) {
+      const map = attackMapBlock(bbcodePlayer.value)
+      if (map) { lines.push(''); lines.push(map) }
+    }
     return lines.join('\n')
   }
 
   // All players
   const lines: string[] = []
   for (const [player, playerAttacks] of planStore.attacksByPlayer) {
-    const active = playerAttacks.filter((a) => !a.excluded)
+    const active = playerAttacks.filter((a) => !a.excluded).slice().sort(bySendTime)
     if (active.length === 0) continue
     lines.push(`[b]${player}[/b]`)
     const instructions = buildInstructionsBBCode(player)
-    if (instructions) lines.push(instructions)
+    if (instructions) { lines.push(instructions); lines.push('') }
     const orders = openOrdersBlock(player)
-    if (orders) lines.push(orders)
+    if (orders) { lines.push(orders); lines.push('') }
     lines.push('[b]━━━ План атак ━━━[/b]')
     groupAttacks(active).forEach((row) => lines.push(rowToLine(row)))
+    if (includeAttackMap.value) {
+      const map = attackMapBlock(player)
+      if (map) { lines.push(''); lines.push(map) }
+    }
+    lines.push('')
     lines.push('')
   }
   return lines.join('\n').trim()
@@ -804,6 +927,9 @@ $yellow:       #f0c040;
 .badge-spam         { background: a($text-dim, 0.15); color: $text-dim; border: 1px solid a($text-dim, 0.3); }
 
 // Warning badges
+.badge-build-nobles  { background: a($purple, 0.15); color: $purple; border: 1px solid a($purple, 0.35); cursor: help; }
+.badge-build-paladin { background: a($orange, 0.15); color: $orange; border: 1px solid a($orange, 0.35); cursor: help; }
+
 .warn-badge {
   display: inline-block;
   padding: 0.12rem 0.38rem;
@@ -822,17 +948,10 @@ $yellow:       #f0c040;
 .wt-icon         { display: inline-flex; align-items: center; margin-right: 0.3rem; }
 .attack-size-icon { width: 14px; height: 14px; image-rendering: pixelated; }
 
-.train-count {
-  display: inline-block;
-  margin-left: 0.3rem;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: $purple;
-  background: a($purple, 0.12);
-  border: 1px solid a($purple, 0.3);
-  border-radius: 8px;
-  padding: 0.05rem 0.35rem;
-  vertical-align: middle;
+.dur {
+  color: $text-faint;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .arr-range {
@@ -852,6 +971,8 @@ $yellow:       #f0c040;
 
 .units-count  { font-weight: 700; color: $text; margin-right: 0.2rem; }
 .units-sep    { color: $text-faint; margin: 0 0.3rem; font-size: 0.8rem; }
+.train-range  { color: $text-faint; font-size: 0.82rem; }
+.train-count  { color: $text-dim; font-size: 0.75rem; font-weight: 700; margin-right: 0.2rem; }
 .units-detail { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 6px; }
 .comp-unit    { display: inline-flex; align-items: center; gap: 2px; color: #7a7a9a; font-size: 0.72rem; }
 .unit-icon-xs { width: 13px; height: 13px; image-rendering: pixelated; }
@@ -868,6 +989,17 @@ $yellow:       #f0c040;
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.bbcode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: $text-dim;
+  cursor: pointer;
+  user-select: none;
+  input[type='checkbox'] { cursor: pointer; }
 }
 
 .f-label-inline {
