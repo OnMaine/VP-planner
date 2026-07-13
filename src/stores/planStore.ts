@@ -1295,7 +1295,19 @@ export const usePlanStore = defineStore('plan', () => {
         const cMax     = role.customMax ?? 99999
         const units    = role.customUnits ?? {}
         const unitPct  = role.customUnitPct ?? {}
+        const unitMinReq = role.customUnitMin ?? {}
         const unitKeys: Array<keyof AttackComposition> = ['spear','sword','axe','spy','light','heavy','ram','catapult','knight','snob']
+        // Check per-unit minimum requirements against village's original troops
+        const meetsUnitMin = (v: Village): boolean => {
+          for (const [k, minVal] of Object.entries(unitMinReq)) {
+            if (!minVal) continue
+            const have = k === 'snob'
+              ? (noblePollMode === 'real' ? v.troops[k as keyof VillageTroops] : (virtualNoblePool.get(v.player) ?? 0))
+              : v.troops[k as keyof VillageTroops]
+            if (have < minVal) return false
+          }
+          return true
+        }
         // Returns how many of unit k to take from available pool value av
         const resolveUnit = (k: keyof AttackComposition, av: number): number => {
           const pct = (unitPct[k] as number | undefined) ?? 0
@@ -1326,6 +1338,7 @@ export const usePlanStore = defineStore('plan', () => {
                 if (!isNobleSlot && usedVillages.has(v.coords)) continue
                 if (!isNobleSlot && dedicatedVillages.has(v.coords)) continue
                 if (isNobleSlot && usedNobleVillages.has(v.coords)) continue
+                if (!meetsUnitMin(v)) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
                 const a = pool.get(v.coords)!
                 {
                   let hasEnough = true
@@ -1404,6 +1417,7 @@ export const usePlanStore = defineStore('plan', () => {
             if (!isNobleSlot && usedVillages.has(v.coords)) continue
             if (!isNobleSlot && dedicatedVillages.has(v.coords)) continue
             if (isNobleSlot && usedNobleVillages.has(v.coords)) continue
+            if (!meetsUnitMin(v)) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
             const a = pool.get(v.coords)!
             {
               let hasEnough = true
