@@ -301,7 +301,7 @@
             <input type="checkbox" v-model="includeAttackMap" />
             Карта атак
           </label>
-          <button class="btn btn-secondary" @click="copyBBCode">
+<button class="btn btn-secondary" @click="copyBBCode">
             {{ copied ? 'Скопировано ✓' : 'Копировать' }}
           </button>
         </div>
@@ -630,7 +630,7 @@ function openOrdersBlock(player: string): string {
   const targets = planStore.openOrdersTo.get(player)
   if (!targets || targets.size === 0) return ''
   const names = [...targets].map((p) => `[player]${p}[/player]`).join(', ')
-  return `[b]━━━ Открытие приказов ━━━[/b]\n${names}`
+  return `[b]══════════ Открытие приказов ══════════[/b]\n${names}`
 }
 
 function buildInstructionsBBCode(filterPlayer?: string): string {
@@ -656,10 +656,10 @@ function buildInstructionsBBCode(filterPlayer?: string): string {
 
   if (nobleMap.size === 0 && palMap.size === 0) return ''
 
-  const lines: string[] = [`[b]━━━ Инструкции по строительству ━━━[/b]`]
+  const lines: string[] = [`[b]══════════ Инструкции по строительству ══════════[/b]`]
 
   if (nobleMap.size > 0) {
-    lines.push('[b]Дворяне (где строить)[/b]')
+    lines.push('[b][unit]snob[/unit] Дворяне (где строить)[/b]')
     for (const np of nobleMap.values()) {
       lines.push(`[player]${np.player}[/player]    [coord]${np.coords}[/coord]    ×${np.count}`)
     }
@@ -667,9 +667,9 @@ function buildInstructionsBBCode(filterPlayer?: string): string {
 
   if (palMap.size > 0) {
     if (nobleMap.size > 0) lines.push('')
-    lines.push('[b]Паладины[/b]')
+    lines.push('[b][unit]knight[/unit] Паладины[/b]')
     for (const coords of palMap.keys()) {
-      lines.push(`[coord]${coords}[/coord] - Офф паладин`)
+      lines.push(`[coord]${coords}[/coord] — Офф паладин`)
     }
   }
 
@@ -751,11 +751,13 @@ const bbcodeOutput = computed(() => {
     const active = playerAttacks.filter((a) => !a.excluded).slice().sort(bySendTime)
     const lines: string[] = []
     const instructions = buildInstructionsBBCode(bbcodePlayer.value)
-    if (instructions) { lines.push(instructions); lines.push('') }
+    if (instructions) { lines.push(instructions); lines.push(''); lines.push('') }
     const orders = openOrdersBlock(bbcodePlayer.value)
-    if (orders) { lines.push(orders); lines.push('') }
-    lines.push('[b]━━━ План атак ━━━[/b]')
-    groupAttacks(active).forEach((row) => lines.push(rowToLine(row)))
+    if (orders) { lines.push(orders); lines.push(''); lines.push('') }
+    lines.push('[b]══════════ План атак ══════════[/b]')
+    const planLines: string[] = []
+    groupAttacks(active).forEach((row) => planLines.push(rowToLine(row)))
+    lines.push(`[spoiler=Скопировать для вставки в блокнот]\n[code]\n${planLines.join('\n')}\n[/code]\n[/spoiler]`)
     if (includeAttackMap.value) {
       const map = attackMapBlock(bbcodePlayer.value)
       if (map) { lines.push(''); lines.push(map) }
@@ -773,7 +775,7 @@ const bbcodeOutput = computed(() => {
     if (instructions) { lines.push(instructions); lines.push('') }
     const orders = openOrdersBlock(player)
     if (orders) { lines.push(orders); lines.push('') }
-    lines.push('[b]━━━ План атак ━━━[/b]')
+    lines.push('[b]══════════ План атак ══════════[/b]')
     groupAttacks(active).forEach((row) => lines.push(rowToLine(row)))
     if (includeAttackMap.value) {
       const map = attackMapBlock(player)
@@ -791,6 +793,8 @@ function copyBBCode(): void {
     setTimeout(() => { copied.value = false }, 2000)
   })
 }
+
+
 </script>
 
 <style lang="scss" scoped>

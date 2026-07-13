@@ -25,9 +25,13 @@
         <template v-if="ownTribeName">· Вы: <b>{{ ownTribeName }}</b></template>
         <template v-if="planStore.attacks.length"> · {{ planStore.attacks.length }} атак</template>
       </span>
-      <span class="toolbar-info dim" v-else>
-        Загрузите village.txt в Импорте для отображения карты мира
-      </span>
+      <template v-else>
+        <button v-if="worldStore.settings.worldCode" class="btn btn-sm btn-primary" :disabled="autoLoading" @click="autoLoadMapData">
+          {{ autoLoading ? 'Загрузка...' : 'Загрузить данные карты' }}
+        </button>
+        <span v-if="autoLoadError" class="toolbar-info" style="color:#e94560">{{ autoLoadError }}</span>
+        <span v-if="!worldStore.settings.worldCode" class="toolbar-info dim">Укажите код мира в настройках</span>
+      </template>
     </div>
 
     <!-- ── Map body ──────────────────────────────────────────────────────── -->
@@ -178,12 +182,17 @@
         <div class="tp-list">
           <div
             class="tp-row" v-for="t in filteredTribes" :key="t.id"
-            :class="{ 'tp-row-own': t.cat === 1, 'tp-row-ally': t.cat === 2, 'tp-row-enemy': t.cat === 3 }"
+            :class="{ 'tp-row-own': t.cat === 1, 'tp-row-ally': t.cat === 2, 'tp-row-enemy': t.cat === 3, 'tp-row-hidden': t.hidden }"
           >
             <span class="tp-dot" :style="{ background: t.color }" />
             <span class="tp-tag" :title="t.name">{{ t.tag }}</span>
             <span class="tp-cnt">{{ t.count }}</span>
             <div class="tp-btns">
+              <button
+                :class="['tp-hide-btn', { on: t.hidden }]"
+                :title="t.hidden ? 'Показать на карте' : 'Скрыть с карты'"
+                @click="toggleHideTribe(t.id)"
+              >{{ t.hidden ? '○' : '●' }}</button>
               <button
                 v-for="(lbl, idx) in CAT_LABEL.slice(1)" :key="idx"
                 :class="['tp-cat', `tp-cat-${idx + 1}`, { on: t.cat === idx + 1 }]"
@@ -230,6 +239,37 @@ const planStore     = usePlanStore()
 const villagesStore = useVillagesStore()
 const worldStore    = useWorldStore()
 const enemyStore    = useEnemyDataStore()
+
+const autoLoading  = ref(false)
+const autoLoadError = ref('')
+
+async function autoLoadMapData(): Promise<void> {
+  const code = worldStore.settings.worldCode
+  if (!code) return
+  autoLoading.value = true
+  autoLoadError.value = ''
+  try {
+    const base = `/game-proxy/${code}/map`
+    const [vRes, pRes, aRes] = await Promise.all([
+      fetch(`${base}/village.txt.gz`),
+      fetch(`${base}/player.txt.gz`),
+      fetch(`${base}/ally.txt.gz`),
+    ])
+    if (!vRes.ok) throw new Error(`village.txt: HTTP ${vRes.status}`)
+    if (!pRes.ok) throw new Error(`player.txt: HTTP ${pRes.status}`)
+    if (!aRes.ok) throw new Error(`ally.txt: HTTP ${aRes.status}`)
+    const [vBlob, pBlob, aBlob] = await Promise.all([vRes.blob(), pRes.blob(), aRes.blob()])
+    await Promise.all([
+      enemyStore.loadVillageFile(new File([vBlob], 'village.txt.gz')),
+      enemyStore.loadPlayerFile(new File([pBlob], 'player.txt.gz')),
+      enemyStore.loadAllyFile(new File([aBlob], 'ally.txt.gz')),
+    ])
+  } catch (err) {
+    autoLoadError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    autoLoading.value = false
+  }
+}
 
 // ── Toggles ──────────────────────────────────────────────────────────
 const showWorld      = ref(true)
@@ -334,11 +374,16 @@ const CAT_LABEL = ['Нейтральные', 'Мы', 'Союзники', 'Вра
 const CAT_COLOR = ['', '#89b4fa', '#74c7ec', '#f38ba8']
 
 const tribeCategories = ref<Record<number, TribeCategory>>({})
+const hiddenTribes    = ref<Set<number>>(new Set())
 
 function loadCategories() {
   try {
     const raw = localStorage.getItem('vp_tribe_cats')
     if (raw) tribeCategories.value = JSON.parse(raw) as Record<number, TribeCategory>
+  } catch { /* ignore */ }
+  try {
+    const raw = localStorage.getItem('vp_hidden_tribes')
+    if (raw) hiddenTribes.value = new Set(JSON.parse(raw) as number[])
   } catch { /* ignore */ }
 }
 
@@ -349,9 +394,21 @@ function setCategory(allyId: number, cat: TribeCategory) {
   tribeCategories.value = next
 }
 
+function toggleHideTribe(allyId: number) {
+  const next = new Set(hiddenTribes.value)
+  if (next.has(allyId)) next.delete(allyId)
+  else next.add(allyId)
+  hiddenTribes.value = next
+}
+
 watch(tribeCategories, val => {
   localStorage.setItem('vp_tribe_cats', JSON.stringify(val))
 }, { deep: true })
+
+watch(hiddenTribes, val => {
+  localStorage.setItem('vp_hidden_tribes', JSON.stringify([...val]))
+})
+
 
 // ── Tribe colors ──────────────────────────────────────────────────────
 // Muted palette: ~45% lightness, ~55% saturation — visible but not garish
@@ -398,10 +455,18 @@ const allyColorMap = computed((): Map<number, string> => {
   return map
 })
 
+const C_SKIP = '__skip__'
+
 const playerColorMap = computed((): Map<number, string> => {
-  const map = new Map<number, string>()
-  for (const p of enemyStore.players)
-    map.set(p.id, p.allyId ? (allyColorMap.value.get(p.allyId) ?? C_BARB) : C_BARB)
+  const map    = new Map<number, string>()
+  const hidden = hiddenTribes.value
+  for (const p of enemyStore.players) {
+    if (p.allyId && hidden.has(p.allyId)) {
+      map.set(p.id, C_SKIP)
+    } else {
+      map.set(p.id, p.allyId ? (allyColorMap.value.get(p.allyId) ?? C_BARB) : C_BARB)
+    }
+  }
   return map
 })
 
@@ -417,8 +482,18 @@ const allTribes = computed(() => {
       name: enemyStore.allyById.get(id)?.name ?? `#${id}`,
       tag:  enemyStore.allyById.get(id)?.tag  ?? `#${id}`,
       color: allyColorMap.value.get(id) ?? '#888',
-      cat: (tribeCategories.value[id] ?? 0) as TribeCategory,
+      cat:    (tribeCategories.value[id] ?? 0) as TribeCategory,
+      hidden: hiddenTribes.value.has(id),
     }))
+})
+
+// Apply default: hide all tribes beyond top-5 on first load (no saved state)
+let hiddenTribesDefaultApplied = false
+watch(allTribes, (tribes) => {
+  if (hiddenTribesDefaultApplied || tribes.length === 0) return
+  hiddenTribesDefaultApplied = true
+  if (localStorage.getItem('vp_hidden_tribes') !== null) return
+  hiddenTribes.value = new Set(tribes.slice(5).map(t => t.id))
 })
 
 const tribeSearch   = ref('')
@@ -463,6 +538,7 @@ function redrawCanvas() {
   for (const v of enemyStore.villages) {
     if (v.x < gx0 || v.x > gx1 || v.y < gy0 || v.y > gy1) continue
     const color = colorMap.get(v.playerId) ?? C_BARB
+    if (color === C_SKIP) continue
     let batch = batches.get(color)
     if (!batch) { batch = []; batches.set(color, batch) }
     batch.push([v.x * s + px, v.y * s + py])
@@ -818,6 +894,7 @@ onMounted(() => {
   &.tp-row-own    { background: rgba(137,180,250,0.07); }
   &.tp-row-ally   { background: rgba(116,199,236,0.07); }
   &.tp-row-enemy  { background: rgba(243,139,168,0.07); }
+  &.tp-row-hidden { opacity: 0.45; }
 }
 
 .tp-dot {
@@ -846,6 +923,25 @@ onMounted(() => {
 .tp-btns {
   display: flex;
   gap: 2px;
+}
+
+.tp-hide-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid $border;
+  background: transparent;
+  color: $text-dim;
+  font-size: 0.6rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+
+  &:hover { border-color: #e07b39; color: #e07b39; }
+  &.on    { background: rgba(224,123,57,0.15); border-color: #e07b39; color: #e07b39; }
 }
 
 .tp-cat {

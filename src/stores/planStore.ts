@@ -46,6 +46,19 @@ export interface GenerationIssue {
 }
 
 // ---------------------------------------------------------------------------
+// Off-pool tagging
+// ---------------------------------------------------------------------------
+
+export type OffTag = 'breach+pal' | 'pal_off' | 'breach_off' | 'full_off'
+
+export interface OffPoolStats {
+  breachPal:   number   // breach + paladin
+  palOnly:     number   // full off + paladin (no breach)
+  breachOnly:  number   // breach, no paladin
+  fullOnly:    number   // regular full off
+}
+
+// ---------------------------------------------------------------------------
 // Attack types
 // ---------------------------------------------------------------------------
 
@@ -103,6 +116,9 @@ export interface Target {
   enemyPlayer?: string   // owner player name (auto-filled from village map or manual)
   enemyAllyTag?: string  // owner tribe tag
   label?: string
+  palOffCount?: number      // how many pal-offs (breach+pal / pal_off) to assign
+  breachOffCount?: number   // how many breach-offs (breach_off) to assign separately
+  bpOffCount?: number       // how many breach+pal (both) to assign explicitly
   nobleVillageCoords?: string  // manual noble village assignment
 }
 
@@ -135,6 +151,7 @@ export interface Attack {
 
 export interface PlayerData {
   player: string
+  offPaladins: number   // how many offensive paladin-offs player can send
   totalNobles: number   // total nobles player can build across all villages
 }
 
@@ -194,6 +211,50 @@ function genId(): string {
 // offFarm: offensive farm power — axe + LC + ram (catapult is a separate mechanic)
 function calcOffFarm(troops: { axe: number; light: number; ram: number }, pop: UnitPop): number {
   return troops.axe * pop.axe + troops.light * pop.light + troops.ram * pop.ram
+}
+
+// Assigns an OffTag to every full-off-capable village of each player.
+// Paladins are assigned: first to breach-capable villages (strongest first),
+// then to regular full-offs (strongest first).
+function buildPoolTags(
+  villages: Village[],
+  pdList: PlayerData[],
+  fullOffMinOffFarm: number,
+  breachMinRams: number,
+  unitPop: UnitPop,
+): Map<string, OffTag> {
+  const tags   = new Map<string, OffTag>()
+  const palMap = new Map<string, number>()
+  for (const pd of pdList) palMap.set(pd.player, pd.offPaladins)
+
+  const byPlayer = new Map<string, Village[]>()
+  for (const v of villages) {
+    if (!byPlayer.has(v.player)) byPlayer.set(v.player, [])
+    byPlayer.get(v.player)!.push(v)
+  }
+
+  const str = (v: Village) =>
+    v.troops.axe + v.troops.light + v.troops.heavy + v.troops.ram
+
+  for (const [player, pvils] of byPlayer) {
+    let palsLeft = palMap.get(player) ?? 0
+    const breach: Village[] = []
+    const full:   Village[] = []
+
+    for (const v of pvils) {
+      if (calcOffFarm(v.troops, unitPop) >= fullOffMinOffFarm) {
+        if (v.troops.ram >= breachMinRams) breach.push(v)
+        else                               full.push(v)
+      }
+    }
+
+    breach.sort((a, b) => str(b) - str(a) || b.troops.ram - a.troops.ram)
+    full.sort((a, b)   => str(b) - str(a))
+
+    for (const v of breach) tags.set(v.coords, palsLeft-- > 0 ? 'breach+pal' : 'breach_off')
+    for (const v of full)   tags.set(v.coords, palsLeft-- > 0 ? 'pal_off'    : 'full_off')
+  }
+  return tags
 }
 
 // Determine speed unit for a composition (slowest meaningful unit for attack type)
@@ -508,14 +569,14 @@ export const usePlanStore = defineStore('plan', () => {
     if (existing) {
       Object.assign(existing, data)
     } else {
-      playerData.value.push({ player, totalNobles: 0, ...data })
+      playerData.value.push({ player, offPaladins: 0, totalNobles: 0, ...data })
     }
     savePlayerData()
   }
 
   function getPlayerData(player: string): PlayerData {
     return playerData.value.find((p) => p.player === player)
-      ?? { player, totalNobles: 0 }
+      ?? { player, offPaladins: 0, totalNobles: 0 }
   }
 
   const playerDataMap = computed(() => {
@@ -595,9 +656,13 @@ export const usePlanStore = defineStore('plan', () => {
     const segLen2 = dx * dx + dy * dy
     let totalChord = 0
     let detected   = false
+    const enemyStore = useEnemyDataStore()
     for (const wt of watchtowerVillages.value) {
       if (wt.level <= 0) continue
-      if (targetPlayer && wt.player !== targetPlayer) continue
+      if (targetPlayer) {
+        const wtPlayer = wt.player || enemyStore.lookupCoords(wt.coords)?.player?.name || ''
+        if (wtPlayer !== targetPlayer) continue
+      }
       const R  = wt.level
       const fx = fromX - wt.x
       const fy = fromY - wt.y
@@ -660,6 +725,12 @@ export const usePlanStore = defineStore('plan', () => {
         virtualNoblePool.set(pd.player, pd.totalNobles)
       }
     }
+
+    // Pool tags for pal/breach priority (based on original troop counts)
+    const poolTags = buildPoolTags(
+      villages, playerData.value,
+      presStore.fullOffMinOffFarm, presStore.breachMinRams, settings.unitPop,
+    )
 
     // Attacker points per player (for morale)
     const attackerPoints = new Map<string, number>()
@@ -832,6 +903,13 @@ export const usePlanStore = defineStore('plan', () => {
       return null
     }
 
+    // Pal/breach-tagged villages are reserved exclusively for the full_off slot.
+    // Pre-marked upfront so other slot types can't consume them first.
+    const dedicatedVillages = new Set<string>()
+    for (const [coords, tag] of poolTags) {
+      if (tag !== 'full_off') dedicatedVillages.add(coords)
+    }
+
     // Each noble village can be the source of at most one parovoz (one target).
     // Sending nobles from the same village to multiple targets reveals weakness to the enemy.
     const usedNobleVillages = new Set<string>()
@@ -879,7 +957,7 @@ export const usePlanStore = defineStore('plan', () => {
       for (const v of villages) {
         const d = calcDistance({ x: v.x, y: v.y }, { x: target.x, y: target.y }, settings.mapSize)
         distMap.set(v.coords, d)
-        if (settings.watchtowerEnabled && watchtowerVillages.value.length > 0) {
+        if (settings.watchtowerEnabled && settings.watchtowerAvoidEnabled && watchtowerVillages.value.length > 0) {
           const { detected, chord } = calcWatchtowerExposure(v.x, v.y, target.x, target.y, target.enemyPlayer)
           wtMap.set(v.coords, detected ? 1_000_000 + chord : 0)
         }
@@ -889,7 +967,14 @@ export const usePlanStore = defineStore('plan', () => {
         const sb = (wtMap.get(b.coords) ?? 0) + (distMap.get(b.coords) ?? 0)
         return sa - sb
       })
-      const byDistFar = [...byDist].reverse()
+      const byDistFar = [...villages].sort((a, b) => {
+        const wa = wtMap.get(a.coords) ?? 0
+        const wb = wtMap.get(b.coords) ?? 0
+        const aDetected = wa > 0
+        const bDetected = wb > 0
+        if (aDetected !== bDetected) return aDetected ? 1 : -1
+        return (distMap.get(b.coords) ?? 0) - (distMap.get(a.coords) ?? 0)
+      })
       const nobleVillages = byDist.filter(v => (distMap.get(v.coords) ?? 0) <= settings.snobMaxDist)
       targetDataMap.set(target.id, { byDist, byDistFar, nobleVillages, distMap, wtMap })
     }
@@ -922,11 +1007,87 @@ export const usePlanStore = defineStore('plan', () => {
       const targetSkippedN   = new Map<string, number>()
 
       if (role.type === 'full_off') {
-        // ── Build per-target ordered candidate lists ───────────────────
-        const candidatesByTarget = new Map<string, Village[]>()
+        // ── Build per-target ordered candidate lists (pal/breach priority) ──
+        const strengthSort = (x: Village, y: Village) => {
+          const sx = x.troops.axe + x.troops.light + x.troops.heavy + x.troops.ram
+          const sy = y.troops.axe + y.troops.light + y.troops.heavy + y.troops.ram
+          return sy - sx || y.troops.ram - x.troops.ram
+        }
+
+        type TaggedVillage = { village: Village; tag: OffTag | undefined }
+        const candidatesByTarget = new Map<string, TaggedVillage[]>()
+        const isAutoPaladin  = settings.paladinMode === 'auto'
+        const isNonePaladin  = settings.paladinMode === 'none'
+
         for (const target of gTargets) {
-          const td = targetDataMap.get(target.id)!
-          candidatesByTarget.set(target.id, offDistribution.value === 'far_first' ? td.byDistFar : td.byDist)
+          const { byDist, byDistFar } = targetDataMap.get(target.id)!
+          const base = offDistribution.value === 'far_first' ? byDistFar : byDist
+
+          let ordered: TaggedVillage[]
+          if (isNonePaladin) {
+            // No paladin distribution — use base order, strip all tags so no knight is assigned
+            ordered = base.map(v => ({ village: v, tag: undefined }))
+            candidatesByTarget.set(target.id, ordered)
+            continue
+          }
+
+          const bpList: Village[] = [], poList: Village[] = [], boList: Village[] = [], foList: Village[] = []
+          for (const v of base) {
+            const tag = poolTags.get(v.coords)
+            if      (tag === 'breach+pal') bpList.push(v)
+            else if (tag === 'pal_off')    poList.push(v)
+            else if (tag === 'breach_off') boList.push(v)
+            else if (tag === 'full_off')   foList.push(v)
+          }
+
+          if (isAutoPaladin) {
+            // Auto: fixed priority breach+pal → breach_off → pal_off → full_off
+            // Priority groups always use nearest-first (byDist) even in far_first mode
+            // — breach/pal offs should arrive close in time; far_first applies only to foList
+            const nearBase = targetDataMap.get(target.id)!.byDist
+            const bpNear: Village[] = [], boNear: Village[] = [], poNear: Village[] = []
+            for (const v of nearBase) {
+              const tag = poolTags.get(v.coords)
+              if      (tag === 'breach+pal') bpNear.push(v)
+              else if (tag === 'breach_off') boNear.push(v)
+              else if (tag === 'pal_off')    poNear.push(v)
+            }
+            ordered = [
+              ...bpNear,
+              ...boNear,
+              ...poNear,
+              ...foList,
+            ].map(v => ({ village: v, tag: poolTags.get(v.coords) as OffTag | undefined }))
+          } else {
+            const tPal    = target.palOffCount    ?? 0
+            const tBreach = target.breachOffCount ?? 0
+            const tBp     = target.bpOffCount     ?? 0
+            const bpPriCount   = Math.min(bpList.length, Math.max(tBp, tPal, tBreach))
+            const palFromPo    = Math.max(0, tPal    - bpPriCount)
+            const breachFromBo = Math.max(0, tBreach - bpPriCount)
+            ordered = [
+              // Priority section: these villages keep their tags (knight will be sent)
+              ...bpList.slice(0, bpPriCount).sort(strengthSort).map(v => ({ village: v, tag: 'breach+pal' as OffTag })),
+              ...poList.slice(0, palFromPo).sort(strengthSort).map(v => ({ village: v, tag: 'pal_off' as OffTag })),
+              ...boList.slice(0, breachFromBo).sort(strengthSort).map(v => ({ village: v, tag: 'breach_off' as OffTag })),
+              // Fallback section: strip paladin/breach tags → treated as full_off, no knight sent
+              ...bpList.slice(bpPriCount).map(v => ({ village: v, tag: 'full_off' as OffTag })),
+              ...poList.slice(palFromPo).map(v => ({ village: v, tag: 'full_off' as OffTag })),
+              ...boList.slice(breachFromBo).map(v => ({ village: v, tag: 'full_off' as OffTag })),
+              ...foList.map(v => ({ village: v, tag: 'full_off' as OffTag })),
+            ]
+          }
+
+          // Tower avoidance: regardless of tag priority, move wt-detected villages to the end
+          // so a non-detected full_off always beats a detected pal/breach village
+          if (settings.watchtowerEnabled && settings.watchtowerAvoidEnabled) {
+            const twm = targetDataMap.get(target.id)!.wtMap
+            const nonDet = ordered.filter(({ village: v }) => (twm.get(v.coords) ?? 0) === 0)
+            const det    = ordered.filter(({ village: v }) => (twm.get(v.coords) ?? 0) > 0)
+            ordered = [...nonDet, ...det]
+          }
+
+          candidatesByTarget.set(target.id, ordered)
         }
 
         const pointers = new Map<string, number>()
@@ -944,7 +1105,7 @@ export const usePlanStore = defineStore('plan', () => {
               const slotArrT = slotArrTMap.get(target.id)!
               let assigned = false
               while (ptr < candidates.length && !assigned) {
-                const v = candidates[ptr++]
+                const { village: v, tag } = candidates[ptr++]
                 if (usedVillages.has(v.coords)) continue
                 const a = pool.get(v.coords)!
                 if (calcOffFarm(a, settings.unitPop) < presStore.fullOffMinOffFarm || a.ram === 0) {
@@ -953,17 +1114,23 @@ export const usePlanStore = defineStore('plan', () => {
                 if (nightExcludes(v, target, 'off', slotArrT)) {
                   targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
                 }
+                const isPal = tag === 'breach+pal' || tag === 'pal_off'
+                const label = tag === 'breach+pal' ? `${preset.name} (+Пал+Пробой)` : tag === 'pal_off' ? `${preset.name} (+Пал)` : tag === 'breach_off' ? `${preset.name} (+Пробой)` : preset.name
+                const atkType: AttackType = isPal ? 'paladin_off' : 'off'
                 const presetColor = preset.color ?? defaultColorForRole(preset.role.type, preset.role)
                 const c = emptyComposition()
                 c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
+                if (isPal) { c.knight = 1; a.knight = Math.max(0, a.knight - 1) }
                 if (role.nobleIncluded && a.snob > 0) { c.snob = 1; a.snob -= 1 }
                 a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
-                if (!pushAtk('off', v, target, c, slotArrT, preset.name, presetColor)) {
+                if (!pushAtk(atkType, v, target, c, slotArrT, label, presetColor)) {
                   a.axe = c.axe; a.light = c.light; a.heavy = c.heavy; a.ram = c.ram
+                  if (isPal) a.knight = (a.knight ?? 0) + 1
                   if (role.nobleIncluded && c.snob > 0) a.snob += c.snob
                   continue
                 }
                 usedVillages.add(v.coords)
+                if (isPal) paladinPlacements.value.push({ village: v, forTarget: target })
                 targetFilled.set(target.id, (targetFilled.get(target.id) ?? 0) + 1)
                 anyAssigned = true
                 assigned = true
@@ -973,17 +1140,17 @@ export const usePlanStore = defineStore('plan', () => {
           }
         } else {
           // Default (greedy): globally sorted by score
-          type Pair = { target: Target; village: Village; slotArrT: Date; score: number }
+          type Pair = { target: Target; village: Village; tag: OffTag | undefined; slotArrT: Date; score: number }
           const allPairs: Pair[] = []
           for (const target of gTargets) {
             const slotArrT = slotArrTMap.get(target.id)!
-            for (const v of candidatesByTarget.get(target.id) ?? []) {
-              allPairs.push({ target, village: v, slotArrT, score: pairScore(v.coords, target.id) })
+            for (const { village: v, tag } of candidatesByTarget.get(target.id) ?? []) {
+              allPairs.push({ target, village: v, tag, slotArrT, score: pairScore(v.coords, target.id) })
             }
           }
           allPairs.sort((a, b) => a.score - b.score)
 
-          for (const { target, village: v, slotArrT } of allPairs) {
+          for (const { target, village: v, tag, slotArrT } of allPairs) {
             const filled = targetFilled.get(target.id) ?? 0
             if (filled >= slot.count) continue
             if (usedVillages.has(v.coords)) continue
@@ -994,17 +1161,23 @@ export const usePlanStore = defineStore('plan', () => {
             if (nightExcludes(v, target, 'off', slotArrT)) {
               targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
             }
+            const isPal = tag === 'breach+pal' || tag === 'pal_off'
+            const label = tag === 'breach+pal' ? `${preset.name} (+Пал+Пробой)` : tag === 'pal_off' ? `${preset.name} (+Пал)` : tag === 'breach_off' ? `${preset.name} (+Пробой)` : preset.name
+            const atkType: AttackType = isPal ? 'paladin_off' : 'off'
             const presetColor = preset.color ?? defaultColorForRole(preset.role.type, preset.role)
             const c = emptyComposition()
             c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
+            if (isPal) { c.knight = 1; a.knight = Math.max(0, a.knight - 1) }
             if (role.nobleIncluded && a.snob > 0) { c.snob = 1; a.snob -= 1 }
             a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
-            if (!pushAtk('off', v, target, c, slotArrT, preset.name, presetColor)) {
+            if (!pushAtk(atkType, v, target, c, slotArrT, label, presetColor)) {
               a.axe = c.axe; a.light = c.light; a.heavy = c.heavy; a.ram = c.ram
+              if (isPal) a.knight = (a.knight ?? 0) + 1
               if (role.nobleIncluded && c.snob > 0) a.snob += c.snob
               continue
             }
             usedVillages.add(v.coords)
+            if (isPal) paladinPlacements.value.push({ village: v, forTarget: target })
             targetFilled.set(target.id, filled + 1)
           }
         }
@@ -1029,6 +1202,7 @@ export const usePlanStore = defineStore('plan', () => {
               while (ptr < halfList.length && !assigned) {
                 const v = halfList[ptr++]
                 if (usedVillages.has(v.coords)) continue
+                if (dedicatedVillages.has(v.coords)) continue
                 const a = pool.get(v.coords)!
                 const of = calcOffFarm(a, settings.unitPop)
                 if (of < midMin || of >= midMax) {
@@ -1076,6 +1250,7 @@ export const usePlanStore = defineStore('plan', () => {
             const filled = targetFilled.get(target.id) ?? 0
             if (filled >= slot.count) continue
             if (usedVillages.has(v.coords)) continue
+            if (dedicatedVillages.has(v.coords)) continue
             const a = pool.get(v.coords)!
             const of = calcOffFarm(a, settings.unitPop)
             if (of < midMin || of >= midMax) {
@@ -1124,6 +1299,7 @@ export const usePlanStore = defineStore('plan', () => {
               while (ptr < miniList.length && !assigned) {
                 const v = miniList[ptr++]
                 if (usedVillages.has(v.coords)) continue
+                if (dedicatedVillages.has(v.coords)) continue
                 const a = pool.get(v.coords)!
                 const of = calcOffFarm(a, settings.unitPop)
                 if (of < miniMin || of >= miniMax) {
@@ -1162,6 +1338,7 @@ export const usePlanStore = defineStore('plan', () => {
             const filled = targetFilled.get(target.id) ?? 0
             if (filled >= slot.count) continue
             if (usedVillages.has(v.coords)) continue
+            if (dedicatedVillages.has(v.coords)) continue
             const a = pool.get(v.coords)!
             const of = calcOffFarm(a, settings.unitPop)
             if (of < miniMin || of >= miniMax) {
@@ -1216,6 +1393,7 @@ export const usePlanStore = defineStore('plan', () => {
               while (ptr < customList.length && !assigned) {
                 const v = customList[ptr++]
                 if (!isNobleSlot && usedVillages.has(v.coords)) continue
+                if (!isNobleSlot && dedicatedVillages.has(v.coords)) continue
                 if (isNobleSlot && usedNobleVillages.has(v.coords)) continue
                 const a = pool.get(v.coords)!
                 {
@@ -1293,6 +1471,7 @@ export const usePlanStore = defineStore('plan', () => {
             const filled = targetFilled.get(target.id) ?? 0
             if (filled >= slot.count) continue
             if (!isNobleSlot && usedVillages.has(v.coords)) continue
+            if (!isNobleSlot && dedicatedVillages.has(v.coords)) continue
             if (isNobleSlot && usedNobleVillages.has(v.coords)) continue
             const a = pool.get(v.coords)!
             {
@@ -1760,181 +1939,20 @@ export const usePlanStore = defineStore('plan', () => {
     const offsTotalSet = new Set([...eligibleOffCoords, ...usedOffCoords])
     const offsTotal = offsTotalSet.size
 
+    const nobleVillagesTotal = villages.filter(v => v.troops.snob > 0).length
+
     return {
       offsTotal,
       offsUsed: usedOffCoords.size,
       offsAvailable: offsTotal - usedOffCoords.size,
+
       noblesTotal,
       noblesUsed,
       noblesAvailable: noblesTotal - noblesUsed,
+      nobleVillagesTotal,
     }
   })
 
-  // ── Fill remaining offs (second-pass: distribute unused off-capable villages) ─
-  function fillRemainingOffs(): void {
-    if (!attacks.value.length) return
-    const presStore  = usePresetsStore()
-    const enemyStore = useEnemyDataStore()
-    const settings   = worldStore.settings
-    const villages   = villagesStore.villages
-    const validTargets = targets.value.filter(t => !!t.coords)
-    if (!validTargets.length) return
-
-    const now = new Date()
-
-    // Accumulate already-assigned troops per village
-    const assignedByVillage = new Map<string, AttackComposition>()
-    const sentOffCoords     = new Set<string>()
-    for (const atk of attacks.value) {
-      const coords = atk.fromVillage.coords
-      if (!assignedByVillage.has(coords)) assignedByVillage.set(coords, emptyComposition())
-      const acc = assignedByVillage.get(coords)!
-      const comp = atk.composition
-      acc.axe += comp.axe; acc.light += comp.light; acc.heavy    += comp.heavy
-      acc.ram += comp.ram; acc.snob  += comp.snob;  acc.knight   += comp.knight
-      acc.spear += comp.spear; acc.sword += comp.sword
-      acc.spy += comp.spy; acc.catapult += comp.catapult
-      if (atk.type === 'off' || atk.type === 'paladin_off') sentOffCoords.add(coords)
-    }
-
-    // Find off-capable villages with remaining troops not yet sending an off
-    type UnusedEntry = { v: Village; rem: AttackComposition }
-    const unused: UnusedEntry[] = []
-    for (const v of villages) {
-      if (sentOffCoords.has(v.coords)) continue
-      const used = assignedByVillage.get(v.coords)
-      const rem  = emptyComposition()
-      rem.axe      = v.troops.axe      - (used?.axe      ?? 0)
-      rem.light    = v.troops.light    - (used?.light    ?? 0)
-      rem.heavy    = v.troops.heavy    - (used?.heavy    ?? 0)
-      rem.ram      = v.troops.ram      - (used?.ram      ?? 0)
-      rem.snob     = v.troops.snob     - (used?.snob     ?? 0)
-      rem.knight   = v.troops.knight   - (used?.knight   ?? 0)
-      rem.spear    = v.troops.spear    - (used?.spear    ?? 0)
-      rem.sword    = v.troops.sword    - (used?.sword    ?? 0)
-      rem.spy      = v.troops.spy      - (used?.spy      ?? 0)
-      rem.catapult = v.troops.catapult - (used?.catapult ?? 0)
-      if (calcOffFarm(rem, settings.unitPop) < presStore.fullOffMinOffFarm) continue
-      if (rem.ram <= 0) continue
-      unused.push({ v, rem })
-    }
-    if (!unused.length) return
-
-    const attackerPoints = new Map<string, number>()
-    if (settings.moraleEnabled) {
-      for (const v of villages) attackerPoints.set(v.player, (attackerPoints.get(v.player) ?? 0) + v.points)
-    }
-
-    // Pre-compute score per (village, target)
-    const tdMap = new Map<string, Map<string, number>>()
-    const twMap = new Map<string, Map<string, number>>()
-    for (const target of validTargets) {
-      const dm = new Map<string, number>()
-      const wm = new Map<string, number>()
-      for (const { v } of unused) {
-        const d = calcDistance({ x: v.x, y: v.y }, { x: target.x, y: target.y }, settings.mapSize)
-        dm.set(v.coords, d)
-        if (settings.watchtowerEnabled && watchtowerVillages.value.length > 0) {
-          const { detected, chord } = calcWatchtowerExposure(v.x, v.y, target.x, target.y, target.enemyPlayer)
-          wm.set(v.coords, detected ? 1_000_000 + chord : 0)
-        }
-      }
-      tdMap.set(target.id, dm)
-      twMap.set(target.id, wm)
-    }
-
-    function score(vCoords: string, targetId: string): number {
-      return (twMap.get(targetId)?.get(vCoords) ?? 0) + (tdMap.get(targetId)?.get(vCoords) ?? 0)
-    }
-
-    const newAttacks: Attack[] = []
-    function makeOff(v: Village, rem: AttackComposition, target: Target): boolean {
-      const c = emptyComposition()
-      c.axe = rem.axe; c.light = rem.light; c.heavy = rem.heavy; c.ram = rem.ram
-      const speedUnit   = slowestUnitInComp(c, settings.unitTimes)
-      const unitBaseSec = settings.unitTimes[speedUnit]
-      const dist        = calcDistance({ x: v.x, y: v.y }, { x: target.x, y: target.y }, settings.mapSize)
-      const travelSec   = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
-      const sendTime    = calcSendTime(target.arrivalTime, travelSec)
-      if (settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return false
-      const total = totalUnits(c)
-      if (totalPop(c, settings.unitPop) < settings.minAttackSize) return false
-      const { color, icon } = calcWatchtower(total, false)
-      const warnings: WarningCode[] = []
-      if (sendTime < now) warnings.push('SEND_IN_PAST')
-      if (settings.nightActive) {
-        if (isInNightWindow(target.arrivalTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_ARRIVAL')
-        if (isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_SEND')
-      }
-      if (settings.watchtowerEnabled && watchtowerVillages.value.length > 0) {
-        const { detected } = calcWatchtowerExposure(v.x, v.y, target.x, target.y, target.enemyPlayer)
-        if (detected) warnings.push('WATCHTOWER_HIT')
-      }
-      if (settings.moraleEnabled && target.enemyPlayer) {
-        const defPoints = enemyStore.playerByName.get(target.enemyPlayer)?.points ?? 0
-        const atkPoints = attackerPoints.get(v.player) ?? 0
-        if (defPoints > 0 && atkPoints > 0) {
-          const ratio = atkPoints / defPoints
-          if (ratio < 1.0)      warnings.push('MORALE_HIGH_RISK')
-          else if (ratio < 1.5) warnings.push('MORALE_MEDIUM')
-        }
-      }
-      newAttacks.push({
-        id: genId(), type: 'off', fromVillage: v, target, composition: c,
-        speedUnit, totalUnits: total, watchtowerColor: color, watchtowerIcon: icon,
-        distance: dist, travelSeconds: travelSec, arrivalTime: target.arrivalTime, sendTime,
-        warnings, excluded: false,
-      })
-      return true
-    }
-
-    const usedVillages = new Set<string>()
-    const orderedByTarget = new Map<string, UnusedEntry[]>()
-    for (const target of validTargets) {
-      const sorted = [...unused].sort((a, b) => score(a.v.coords, target.id) - score(b.v.coords, target.id))
-      orderedByTarget.set(target.id, offDistribution.value === 'far_first' ? sorted.reverse() : sorted)
-    }
-
-    if (offDistribution.value !== 'default') {
-      // Round-robin: each target picks its nearest available village per round
-      const pointers = new Map<string, number>()
-      let anyAssigned = true
-      while (anyAssigned) {
-        anyAssigned = false
-        for (const target of validTargets) {
-          const list = orderedByTarget.get(target.id) ?? []
-          let ptr = pointers.get(target.id) ?? 0
-          let assigned = false
-          while (ptr < list.length && !assigned) {
-            const { v, rem } = list[ptr++]
-            if (usedVillages.has(v.coords)) continue
-            if (!makeOff(v, rem, target)) continue
-            usedVillages.add(v.coords)
-            anyAssigned = true; assigned = true
-          }
-          pointers.set(target.id, ptr)
-        }
-      }
-    } else {
-      // Greedy: each village goes to its nearest target
-      const orderedByVillage = [...unused].map(entry => {
-        const best = validTargets.reduce<{ target: Target; s: number } | null>((acc, t) => {
-          const s = score(entry.v.coords, t.id)
-          return !acc || s < acc.s ? { target: t, s } : acc
-        }, null)
-        return { entry, target: best?.target ?? null }
-      }).sort((a, b) => (a.entry.v.troops.axe + a.entry.v.troops.light) - (b.entry.v.troops.axe + b.entry.v.troops.light))
-
-      for (const { entry: { v, rem }, target } of orderedByVillage) {
-        if (!target || usedVillages.has(v.coords)) continue
-        if (!makeOff(v, rem, target)) continue
-        usedVillages.add(v.coords)
-      }
-    }
-
-    if (!newAttacks.length) return
-    attacks.value = [...attacks.value, ...newAttacks].sort((a, b) => a.sendTime.getTime() - b.sendTime.getTime())
-  }
 
   // ---------------------------------------------------------------------------
   // Export / Import plan file
@@ -2081,6 +2099,56 @@ export const usePlanStore = defineStore('plan', () => {
     return minTargets === Infinity ? null : minTargets
   })
 
+  const offPoolStats = computed<OffPoolStats>(() => {
+    const presStore = usePresetsStore()
+    const ws = useWorldStore().settings
+    const tags = buildPoolTags(
+      villagesStore.villages, playerData.value,
+      presStore.fullOffMinOffFarm, presStore.breachMinRams, ws.unitPop,
+    )
+    const stats: OffPoolStats = { breachPal: 0, palOnly: 0, breachOnly: 0, fullOnly: 0 }
+    for (const tag of tags.values()) {
+      if      (tag === 'breach+pal') stats.breachPal++
+      else if (tag === 'pal_off')    stats.palOnly++
+      else if (tag === 'breach_off') stats.breachOnly++
+      else                           stats.fullOnly++
+    }
+    return stats
+  })
+
+  const poolStatsByPlayer = computed<Map<string, { pal: number; breach: number; breachPal: number }>>(() => {
+    const presStore = usePresetsStore()
+    const ws = useWorldStore().settings
+    const tags = buildPoolTags(
+      villagesStore.villages, playerData.value,
+      presStore.fullOffMinOffFarm, presStore.breachMinRams, ws.unitPop,
+    )
+    const m = new Map<string, { pal: number; breach: number; breachPal: number }>()
+    const get = (p: string) => { if (!m.has(p)) m.set(p, { pal: 0, breach: 0, breachPal: 0 }); return m.get(p)! }
+    for (const v of villagesStore.villages) {
+      const tag = tags.get(v.coords)
+      if      (tag === 'breach+pal') { get(v.player).breachPal++ }
+      else if (tag === 'pal_off')    { get(v.player).pal++ }
+      else if (tag === 'breach_off') { get(v.player).breach++ }
+    }
+    return m
+  })
+  const breachPalByPlayer = computed(() => new Map([...poolStatsByPlayer.value].map(([p, s]) => [p, s.breachPal])))
+
+  const palVillageCoords = computed<Set<string>>(() => {
+    const presStore = usePresetsStore()
+    const ws = useWorldStore().settings
+    const tags = buildPoolTags(
+      villagesStore.villages, playerData.value,
+      presStore.fullOffMinOffFarm, presStore.breachMinRams, ws.unitPop,
+    )
+    const s = new Set<string>()
+    for (const [coords, tag] of tags) {
+      if (tag === 'pal_off' || tag === 'breach+pal') s.add(coords)
+    }
+    return s
+  })
+
   return {
     // State
     targets,
@@ -2127,9 +2195,13 @@ export const usePlanStore = defineStore('plan', () => {
     openOrdersTo,
     generationIssues,
     uncoveredTargetCoords,
+    offPoolStats,
+    breachPalByPlayer,
+    palVillageCoords,
+    poolStatsByPlayer,
     poolUsageStats,
     coverageEstimate,
-    fillRemainingOffs,
+
     patchAttack,
     swapAttackTimes,
     removeAttack,

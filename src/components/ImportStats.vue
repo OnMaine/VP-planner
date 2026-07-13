@@ -58,6 +58,10 @@
         <span class="stat-num">{{ totals.trains }}</span>
         <span class="stat-label">Паровозов</span>
       </div>
+      <div class="stat-card stat-card--gold">
+        <span class="stat-num">{{ planStore.playerData.reduce((s, pd) => s + pd.offPaladins, 0) }}</span>
+        <span class="stat-label">Офф-палов</span>
+      </div>
       <div class="stat-card stat-card--teal">
         <span class="stat-num">{{ totals.catSquadsTotal }}</span>
         <span class="stat-label">Кат отрядов</span>
@@ -80,6 +84,10 @@
             <th>
               Каты
               <span class="th-info-icon" @mouseenter="showThTooltip('cats', $event)" @mouseleave="hideThTooltip">ⓘ</span>
+            </th>
+            <th>
+              Пал-Офф
+              <span class="th-info-icon" @mouseenter="showThTooltip('pal-off', $event)" @mouseleave="hideThTooltip">ⓘ</span>
             </th>
             <th>
               Дворы
@@ -119,6 +127,23 @@
                 <span class="cat-below-min">{{ p.catapultsCsv }}</span>
               </template>
               <template v-else>—</template>
+            </td>
+            <td>
+              <div class="input-wrap">
+                <input
+                  type="number" min="0"
+                  :class="['inline-input', { 'input-edited': planStore.getPlayerData(p.player).offPaladins !== p.knightsCsv }]"
+                  :value="planStore.getPlayerData(p.player).offPaladins"
+                  :title="planStore.getPlayerData(p.player).offPaladins !== p.knightsCsv ? `Из CSV: ${p.knightsCsv}` : ''"
+                  @change="planStore.setPlayerData(p.player, { offPaladins: +($event.target as HTMLInputElement).value })"
+                />
+                <span
+                  v-if="planStore.getPlayerData(p.player).offPaladins !== p.knightsCsv"
+                  class="csv-hint"
+                  :title="`Восстановить значение из CSV (${p.knightsCsv})`"
+                  @click="planStore.setPlayerData(p.player, { offPaladins: p.knightsCsv })"
+                >{{ p.knightsCsv }}</span>
+              </div>
             </td>
             <td>
               <div class="input-wrap">

@@ -69,6 +69,14 @@
 
       <div class="v-sep" />
 
+      <button
+        v-if="worldStore.settings.watchtowerEnabled"
+        :class="['toggle-btn', { 'toggle-on': worldStore.settings.watchtowerAvoidEnabled ?? true }]"
+        title="Учитывать башни при распределении: засвеченные деревни уходят в конец очереди подбора"
+        @click="worldStore.updateSettings({ watchtowerAvoidEnabled: !(worldStore.settings.watchtowerAvoidEnabled ?? true) })"
+      >🗼 Башни</button>
+      <div class="v-sep" v-if="worldStore.settings.watchtowerEnabled" />
+
       <span class="opts-label">Распределение</span>
       <select
         class="input dist-select"
@@ -92,6 +100,20 @@
       >
         <option value="real">Реальные</option>
         <option value="virtual">Виртуальные</option>
+      </select>
+
+      <div class="v-sep" />
+
+      <span class="opts-label">Паладины</span>
+      <select
+        class="input dist-select"
+        :value="worldStore.settings.paladinMode ?? 'manual'"
+        @change="worldStore.updateSettings({ paladinMode: ($event.target as HTMLSelectElement).value as 'auto' | 'manual' | 'none' })"
+        title="Режим определения офф-паладинов"
+      >
+        <option value="none">Не распределять</option>
+        <option value="manual">Вручную</option>
+        <option value="auto">Автоматически</option>
       </select>
     </div>
 
@@ -304,8 +326,8 @@ function applyArrivalTime(): void {
   padding: 0.18rem 0.6rem;
   transition: all 0.15s;
   white-space: nowrap;
-  &:hover { border-color: $accent; color: $text; }
-  &.toggle-on { background: a($accent, 0.12); border-color: a($accent, 0.5); color: $accent; }
+  &:hover { border-color: $text; color: $text; }
+  &.toggle-on { background: rgba(78, 204, 163, 0.12); border-color: rgba(78, 204, 163, 0.5); color: #4ecca3; }
 }
 
 .night-range { display: flex; align-items: center; gap: 0.2rem; }

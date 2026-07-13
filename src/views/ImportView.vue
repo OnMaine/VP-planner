@@ -146,6 +146,39 @@
       </div>
     </section>
 
+    <!-- Pal-off import -->
+    <section class="panel">
+      <button class="collapse-toggle" @click="palOffImportOpen = !palOffImportOpen">
+        <span>
+          Импорт офовых палов
+          <span v-if="palOffImportApplied" class="tower-count-badge">{{ palOffImportApplied }} игроков</span>
+        </span>
+        <span class="collapse-icon">{{ palOffImportOpen ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="palOffImportOpen" class="mt">
+        <p class="drop-format" style="margin-bottom:0.5rem">
+          Формат: <code>Игрок,количество</code> — по одной строке на игрока
+        </p>
+        <textarea v-model="palOffText" class="csv-textarea" rows="6" placeholder="Онмайн,5&#10;AnotherPlayer,3"></textarea>
+        <div v-if="palOffError" class="status-msg status-err">{{ palOffError }}</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" @click="applyPalOffImport">Применить</button>
+          <button class="btn btn-secondary" @click="palOffText = ''; palOffError = ''; palOffImportApplied = 0">Очистить ввод</button>
+          <button v-if="planStore.playerData.some(pd => pd.offPaladins > 0)" class="btn btn-danger" @click="clearAllPalOffs">Сбросить все пал-оффы</button>
+        </div>
+        <table v-if="planStore.playerData.some(pd => pd.offPaladins > 0)" class="mini-table" style="margin-top:1rem">
+          <thead><tr><th>Игрок</th><th>Пал-оффов</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="pd in planStore.playerData.filter(pd => pd.offPaladins > 0)" :key="pd.player">
+              <td>{{ pd.player }}</td>
+              <td class="num-hi" style="text-align:center">{{ pd.offPaladins }}</td>
+              <td><button class="btn-remove" title="Удалить" @click="planStore.setPlayerData(pd.player, { offPaladins: 0 })">✕</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <ImportStats v-if="statsVisible" ref="importStatsRef" :highlight="highlightCoords" />
   </div>
 </template>
@@ -254,6 +287,11 @@ const noblesText = ref('')
 const noblesError = ref('')
 const noblesImportApplied = ref(0)
 
+const palOffImportOpen = ref(false)
+const palOffText = ref('')
+const palOffError = ref('')
+const palOffImportApplied = ref(0)
+
 function clearAllNobles(): void {
   planStore.playerData.filter(pd => pd.totalNobles > 0).forEach(pd => planStore.setPlayerData(pd.player, { totalNobles: 0 }))
   noblesText.value = ''
@@ -276,6 +314,30 @@ function applyNoblesImport(): void {
     applied++
   }
   noblesImportApplied.value = applied
+}
+
+function applyPalOffImport(): void {
+  palOffError.value = ''
+  const lines = palOffText.value.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (!lines.length) { palOffError.value = 'Введите хотя бы одну строку'; return }
+  let applied = 0
+  for (const line of lines) {
+    const comma = line.lastIndexOf(',')
+    if (comma === -1) { palOffError.value = `Неверный формат: "${line}"`; return }
+    const player = line.slice(0, comma).trim()
+    const count = parseInt(line.slice(comma + 1).trim(), 10)
+    if (!player || isNaN(count) || count < 0) { palOffError.value = `Неверная строка: "${line}"`; return }
+    planStore.setPlayerData(player, { offPaladins: count })
+    applied++
+  }
+  palOffImportApplied.value = applied
+}
+
+function clearAllPalOffs(): void {
+  planStore.playerData.filter(pd => pd.offPaladins > 0).forEach(pd => planStore.setPlayerData(pd.player, { offPaladins: 0 }))
+  palOffText.value = ''
+  palOffError.value = ''
+  palOffImportApplied.value = 0
 }
 
 function triggerFileInput() { fileInput.value?.click() }

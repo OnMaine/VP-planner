@@ -32,7 +32,9 @@ export interface WorldSettings {
   snobIntervalMs: number
   minAttackSize: number   // minimum farm-space sum for any attack
   watchtowerEnabled: boolean
+  watchtowerAvoidEnabled: boolean
   noblePollMode: NoblePollMode
+  paladinMode: 'auto' | 'manual' | 'none'
   unitTimes: UnitTimes
   unitPop: UnitPop
 }
@@ -97,7 +99,9 @@ function defaultSettings(): WorldSettings {
     snobIntervalMs: 100,
     minAttackSize: 100,
     watchtowerEnabled: false,
+    watchtowerAvoidEnabled: true,
     noblePollMode: 'real' as NoblePollMode,
+    paladinMode: 'auto' as const,
     unitTimes: { ...DEFAULT_UNIT_TIMES },
     unitPop: { ...DEFAULT_UNIT_POP },
   }

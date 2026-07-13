@@ -19,8 +19,6 @@
     <AIPlanPanel v-if="aiStore.mode === 'ai'" @generate="onGenerate" />
 
     <MassActivePanel />
-    <TargetsTable />
-    <WatchtowerTable />
 
     <!-- Generate -->
     <section class="panel generate-section">
@@ -43,6 +41,20 @@
         </div>
       </div>
 
+      <div v-if="showSpecialOffWarning" class="special-off-warning">
+        <span class="warning-icon">⚠</span>
+        <span class="warning-text">Есть неназначенные пал/пробои — задайте их в панели ниже.</span>
+        <div class="warning-actions">
+          <button class="btn btn-secondary btn-sm" @click="specialOffWarningDismissed = true; doGenerate()">Игнорировать</button>
+          <button class="btn btn-primary btn-sm" @click="showSpecialOffWarning = false; palOffPanel?.expand()">Назначить</button>
+        </div>
+      </div>
+
+      <div v-if="worldStore.settings.paladinMode === 'auto' && planStore.offDistribution === 'far_first' && !planStore.attacks.length && (planStore.offPoolStats.breachPal + planStore.offPoolStats.palOnly + planStore.offPoolStats.breachOnly) > 0" class="pal-dist-notice">
+        <span class="blocked-icon">ℹ</span>
+        <span>Пал-оффы и пробои в режиме «Дальние» распределяются по ближайшей дистанции — дальний порядок применяется только к обычным фулл-оффам.</span>
+      </div>
+
       <div v-if="planStore.attacks.length > 0" class="generate-stat">
         Всего атак: <strong>{{ planStore.attacks.length }}</strong>
         &nbsp;·&nbsp; Активных: <strong>{{ activeAttackCount }}</strong>
@@ -51,19 +63,36 @@
 
       <div v-if="planStore.attacks.length > 0" class="pool-stats">
         <span class="pool-item">
-          Офы: <strong :class="planStore.poolUsageStats.offsAvailable > 0 ? 'stat-warn' : 'stat-ok'">{{ planStore.poolUsageStats.offsUsed }}</strong>/{{ planStore.poolUsageStats.offsTotal }}
+          Офы: <strong>{{ planStore.poolUsageStats.offsUsed }}</strong>/{{ planStore.poolUsageStats.offsTotal }}
         </span>
         <span class="pool-sep">·</span>
         <span class="pool-item">
           Дворы: <strong>{{ planStore.poolUsageStats.noblesUsed }}</strong>/{{ planStore.poolUsageStats.noblesTotal }}
         </span>
+        <template v-if="palOffTotal > 0 || breachOffTotal > 0">
+          <span class="pool-sep">·</span>
+          <template v-if="palOffTotal > 0">
+            <span class="pool-item pool-item--dim">
+              Пал-оффы: <strong :class="palOffAssigned < palOffTotal ? 'stat-warn' : 'stat-ok'">{{ palOffAssigned }}</strong>/{{ palOffTotal }}
+            </span>
+          </template>
+          <span v-if="palOffTotal > 0 && breachOffTotal > 0" class="pool-sep">·</span>
+          <template v-if="breachOffTotal > 0">
+            <span class="pool-item pool-item--dim">
+              Пробои: <strong :class="breachOffAssigned < breachOffTotal ? 'stat-warn' : 'stat-ok'">{{ breachOffAssigned }}</strong>/{{ breachOffTotal }}
+            </span>
+          </template>
+        </template>
         <template v-if="planStore.poolUsageStats.offsAvailable > 0">
           <span class="pool-sep">·</span>
           <span class="pool-unused">{{ planStore.poolUsageStats.offsAvailable }} офов не в плане</span>
-          <button class="btn btn-secondary btn-sm" @click="onFillOffs">Добить офы</button>
         </template>
       </div>
     </section>
+
+    <PalOffPanel v-if="worldStore.settings.paladinMode === 'manual'" ref="palOffPanel" />
+    <TargetsTable />
+    <WatchtowerTable />
 
     <AttackResultsPanel ref="resultsPanel" />
   </div>
@@ -79,6 +108,7 @@ import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useMassConfigStore } from '@/stores/massConfigStore'
 import MassActivePanel from '@/components/MassActivePanel.vue'
 import TargetsTable from '@/components/TargetsTable.vue'
+import PalOffPanel from '@/components/PalOffPanel.vue'
 import WatchtowerTable from '@/components/WatchtowerTable.vue'
 import AttackResultsPanel from '@/components/AttackResultsPanel.vue'
 import AIPlanPanel from '@/components/AIPlanPanel.vue'
@@ -89,8 +119,22 @@ const worldStore = useWorldStore()
 const enemyStore = useEnemyDataStore()
 const massConfigStore = useMassConfigStore()
 const resultsPanel = ref<InstanceType<typeof AttackResultsPanel> | null>(null)
+const palOffPanel  = ref<InstanceType<typeof PalOffPanel> | null>(null)
 
 const activeAttackCount = computed(() => planStore.attacks.filter((a) => !a.excluded).length)
+
+const palOffTotal    = computed(() => planStore.offPoolStats.breachPal + planStore.offPoolStats.palOnly)
+const breachOffTotal = computed(() => planStore.offPoolStats.breachPal + planStore.offPoolStats.breachOnly)
+const palOffAssigned = computed(() => {
+  if (worldStore.settings.paladinMode === 'auto')
+    return planStore.attacks.filter(a => a.type === 'paladin_off').length
+  return planStore.targets.reduce((s, t) => s + (t.palOffCount ?? 0), 0)
+})
+const breachOffAssigned = computed(() => {
+  if (worldStore.settings.paladinMode === 'auto')
+    return planStore.attacks.filter(a => a.label?.includes('+Пробой')).length
+  return planStore.targets.reduce((s, t) => s + (t.breachOffCount ?? 0), 0)
+})
 
 const generateBlockLinks = computed<Array<{ to: string; label: string }>>(() => {
   const links: Array<{ to: string; label: string }> = []
@@ -145,7 +189,20 @@ const canGenerate = computed(() => generateBlockReason.value === null)
 
 const lastGeneratedAt = ref<string>('')
 const justGenerated   = ref(false)
+const showSpecialOffWarning    = ref(false)
+const specialOffWarningDismissed = ref(false)
 const importError = ref<string>('')
+
+const unassignedSpecialOffs = computed(() => {
+  if (worldStore.settings.paladinMode === 'auto') return false
+  if (worldStore.settings.paladinMode === 'none') return false
+  const pool = planStore.offPoolStats
+  if (pool.breachPal + pool.palOnly + pool.breachOnly === 0) return false
+  const totalPal    = planStore.targets.reduce((s, t) => s + (t.palOffCount ?? 0), 0)
+  const totalBreach = planStore.targets.reduce((s, t) => s + (t.breachOffCount ?? 0), 0)
+  return (pool.breachPal + pool.palOnly > 0 && totalPal === 0) ||
+         (pool.breachPal + pool.breachOnly > 0 && totalBreach === 0)
+})
 
 async function onImportPlan(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -161,22 +218,24 @@ async function onImportPlan(e: Event) {
 }
 
 function doGenerate(): void {
+  showSpecialOffWarning.value = false
   planStore.resolveAllFromMap()
   planStore.generate()
   resultsPanel.value?.expandAll(planStore.attacksByPlayer.keys())
   const now = new Date()
   lastGeneratedAt.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
   justGenerated.value = true
+  specialOffWarningDismissed.value = false
   setTimeout(() => { justGenerated.value = false }, 600)
 }
 
-function onFillOffs(): void {
-  planStore.fillRemainingOffs()
-  resultsPanel.value?.expandAll(planStore.attacksByPlayer.keys())
-}
 
 function onGenerate(): void {
   if (!canGenerate.value) return
+  if (unassignedSpecialOffs.value && !specialOffWarningDismissed.value) {
+    showSpecialOffWarning.value = true
+    return
+  }
   doGenerate()
 }
 </script>
@@ -284,10 +343,43 @@ function onGenerate(): void {
 }
 
 .pool-item  { display: flex; align-items: center; gap: 0.25rem; }
+.pool-item--dim { font-size: 0.82rem; color: $text-faint; strong { color: $text-dim; } }
 .pool-sep   { color: $text-faint; }
 .pool-unused { color: $orange; font-weight: 600; }
+
 .stat-ok   { color: $green !important; }
 .stat-warn { color: $orange !important; }
+
+.special-off-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: a($orange, 0.08);
+  border: 1px solid a($orange, 0.3);
+  font-size: 0.85rem;
+
+  .warning-icon { color: $orange; flex-shrink: 0; }
+  .warning-text { flex: 1; color: $text-dim; }
+  .warning-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+}
+
+.pal-dist-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: $text-faint;
+  width: 100%;
+}
+
+.pool-stats-special {
+  font-size: 0.82rem;
+  color: $text-faint;
+  strong { color: $text-dim; }
+}
 
 @keyframes btn-flash {
   0%   { box-shadow: 0 0 0 0 rgba(78, 204, 163, 0.7); }

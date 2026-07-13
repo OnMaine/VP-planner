@@ -4,10 +4,6 @@
     <!-- ── Toolbar ──────────────────────────────────────────────────────── -->
     <div class="map-toolbar">
 
-      <!-- Навигация -->
-      <button class="btn btn-sm btn-secondary" @click="fitToData" title="Подогнать масштаб под все объекты">↔ По данным</button>
-
-      <span class="vsep" />
 
       <!-- Отображение карты -->
       <div class="tb-group">
@@ -21,6 +17,9 @@
         <label class="tog" title="Координаты и имена игроков над деревнями">
           <input type="checkbox" v-model="showLabels" /> Подписи
         </label>
+        <label class="tog" title="Показывать деревни без атак в плане (когда выключено — только атакующие)">
+          <input type="checkbox" v-model="showAllVillages" /> Без атак
+        </label>
       </div>
 
       <span class="vsep" />
@@ -28,9 +27,6 @@
       <!-- Фильтр деревень -->
       <div class="tb-group">
         <span class="tb-group-label">Деревни</span>
-        <label class="tog" title="Показывать деревни без атак в плане (когда выключено — только атакующие)">
-          <input type="checkbox" v-model="showAllVillages" /> Без атак
-        </label>
         <div class="vfilter-group">
           <button
             v-for="opt in VFILTER_OPTS" :key="opt.value"
@@ -46,21 +42,40 @@
       <span class="vsep" />
 
       <!-- Игрок -->
-      <select v-if="allPlayers.length > 1" class="input player-filter" v-model="filterPlayer" title="Показать деревни и атаки только одного игрока">
-        <option value="">Все игроки</option>
-        <option v-for="p in allPlayers" :key="p" :value="p">{{ p }}</option>
-      </select>
+      <div class="tb-group" v-if="allPlayers.length > 1">
+        <span class="tb-group-label">Игрок</span>
+        <select class="input player-filter" v-model="filterPlayer" title="Показать деревни и атаки только одного игрока">
+          <option value="">Все</option>
+          <option v-for="p in allPlayers" :key="p" :value="p">{{ p }}</option>
+        </select>
+      </div>
       <span class="vsep" v-if="allPlayers.length > 1" />
 
-      <!-- Статистика -->
-      <span class="toolbar-info" v-if="planStore.attacks.length">
-        {{ planStore.attacks.length }} атак · {{ uniquePairs.length }} маршрутов
-        <template v-if="detectedCount > 0">· <span class="warn-count">{{ detectedCount }} засвечено</span></template>
-      </span>
-      <span class="toolbar-info dim" v-else>Нет атак — сначала сгенерируйте в Планере</span>
+      <!-- Враг -->
+      <div class="tb-group" v-if="allEnemies.length > 1">
+        <span class="tb-group-label">Враг</span>
+        <select class="input player-filter" v-model="filterEnemy" title="Показать атаки только на одного врага">
+          <option value="">Все</option>
+          <option v-for="p in allEnemies" :key="p" :value="p">{{ p }}</option>
+        </select>
+      </div>
+      <span class="vsep" v-if="allEnemies.length > 1" />
 
-      <template v-if="planStore.attacks.length">
-        <span class="vsep" />
+      <!-- Статистика атак -->
+      <div class="tb-group">
+        <span class="tb-group-label">Атаки</span>
+        <span class="toolbar-info" v-if="planStore.attacks.length">
+          {{ planStore.attacks.length }} · {{ uniquePairs.length }} маршрутов
+          <template v-if="detectedCount > 0"> · <span class="warn-count">{{ detectedCount }} засвечено</span></template>
+        </span>
+        <span class="toolbar-info dim" v-else>нет — сгенерируйте в Планере</span>
+      </div>
+
+      <span class="vsep" v-if="planStore.attacks.length" />
+
+      <!-- Пул -->
+      <div class="tb-group" v-if="planStore.attacks.length">
+        <span class="tb-group-label">Пул</span>
         <div class="pool-bar">
           <span class="pool-bar-item" title="Офф-деревни в плане / всего в пуле">
             <span class="pool-bar-lbl">Офы</span>
@@ -75,12 +90,26 @@
             <span class="pool-bar-sep">/</span>
             <span class="pool-bar-total">{{ planStore.poolUsageStats.noblesTotal }}</span>
           </span>
+          <template v-if="planStore.offPoolStats.palOnly + planStore.offPoolStats.breachPal > 0">
+            <span class="pool-bar-dot" />
+            <span class="pool-bar-item" title="Пал-оффы (pal_off + breach+pal) в пуле">
+              <span class="pool-bar-lbl">Пал</span>
+              <span class="pool-bar-total">{{ planStore.offPoolStats.palOnly + planStore.offPoolStats.breachPal }}</span>
+            </span>
+          </template>
+          <template v-if="planStore.offPoolStats.breachOnly + planStore.offPoolStats.breachPal > 0">
+            <span class="pool-bar-dot" />
+            <span class="pool-bar-item" title="Пробои (breach_off + breach+pal) в пуле">
+              <span class="pool-bar-lbl">Пробой</span>
+              <span class="pool-bar-total">{{ planStore.offPoolStats.breachOnly + planStore.offPoolStats.breachPal }}</span>
+            </span>
+          </template>
           <template v-if="planStore.poolUsageStats.offsAvailable > 0">
             <span class="pool-bar-dot" />
-            <span class="pool-unused">{{ planStore.poolUsageStats.offsAvailable }} офов не в плане</span>
+            <span class="pool-unused">{{ planStore.poolUsageStats.offsAvailable }} не в плане</span>
           </template>
         </div>
-      </template>
+      </div>
     </div>
 
     <!-- ── Map + Detail panel ────────────────────────────────────────────── -->
@@ -96,6 +125,8 @@
           @mouseleave="onMouseLeave"
           @click="onMapClick"
         />
+
+        <button class="map-center-btn" @click="fitToData" title="Центрировать карту по данным">⊹ Центрировать</button>
 
         <div v-if="tooltip" class="map-tt" :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">
           <div class="tt-head">{{ tooltip.head }}</div>
@@ -142,6 +173,11 @@
               <div class="dp-head-info">
                 <span class="dp-coords">{{ selectedTarget.coords }}</span>
                 <span v-if="selectedTarget.enemyPlayer" class="dp-enemy">{{ selectedTarget.enemyPlayer }}</span>
+                <span
+                  v-if="targetTower(selectedTarget.coords)"
+                  class="dp-tower-badge"
+                  :title="`Башня уровня ${targetTower(selectedTarget.coords)!.level} — радиус обнаружения ${targetTower(selectedTarget.coords)!.level} клеток`"
+                >🗼 {{ targetTower(selectedTarget.coords)!.level }} ур.</span>
               </div>
               <div class="dp-head-actions">
                 <button class="dp-add-btn" :class="{ active: addingAttack }" title="Добавить атаку" @click.stop="openAddForm">+</button>
@@ -178,7 +214,8 @@
                     <span class="dp-from">{{ selectedVillage ? atk.target.coords : atk.fromVillage.coords }}</span>
                     <span v-if="!selectedVillage" class="dp-player-dot" :style="{ background: playerColor(atk.fromVillage.player) }" :title="atk.fromVillage.player" />
                     <span class="dp-arr">{{ fmtTime(atk.arrivalTime) }}</span>
-                    <span v-if="atk.warnings.length" class="dp-warn" :title="atk.warnings.map(warnText).join('\n')">⚠</span>
+                    <span v-if="atk.warnings.includes('WATCHTOWER_HIT')" class="dp-tower-hit" title="Маршрут проходит через радиус башни врага">🗼</span>
+                    <span v-if="atk.warnings.filter(w => w !== 'WATCHTOWER_HIT').length" class="dp-warn" :title="atk.warnings.filter(w => w !== 'WATCHTOWER_HIT').map(warnText).join('\n')">⚠</span>
                     <button
                       class="dp-excl-btn"
                       :title="atk.excluded ? 'Включить в план' : 'Исключить из плана'"
@@ -334,7 +371,9 @@ import { usePlanStore } from '@/stores/planStore'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { usePresetsStore } from '@/stores/presetsStore'
+import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useDateFormat } from '@/composables/useDateFormat'
+import { watchtowerIcon } from '@/utils/unitIcons'
 import type { Village } from '@/stores/villagesStore'
 import type { Target, Attack, AttackType, AttackComposition } from '@/stores/planStore'
 
@@ -342,17 +381,19 @@ const planStore      = usePlanStore()
 const villagesStore  = useVillagesStore()
 const worldStore     = useWorldStore()
 const presetsStore   = usePresetsStore()
+const enemyStore     = useEnemyDataStore()
 const { toDatetimeLocal } = useDateFormat()
 
 // ── Display toggles ───────────────────────────────────────────────────
 const showTowers      = ref(true)
 const showSpam        = ref(false)
-const showAllVillages = ref(true)
+const showAllVillages = ref(false)
 const showLabels      = ref(true)
 const filterPlayer    = ref('')
+const filterEnemy     = ref('')
 
 // ── Village pool filter ───────────────────────────────────────────────
-type VillageFilter = 'all' | 'offs' | 'full_off' | 'mid_off' | 'mini_off' | 'breach' | 'nobles'
+type VillageFilter = 'all' | 'offs' | 'full_off' | 'mid_off' | 'mini_off' | 'breach' | 'paladin' | 'nobles'
 const villageFilter = ref<VillageFilter>('all')
 
 const VFILTER_OPTS: Array<{ value: VillageFilter; label: string; color?: string; hint: string }> = [
@@ -362,6 +403,7 @@ const VFILTER_OPTS: Array<{ value: VillageFilter; label: string; color?: string;
   { value: 'mid_off',  label: 'Mid_OFF',  color: '#c87d3e', hint: 'Mid_OFF — средний офф (между порогами Mid и Full)' },
   { value: 'mini_off', label: 'Mini_OFF', color: '#b8a832', hint: 'Mini_OFF — мини офф (между порогами Mini и Mid)' },
   { value: 'breach',   label: 'Пробой',   color: '#89b4fa', hint: 'Full_OFF с таранами ≥ порога пробоя (могут пробить стену)' },
+  { value: 'paladin',  label: 'Пал-офф',  color: '#a99ef0', hint: 'Деревни с офф-паладином (pal_off или breach+pal)' },
   { value: 'nobles',   label: 'Дворяне',  color: '#a78bfa', hint: 'Деревни с дворянами (snob ≥ 1)' },
 ]
 
@@ -376,6 +418,7 @@ function villageMatchesFilter(v: Village): boolean {
     case 'mid_off':  return offFarm >= ps.halfOffMinOffFarm && offFarm < ps.fullOffMinOffFarm
     case 'mini_off': return offFarm >= ps.smallOffMinOffFarm && offFarm < ps.halfOffMinOffFarm
     case 'breach':   return offFarm >= ps.fullOffMinOffFarm && v.troops.ram >= ps.breachMinRams
+    case 'paladin':  return planStore.palVillageCoords.has(v.coords)
     case 'nobles':   return v.troops.snob >= 1
     default:         return true
   }
@@ -393,7 +436,18 @@ let _panY  = 0
 
 // ── Sprite image ──────────────────────────────────────────────────────
 let _villageImg: HTMLImageElement | null = null
+let _towerImg:   HTMLImageElement | null = null
 const imgLoaded = ref(false)
+
+// Map village points to sprite sheet cell {col, row} in villages.png (3×2)
+function villageSprite(points: number): { col: number; row: number } {
+  if (points < 100)   return { col: 0, row: 0 }
+  if (points < 500)   return { col: 1, row: 0 }
+  if (points < 1000)  return { col: 2, row: 0 }
+  if (points < 3000)  return { col: 0, row: 1 }
+  if (points < 10000) return { col: 1, row: 1 }
+  return { col: 2, row: 1 }
+}
 
 // ── RAF ───────────────────────────────────────────────────────────────
 let _rafId: number | null = null
@@ -405,8 +459,6 @@ function scheduleFrame() {
 
 // ── Village sprite layout ─────────────────────────────────────────────
 const VS_COLS = 3, VS_ROWS = 2
-const VS_COL  = 1, VS_ROW  = 1   // attacker sprite cell
-const VT_COL  = 2, VT_ROW  = 0   // target sprite cell
 const VS_R    = 15                // visual radius in screen pixels
 
 // ── Attack type colors ────────────────────────────────────────────────
@@ -443,11 +495,22 @@ function playerColor(player: string): string {
   return playerColorMap.value.get(player) ?? '#89b4fa'
 }
 
+function targetTower(coords: string) {
+  return planStore.watchtowerVillages.find(w => w.coords === coords) ?? null
+}
+
 function shortName(player: string): string {
   return player.length > 12 ? player.slice(0, 12) + '…' : player
 }
 
 const allPlayers = computed(() => [...playerColorMap.value.keys()])
+
+const allEnemies = computed(() => {
+  const s = new Set<string>()
+  for (const t of planStore.targets)
+    if (t.enemyPlayer) s.add(t.enemyPlayer)
+  return [...s].sort()
+})
 
 // ── Attack type color ─────────────────────────────────────────────────
 function atkTypeColor(atk: Attack): string {
@@ -516,6 +579,7 @@ const uniquePairs = computed<Pair[]>(() => {
   const map = new Map<string, Pair>()
   for (const atk of planStore.attacks) {
     if (filterPlayer.value && atk.fromVillage.player !== filterPlayer.value) continue
+    if (filterEnemy.value && atk.target.enemyPlayer !== filterEnemy.value) continue
     const key   = `${atk.fromVillage.coords}→${atk.target.coords}`
     const color = atkTypeColor(atk)
     const isSpam = atk.type === 'spam' || atk.type === 'spam_noble'
@@ -540,9 +604,9 @@ const uniquePairs = computed<Pair[]>(() => {
   for (const p of map.values()) {
     const nonExcl = p.attacks.filter(a => !a.excluded)
     p.lineW = nonExcl.length >= 4 ? 2.5 : nonExcl.length >= 2 ? 1.8 : 1.2
-    const hasCrit = nonExcl.some(a => a.warnings.includes('MORALE_HIGH_RISK'))
-    const hasWarn = nonExcl.some(a => a.warnings.length > 0)
-    p.dashType = hasCrit ? 'crit' : hasWarn ? 'warn' : null
+    const hasCrit  = nonExcl.some(a => a.warnings.includes('MORALE_HIGH_RISK'))
+    const hasTower = nonExcl.some(a => a.warnings.includes('WATCHTOWER_HIT'))
+    p.dashType = hasCrit ? 'crit' : hasTower ? 'warn' : null
   }
   return [...map.values()]
 })
@@ -566,9 +630,12 @@ const detectedCount  = computed(() => uniquePairs.value.filter(p =>
 ).length)
 
 // ── Villages ──────────────────────────────────────────────────────────
-const attackingCoords = computed(() =>
-  new Set(planStore.attacks.map(a => a.fromVillage.coords))
-)
+const attackingCoords = computed(() => {
+  const attacks = filterEnemy.value
+    ? planStore.attacks.filter(a => a.target.enemyPlayer === filterEnemy.value)
+    : planStore.attacks
+  return new Set(attacks.map(a => a.fromVillage.coords))
+})
 
 const renderedVillages = computed(() => {
   const base = filterPlayer.value
@@ -687,6 +754,10 @@ function drawGrid(ctx: CanvasRenderingContext2D) {
 
 function drawTowers(ctx: CanvasRenderingContext2D) {
   for (const tw of planStore.watchtowerVillages) {
+    if (filterEnemy.value) {
+      const twPlayer = tw.player || enemyStore.lookupCoords(tw.coords)?.player?.name || ''
+      if (twPlayer !== filterEnemy.value) continue
+    }
     ctx.beginPath()
     ctx.arc(tw.x, tw.y, tw.level, 0, Math.PI * 2)
     ctx.fillStyle   = '#f38ba8'
@@ -698,6 +769,18 @@ function drawTowers(ctx: CanvasRenderingContext2D) {
     ctx.globalAlpha = 0.45
     ctx.stroke()
     ctx.setLineDash([])
+    ctx.globalAlpha = 1
+
+    // Tower center dot
+    const dotR = Math.max(2.5, Math.min(5, 3.5 / _scale))
+    ctx.beginPath()
+    ctx.arc(tw.x, tw.y, dotR / _scale, 0, Math.PI * 2)
+    ctx.fillStyle = '#f38ba8'
+    ctx.globalAlpha = 0.9
+    ctx.fill()
+    ctx.strokeStyle = '#0d0e14'
+    ctx.lineWidth = 0.8 / _scale
+    ctx.stroke()
     ctx.globalAlpha = 1
   }
 }
@@ -788,11 +871,12 @@ function drawVillages(ctx: CanvasRenderingContext2D) {
     ctx.globalAlpha = isAtk || isSel ? 1 : 0.42
 
     if (img) {
+      const sp = villageSprite(v.points)
       ctx.save()
       ctx.beginPath()
       ctx.arc(v.x, v.y, r, 0, Math.PI * 2)
       ctx.clip()
-      ctx.drawImage(img, VS_COL * cellW, VS_ROW * cellH, cellW, cellH, v.x - r, v.y - r, r * 2, r * 2)
+      ctx.drawImage(img, sp.col * cellW, sp.row * cellH, cellW, cellH, v.x - r, v.y - r, r * 2, r * 2)
       ctx.restore()
     } else {
       ctx.beginPath()
@@ -843,18 +927,21 @@ function drawTargets(ctx: CanvasRenderingContext2D) {
   const r     = VS_R / _scale
   const cellW = img ? img.naturalWidth  / VS_COLS : 0
   const cellH = img ? img.naturalHeight / VS_ROWS : 0
-  const targets = planStore.targets.filter(t => t.coords)
+  const targets    = planStore.targets.filter(t => t.coords && (!filterEnemy.value || t.enemyPlayer === filterEnemy.value))
+  const towerCoords = new Set(planStore.watchtowerVillages.map(w => w.coords))
 
   for (const t of targets) {
     const isSel      = selectedTargetId.value === t.id
     const borderColor = isSel ? '#ffffff' : '#e94560'
 
     if (img) {
+      const epts = enemyStore.lookupCoords(t.coords)?.village.points ?? 0
+      const sp   = villageSprite(epts)
       ctx.save()
       ctx.beginPath()
       ctx.arc(t.x, t.y, r, 0, Math.PI * 2)
       ctx.clip()
-      ctx.drawImage(img, VT_COL * cellW, VT_ROW * cellH, cellW, cellH, t.x - r, t.y - r, r * 2, r * 2)
+      ctx.drawImage(img, sp.col * cellW, sp.row * cellH, cellW, cellH, t.x - r, t.y - r, r * 2, r * 2)
       ctx.restore()
     } else {
       ctx.beginPath()
@@ -926,6 +1013,35 @@ function drawTargets(ctx: CanvasRenderingContext2D) {
       ctx.textAlign    = 'center'
       ctx.textBaseline = 'middle'
       ctx.fillText(String(cnt), bx2, by2 + 0.3 / _scale)
+    }
+
+    // Tower badge (top-left) — watchtower icon in white circle
+    if (towerCoords.has(t.coords) && _towerImg) {
+      const br  = 7 / _scale
+      const cx3 = t.x - (VS_R + 3) / _scale
+      const cy3 = t.y - (VS_R + 3) / _scale
+      ctx.beginPath()
+      ctx.arc(cx3, cy3, br, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.globalAlpha = 0.95
+      ctx.fill()
+      ctx.globalAlpha = 1
+      const sz  = 11 / _scale
+      ctx.globalAlpha = 0.95
+      ctx.drawImage(_towerImg, cx3 - sz / 2, cy3 - sz / 2, sz, sz)
+      ctx.globalAlpha = 1
+    } else if (towerCoords.has(t.coords)) {
+      // fallback until image loads
+      const br  = 6 / _scale
+      const bx3 = t.x - (VS_R + 3) / _scale
+      const by3 = t.y - (VS_R + 3) / _scale
+      ctx.beginPath()
+      ctx.arc(bx3, by3, br, 0, Math.PI * 2)
+      ctx.fillStyle = '#f38ba8'; ctx.globalAlpha = 0.92; ctx.fill(); ctx.globalAlpha = 1
+      ctx.fillStyle = '#0d0e14'
+      ctx.font = `bold ${6.5 / _scale}px sans-serif`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('T', bx3, by3 + 0.3 / _scale)
     }
   }
 }
@@ -1356,6 +1472,10 @@ onMounted(() => {
   img.src = '/villages.png'
   img.onload = () => { _villageImg = img; imgLoaded.value = true }
 
+  const timg = new Image()
+  timg.src = watchtowerIcon
+  timg.onload = () => { _towerImg = timg; scheduleFrame() }
+
   let ro: ResizeObserver | null = null
   if (containerEl.value) {
     ro = new ResizeObserver(() => scheduleFrame())
@@ -1499,6 +1619,23 @@ onMounted(() => {
   background: #1a3a0d;
 }
 
+.map-center-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 10;
+  background: a($bg-panel, 0.85);
+  border: 1px solid $border;
+  border-radius: 6px;
+  color: $text-dim;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.65rem;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: border-color 0.15s, color 0.15s;
+  &:hover { border-color: $accent; color: $accent; }
+}
+
 .map-canvas {
   display: block;
   width: 100%;
@@ -1613,7 +1750,19 @@ onMounted(() => {
 .dp-from   { color: $text-dim; flex-shrink: 0; }
 .dp-player-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .dp-arr    { color: $text-faint; margin-left: auto; white-space: nowrap; flex-shrink: 0; font-size: 0.72rem; }
-.dp-warn   { color: $orange; font-size: 0.72rem; flex-shrink: 0; }
+.dp-warn       { color: $orange; font-size: 0.72rem; flex-shrink: 0; }
+.dp-tower-hit  { font-size: 0.72rem; flex-shrink: 0; cursor: default; }
+.dp-tower-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #f38ba8;
+  background: rgba(243,139,168,0.12);
+  border: 1px solid rgba(243,139,168,0.3);
+  border-radius: 8px;
+  padding: 0.1rem 0.4rem;
+  cursor: default;
+  white-space: nowrap;
+}
 
 .dp-atk-editing { background: a($accent, 0.05); border-bottom: none; }
 

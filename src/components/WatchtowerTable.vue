@@ -31,21 +31,20 @@
         <span class="fmt-tip">ⓘ<span class="fmt-tip-body">
           Одна строка = одна башня<br>
           <code>500|500</code> ← только коры (уровень 20)<br>
-          <code>500|500,EnemyNick</code> ← с ником<br>
-          <code>500|500,EnemyNick,15</code> ← с ником и уровнем
+          <code>500|500,15</code> ← с уровнем
         </span></span>
       </div>
 
       <div v-if="bulkOpen" class="bulk-panel">
         <p class="bulk-hint">
-          Формат строки: <code>500|500,НикВрага,15</code> — ник и уровень необязательны. Без уровня — башня 20.
+          Формат строки: <code>500|500,15</code> — уровень необязателен. Без уровня — башня 20.
         </p>
         <div class="bulk-row">
           <textarea
             v-model="bulkText"
             class="bulk-textarea"
             rows="5"
-            placeholder="500|500,EnemyPlayer,15   ← ник + уровень&#10;501|501,AnotherEnemy    ← без уровня (20)&#10;502|502,,10            ← без ника, уровень 10&#10;503|503               ← только коры (20)"
+            placeholder="500|500,15   ← с уровнем&#10;501|501      ← только коры (уровень 20)"
           />
           <div class="bulk-time" style="min-width:160px">
             <button class="btn btn-primary" @click="doBulkAdd">Додати</button>
@@ -64,7 +63,6 @@
             <table class="mini-table">
               <thead><tr>
                 <th>Координаты</th>
-                <th>Игрок</th>
                 <th>Уровень (0–20)</th>
                 <th></th>
               </tr></thead>
@@ -76,14 +74,6 @@
                       :value="wt.coords"
                       @input="filterCoordsInput($event)"
                       @change="onTowerCoordsChange(wt.id, ($event.target as HTMLInputElement).value)"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="text" class="input" style="width:130px" placeholder="(необяз.)"
-                      :value="resolveTowerPlayer(wt)"
-                      :class="{ 'input-autofilled': !!enemyStore.lookupCoords(wt.coords)?.player }"
-                      @change="onTowerPlayerChange(wt.id, wt.coords, ($event.target as HTMLInputElement).value)"
                     />
                   </td>
                   <td>
@@ -124,6 +114,7 @@ function clearAllTowers() {
 const enemyStore = useEnemyDataStore()
 const { filterCoordsInput } = useCoordInput()
 const { resolveTowerPlayer } = usePlayerResolution()
+// resolveTowerPlayer used for grouping by player in towerBlocks
 
 const open = ref(false)
 const bulkOpen = ref(false)
@@ -161,11 +152,6 @@ function onTowerCoordsChange(id: string, coords: string): void {
   planStore.updateWatchtowerVillage(id, patch)
 }
 
-function onTowerPlayerChange(id: string, coords: string, value: string): void {
-  planStore.updateWatchtowerVillage(id, { player: value })
-  const target = planStore.targets.find((t) => t.coords === coords)
-  if (target) planStore.updateTarget(target.id, { enemyPlayer: value || undefined })
-}
 
 interface ParsedTower { coords: string; player: string; level: number }
 
@@ -177,10 +163,9 @@ function parseTowersFromText(text: string): ParsedTower[] {
     const parts = trimmed.split(',')
     const coordsPart = parts[0].trim()
     if (!/^\d{1,3}\|\d{1,3}$/.test(coordsPart)) continue
-    const player = (parts[1] ?? '').trim()
-    const levelRaw = parseInt((parts[2] ?? '').trim(), 10)
+    const levelRaw = parseInt((parts[1] ?? '').trim(), 10)
     const level = isNaN(levelRaw) ? 20 : Math.max(0, Math.min(20, levelRaw))
-    results.push({ coords: coordsPart, player, level })
+    results.push({ coords: coordsPart, player: '', level })
   }
   return results
 }
