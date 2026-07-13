@@ -67,10 +67,6 @@ export type AttackType =
   | 'paladin_off'       // off with offensive paladin (wall-busting priority)
   | 'split_off_rams'    // split off part 1 — rams + half troops
   | 'split_off_rest'    // split off part 2 — rest of troops (faster, no rams)
-  | 'noble_green_strong'  // noble + 999 escort (anti-cut)
-  | 'noble_green_weak'    // noble + small escort (50 troops)
-  | 'noble_orange'        // noble + 1001–5000 troops
-  | 'noble_red'           // noble + full off (5001+)
   | 'spam'              // fake attack (min troops + 1 ram)
   | 'spam_noble'        // noble on decoy target
 
@@ -260,16 +256,9 @@ function buildPoolTags(
 // Determine speed unit for a composition (slowest meaningful unit for attack type)
 function speedUnitForType(type: AttackType): keyof VillageTroops {
   switch (type) {
-    case 'noble_green_strong':
-    case 'noble_green_weak':
-    case 'noble_orange':
-    case 'noble_red':
-    case 'spam_noble':
-      return 'snob'
-    case 'split_off_rest':
-      return 'light'
-    default:
-      return 'ram'
+    case 'spam_noble':  return 'snob'
+    case 'split_off_rest': return 'light'
+    default:            return 'ram'
   }
 }
 
@@ -280,64 +269,6 @@ function slowestUnitInComp(comp: AttackComposition, unitTimes: Record<string, nu
   return keys.reduce((s, k) => (unitTimes[k] ?? 0) > (unitTimes[s] ?? 0) ? k : s)
 }
 
-// Build composition for a noble attack given type, available resources, escort unit
-function buildNobleComposition(
-  type: AttackType,
-  available: AttackComposition,
-  escortUnit: keyof AttackComposition,
-  nobleCount: number,
-): AttackComposition {
-  const c = emptyComposition()
-  c.snob = Math.min(nobleCount, available.snob)
-  if (c.snob === 0) return c
-
-  switch (type) {
-    case 'noble_green_strong': {
-      // noble(s) + fill escortUnit up to 999 per noble, max available
-      const maxEscort = Math.min(available[escortUnit], 999 * c.snob)
-      c[escortUnit] = maxEscort
-      break
-    }
-    case 'noble_green_weak': {
-      // noble + ~50 of escort unit
-      const weakEscort = Math.min(available[escortUnit], 50 * c.snob)
-      c[escortUnit] = weakEscort
-      break
-    }
-    case 'noble_orange': {
-      // noble + fill to reach ~1001 total (fill with escortUnit + overflow to axe/light)
-      const target = 1001
-      let fill = Math.min(available[escortUnit], target - c.snob)
-      c[escortUnit] = fill
-      if (totalUnits(c) < target) {
-        const secondary: Array<keyof AttackComposition> = ['axe', 'light', 'sword', 'spear']
-        for (const u of secondary) {
-          if (u === escortUnit) continue
-          const need = target - totalUnits(c)
-          if (need <= 0) break
-          c[u] = Math.min(available[u], need)
-        }
-      }
-      break
-    }
-    case 'noble_red': {
-      // noble + everything available (full off)
-      c.axe = available.axe
-      c.light = available.light
-      c.heavy = available.heavy
-      c.ram = available.ram
-      break
-    }
-    case 'spam_noble': {
-      // noble + minimal escort (20–50 spear/axe)
-      c[escortUnit] = Math.min(available[escortUnit], 50)
-      break
-    }
-    default:
-      break
-  }
-  return c
-}
 
 // ---------------------------------------------------------------------------
 // localStorage helpers
@@ -890,7 +821,7 @@ export const usePlanStore = defineStore('plan', () => {
 
       for (const { v, isVirtual } of entries) {
         if (usedNobleVillages.has(v.coords)) continue
-        if (nightExcludes(v, target, 'noble_green_strong', arrT)) continue
+        if (nightExcludes(v, target, 'spam_noble', arrT)) continue
         if (isVirtual) {
           const snob = pool.get(v.coords)?.snob ?? 0
           const budgetNeeded = need - snob

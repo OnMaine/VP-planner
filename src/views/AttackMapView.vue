@@ -404,7 +404,7 @@ const VFILTER_OPTS: Array<{ value: VillageFilter; label: string; color?: string;
   { value: 'mini_off', label: 'Mini_OFF', color: '#b8a832', hint: 'Mini_OFF — мини офф (между порогами Mini и Mid)' },
   { value: 'breach',   label: 'Пробой',   color: '#89b4fa', hint: 'Full_OFF с таранами ≥ порога пробоя (могут пробить стену)' },
   { value: 'paladin',  label: 'Пал-офф',  color: '#a99ef0', hint: 'Деревни с офф-паладином (pal_off или breach+pal)' },
-  { value: 'nobles',   label: 'Дворяне',  color: '#a78bfa', hint: 'Деревни с дворянами (snob ≥ 1)' },
+  { value: 'nobles',   label: 'Дворяне',  color: '#a78bfa', hint: 'Деревни, из которых идёт дворянская атака в плане' },
 ]
 
 function villageMatchesFilter(v: Village): boolean {
@@ -419,7 +419,7 @@ function villageMatchesFilter(v: Village): boolean {
     case 'mini_off': return offFarm >= ps.smallOffMinOffFarm && offFarm < ps.halfOffMinOffFarm
     case 'breach':   return offFarm >= ps.fullOffMinOffFarm && v.troops.ram >= ps.breachMinRams
     case 'paladin':  return planStore.palVillageCoords.has(v.coords)
-    case 'nobles':   return v.troops.snob >= 1
+    case 'nobles':   return nobleAttackCoords.value.has(v.coords)
     default:         return true
   }
 }
@@ -525,16 +525,12 @@ function atkBadgeStyle(atk: Attack): Record<string, string> {
 
 function atkTypeShort(atk: Attack): string {
   const t = atk.type
-  if (t === 'paladin_off')        return 'Пал-Офф'
-  if (t === 'off')                return 'Офф'
-  if (t === 'noble_red')          return 'Кр. двор'
-  if (t === 'noble_orange')       return 'Ор. двор'
-  if (t === 'noble_green_strong') return 'Зел. двор'
-  if (t === 'noble_green_weak')   return 'Зел. двор~'
-  if (t === 'spam_noble')         return 'Спам-двор'
-  if (t === 'spam')               return 'Спам'
-  if (t === 'split_off_rams')     return 'Медиум'
-  if (t === 'split_off_rest')     return 'Медиум-'
+  if (t === 'paladin_off')    return 'Пал-Офф'
+  if (t === 'off')            return 'Офф'
+  if (t === 'spam_noble')     return 'Спам-двор'
+  if (t === 'spam')           return 'Спам'
+  if (t === 'split_off_rams') return 'Медиум'
+  if (t === 'split_off_rest') return 'Медиум-'
   return t
 }
 
@@ -636,6 +632,10 @@ const attackingCoords = computed(() => {
     : planStore.attacks
   return new Set(attacks.map(a => a.fromVillage.coords))
 })
+
+const nobleAttackCoords = computed(() =>
+  new Set(planStore.attacks.filter(a => (a.composition.snob ?? 0) > 0).map(a => a.fromVillage.coords))
+)
 
 const renderedVillages = computed(() => {
   const base = filterPlayer.value
@@ -1310,12 +1310,11 @@ function onDragEnd() { dragSourceId.value = null; dragOverId.value = null }
 
 // ── Inline attack editor ──────────────────────────────────────────────
 const ATK_TYPE_OPTIONS: Array<{ type: AttackType; label: string; color: string }> = [
-  { type: 'off',                label: 'Офф',      color: C_OFF   },
-  { type: 'paladin_off',        label: 'Пал-Офф',  color: C_OFF   },
-  { type: 'split_off_rams',     label: 'Медиум',   color: C_SPLIT },
-  { type: 'noble_red',          label: 'Двор кр',  color: C_NOBLE },
-  { type: 'noble_green_strong', label: 'Двор зел', color: C_NOBLE },
-  { type: 'spam',               label: 'Спам',     color: C_SPAM  },
+  { type: 'off',            label: 'Офф',      color: C_OFF   },
+  { type: 'paladin_off',    label: 'Пал-Офф',  color: C_OFF   },
+  { type: 'split_off_rams', label: 'Медиум',   color: C_SPLIT },
+  { type: 'spam_noble',     label: 'Спам-двор', color: C_NOBLE },
+  { type: 'spam',           label: 'Спам',     color: C_SPAM  },
 ]
 
 const COMP_UNITS: Array<{ key: keyof AttackComposition; label: string }> = [

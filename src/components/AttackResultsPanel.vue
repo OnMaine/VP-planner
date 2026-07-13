@@ -109,7 +109,7 @@
                     :style="rowStyle(row.representative)"
                   >
                     <td>
-                      <span v-if="row.representative.type === 'noble_red'" class="type-badge badge-off">Фулл</span>
+
                       <span
                         :class="['type-badge', row.representative.color ? '' : typeBadgeClass(row.representative.type)]"
                         :style="row.representative.color ? customBadgeStyle(row.representative.color) : {}"
@@ -218,7 +218,7 @@
                     :style="rowStyle(row.representative)"
                   >
                     <td>
-                      <span v-if="row.representative.type === 'noble_red'" class="type-badge badge-off">Фулл</span>
+
                       <span
                         :class="['type-badge', row.representative.color ? '' : typeBadgeClass(row.representative.type)]"
                         :style="row.representative.color ? customBadgeStyle(row.representative.color) : {}"
@@ -463,16 +463,12 @@ function playerTypeChips(attacks: Attack[]): TypeChip[] {
 
 function typeLabel(type: AttackType): string {
   switch (type) {
-    case 'off':                return 'Офф'
-    case 'paladin_off':        return 'Пал-Офф'
-    case 'split_off_rams':     return 'Сплит (тараны)'
-    case 'split_off_rest':     return 'Сплит (остальное)'
-    case 'noble_green_strong': return 'Двор 999'
-    case 'noble_green_weak':   return 'Двор ~50'
-    case 'noble_orange':       return 'Двор 1001+'
-    case 'noble_red':          return 'Двор'
-    case 'spam':               return 'Спам'
-    case 'spam_noble':         return 'Спам-двор'
+    case 'off':            return 'Офф'
+    case 'paladin_off':    return 'Пал-Офф'
+    case 'split_off_rams': return 'Сплит (тараны)'
+    case 'split_off_rest': return 'Сплит (остальное)'
+    case 'spam':           return 'Спам'
+    case 'spam_noble':     return 'Спам-двор'
   }
 }
 
@@ -485,13 +481,9 @@ function typeBadgeClass(type: AttackType): string {
     case 'off':
     case 'paladin_off':
     case 'split_off_rams':
-    case 'split_off_rest':    return 'badge-off'
-    case 'noble_green_strong':
-    case 'noble_green_weak':  return 'badge-noble-green'
-    case 'noble_orange':      return 'badge-noble-orange'
-    case 'noble_red':         return 'badge-noble-red'
+    case 'split_off_rest': return 'badge-off'
     case 'spam':
-    case 'spam_noble':        return 'badge-spam'
+    case 'spam_noble':     return 'badge-spam'
   }
 }
 
@@ -571,16 +563,12 @@ interface BBMeta { unit: string; color: string; label: string }
 
 function attackBBMeta(type: AttackType): BBMeta {
   switch (type) {
-    case 'off':                return { unit: 'ram',   color: '#ff0000', label: 'ФУЛЛ_ОФФ' }
-    case 'paladin_off':        return { unit: 'ram',   color: '#ff00ff', label: 'ФУЛЛ_ОФФ_(+ПАЛ)' }
-    case 'split_off_rams':     return { unit: 'ram',   color: '#ff8800', label: 'ПОДЕЛЁНКА_(тараны)' }
-    case 'split_off_rest':     return { unit: 'axe',   color: '#ff8800', label: 'ПОДЕЛЁНКА_(без_таранов)' }
-    case 'noble_green_strong': return { unit: 'snob',  color: '#0000ff', label: 'ЗЕЛЁНЫЙ_ДВОР_(999юн)' }
-    case 'noble_green_weak':   return { unit: 'snob',  color: '#0000ff', label: 'ЗЕЛЁНЫЙ_ДВОР_(~50юн)' }
-    case 'noble_orange':       return { unit: 'snob',  color: '#5500ff', label: 'ДВОР_(1001-5000юн)' }
-    case 'noble_red':          return { unit: 'snob',  color: '#aa00ff', label: 'КРАСНЫЙ_ДВОР' }
-    case 'spam':               return { unit: 'spear', color: '#888888', label: 'СПАМ' }
-    case 'spam_noble':         return { unit: 'snob',  color: '#666688', label: 'СПАМ_ДВОР' }
+    case 'off':            return { unit: 'ram',   color: '#ff0000', label: 'ФУЛЛ_ОФФ' }
+    case 'paladin_off':    return { unit: 'ram',   color: '#ff00ff', label: 'ФУЛЛ_ОФФ_(+ПАЛ)' }
+    case 'split_off_rams': return { unit: 'ram',   color: '#ff8800', label: 'ПОДЕЛЁНКА_(тараны)' }
+    case 'split_off_rest': return { unit: 'axe',   color: '#ff8800', label: 'ПОДЕЛЁНКА_(без_таранов)' }
+    case 'spam':           return { unit: 'spear', color: '#888888', label: 'СПАМ' }
+    case 'spam_noble':     return { unit: 'snob',  color: '#666688', label: 'СПАМ_ДВОР' }
   }
 }
 
@@ -730,16 +718,12 @@ function attackMapBlock(filterPlayer?: string): string {
 }
 
 function atkTypeLabelShort(type: string): string {
-  if (type === 'paladin_off')        return 'Пал-Офф'
-  if (type === 'off')                return 'Офф'
-  if (type === 'noble_red')          return 'Кр. двор'
-  if (type === 'noble_orange')       return 'Ор. двор'
-  if (type === 'noble_green_strong') return 'Зел. двор'
-  if (type === 'noble_green_weak')   return 'Зел. двор~'
-  if (type === 'spam_noble')         return 'Спам-двор'
-  if (type === 'spam')               return 'Спам'
-  if (type === 'split_off_rams')     return 'Медиум'
-  if (type === 'split_off_rest')     return 'Медиум-'
+  if (type === 'paladin_off')    return 'Пал-Офф'
+  if (type === 'off')            return 'Офф'
+  if (type === 'spam_noble')     return 'Спам-двор'
+  if (type === 'spam')           return 'Спам'
+  if (type === 'split_off_rams') return 'Медиум'
+  if (type === 'split_off_rest') return 'Медиум-'
   return type
 }
 
@@ -924,11 +908,8 @@ $yellow:       #f0c040;
   font-weight: 600;
   white-space: nowrap;
 }
-.badge-off          { background: a($accent, 0.18); color: #ff4466; border: 1px solid a(#ff4466, 0.45); }
-.badge-noble-green  { background: a($green,  0.15); color: $green;  border: 1px solid a($green,  0.35); }
-.badge-noble-orange { background: a($orange, 0.15); color: $orange; border: 1px solid a($orange, 0.35); }
-.badge-noble-red    { background: a($accent, 0.15); color: $accent; border: 1px solid a($accent, 0.35); }
-.badge-spam         { background: a($text-dim, 0.15); color: $text-dim; border: 1px solid a($text-dim, 0.3); }
+.badge-off  { background: a($accent, 0.18); color: #ff4466; border: 1px solid a(#ff4466, 0.45); }
+.badge-spam { background: a($text-dim, 0.15); color: $text-dim; border: 1px solid a($text-dim, 0.3); }
 
 // Warning badges
 .badge-build-nobles  { background: a($purple, 0.15); color: $purple; border: 1px solid a($purple, 0.35); cursor: help; }
