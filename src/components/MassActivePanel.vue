@@ -84,7 +84,7 @@
         title="Алгоритм распределения офов по целям"
         @change="planStore.setOffDistribution(($event.target as HTMLSelectElement).value as 'default' | 'fair' | 'far_first')"
       >
-        <option value="far_first">Дальние</option>
+        <option value="far_first">Дальние вперёд</option>
         <option value="fair">Справедливо</option>
         <option value="default">Жадно</option>
       </select>

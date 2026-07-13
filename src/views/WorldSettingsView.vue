@@ -69,7 +69,7 @@
           <img :src="UNIT_ICONS[key]" class="unit-chip-img" :alt="label" />
           <span class="unit-chip-name">{{ label }}</span>
           <span class="unit-chip-val">{{ Math.round(worldStore.settings.unitTimes[key] / 60) }}<span class="unit-chip-unit">мин</span></span>
-          <span class="unit-chip-pop"><span class="pop-icon">⌂</span>{{ worldStore.settings.unitPop[key] }}</span>
+          <span class="unit-chip-pop"><span class="pop-icon-sprite" :style="{ backgroundImage: `url(${headerSprite})` }"></span>{{ worldStore.settings.unitPop[key] }}</span>
         </span>
       </div>
     </section>
@@ -178,6 +178,7 @@ import { useWorldStore } from '@/stores/worldStore'
 import { KNOWN_WORLDS } from '@/stores/worldStore'
 import type { UnitTimes, UnitPop } from '@/stores/worldStore'
 import { UNIT_ICONS } from '@/utils/unitIcons'
+import headerSprite from '@/assets/images/header.webp'
 import WorldMapPanel from '@/components/WorldMapPanel.vue'
 
 const worldStore = useWorldStore()
@@ -371,12 +372,13 @@ function saveManual() {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.15rem;
   background: a($accent, 0.06);
   border: 1px solid a($accent, 0.15);
   border-radius: 8px;
   padding: 0.5rem 0.6rem 0.4rem;
-  min-width: 58px;
+  min-width: 64px;
   transition: border-color 0.15s;
 
   &:hover { border-color: a($accent, 0.35); }
@@ -413,18 +415,25 @@ function saveManual() {
 .unit-chip-pop {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   font-size: 0.7rem;
   color: $text-dim;
   background: a($border, 0.6);
   border-radius: 4px;
   padding: 0.05rem 0.3rem;
   margin-top: 0.1rem;
+  min-width: 32px;
+  justify-content: center;
 }
 
-.pop-icon {
-  font-size: 0.75rem;
-  color: $text-faint;
+.pop-icon-sprite {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background-repeat: no-repeat;
+  background-position: -72px 0;
+  background-size: auto 18px;
+  flex-shrink: 0;
 }
 
 .unit-form-label { display: inline-flex; align-items: center; gap: 5px; }

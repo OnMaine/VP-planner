@@ -52,7 +52,7 @@
 
       <div v-if="worldStore.settings.paladinMode === 'auto' && planStore.offDistribution === 'far_first' && !planStore.attacks.length && (planStore.offPoolStats.breachPal + planStore.offPoolStats.palOnly + planStore.offPoolStats.breachOnly) > 0" class="pal-dist-notice">
         <span class="blocked-icon">ℹ</span>
-        <span>Пал-оффы и пробои в режиме «Дальние» распределяются по ближайшей дистанции — дальний порядок применяется только к обычным фулл-оффам.</span>
+        <span>Пал-оффы и пробои в режиме «Дальние вперёд» распределяются по ближайшей дистанции — дальний порядок применяется только к обычным фулл-оффам.</span>
       </div>
 
       <div v-if="planStore.attacks.length > 0" class="generate-stat">
