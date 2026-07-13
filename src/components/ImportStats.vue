@@ -5,9 +5,9 @@
       <div class="settings-bar">
         <div class="settings-group">
           <span class="sg-label" title="Офф-ферм = топоры×1 + лк×4 + тараны×5">Офф-ферм</span>
-          <label class="sg-field">фулл <input v-model.number="presetsStore.fullOffMinOffFarm"  type="number" min="1" class="inline-input sg-input" /></label>
+          <label class="sg-field">full <input v-model.number="presetsStore.fullOffMinOffFarm"  type="number" min="1" class="inline-input sg-input" /></label>
           <label class="sg-field">med  <input v-model.number="presetsStore.halfOffMinOffFarm"  type="number" min="1" class="inline-input sg-input" /></label>
-          <label class="sg-field">мини <input v-model.number="presetsStore.smallOffMinOffFarm" type="number" min="1" class="inline-input sg-input" /></label>
+          <label class="sg-field">mini <input v-model.number="presetsStore.smallOffMinOffFarm" type="number" min="1" class="inline-input sg-input" /></label>
         </div>
         <div class="settings-group">
           <span class="sg-label">Пробой</span>
