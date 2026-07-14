@@ -270,7 +270,7 @@ import { useWorldStore } from '@/stores/worldStore'
 import {
   ALL_ROLE_TYPES, defaultRoleForType, defaultColorForRole,
 } from '@/stores/presetsStore'
-import type { VillageRole, VillageRoleType, GreenVariant, AttackPreset } from '@/stores/presetsStore'
+import type { VillageRole, VillageRoleType, AttackPreset } from '@/stores/presetsStore'
 import attackLarge  from '@/assets/images/attack_large.webp'
 import attackMedium from '@/assets/images/attack_medium.webp'
 import attackSmall  from '@/assets/images/attack_small.webp'

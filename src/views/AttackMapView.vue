@@ -1461,7 +1461,7 @@ watchEffect(() => {
   const _st = showTowers.value
   const _sl = showLabels.value
   const _il = imgLoaded.value
-  void (_vp, _rv, _tl, _al, _sv, _si, _hk, _st, _sl, _il)
+  void [_vp, _rv, _tl, _al, _sv, _si, _hk, _st, _sl, _il]
   scheduleFrame()
 })
 

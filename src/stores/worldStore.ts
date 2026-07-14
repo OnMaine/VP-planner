@@ -230,6 +230,9 @@ export const useWorldStore = defineStore('world', () => {
         minAttackSize: settings.value.minAttackSize,
         sendExcludeEnabled: settings.value.sendExcludeEnabled,
         moraleEnabled: settings.value.moraleEnabled,
+        watchtowerAvoidEnabled: settings.value.watchtowerAvoidEnabled,
+        noblePollMode: settings.value.noblePollMode,
+        paladinMode: settings.value.paladinMode,
       }
       save()
       fetchStatus.value = 'success'
