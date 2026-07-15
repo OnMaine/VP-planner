@@ -100,6 +100,16 @@
           <span class="pool-sep">·</span>
           <span class="pool-reserved">Резерв: {{ planStore.poolUsageStats.reservedOffCount }}</span>
         </template>
+        <template v-if="planStore.poolUsageStats.catSquadsTotal > 0">
+          <span class="pool-sep">·</span>
+          <span class="pool-item">
+            Каты: <strong>{{ planStore.poolUsageStats.catSquadsUsed }}</strong>/{{ planStore.poolUsageStats.catSquadsTotal }}
+          </span>
+          <template v-if="planStore.poolUsageStats.catSquadsLeft > 0">
+            <span class="pool-sep">·</span>
+            <span class="pool-unused">{{ planStore.poolUsageStats.catSquadsLeft }} кат не в плане</span>
+          </template>
+        </template>
       </div>
     </section>
 

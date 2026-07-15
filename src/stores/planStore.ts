@@ -968,6 +968,7 @@ export const usePlanStore = defineStore('plan', () => {
     }
     const targetDataMap = new Map<string, TargetData>()
     const validTargets = targets.value.filter(t => !!t.coords)
+    const nonReserved = villages.filter(v => !reservedVillages.value.has(v.coords))
 
     for (const target of validTargets) {
       const distMap = new Map<string, number>()
@@ -980,7 +981,6 @@ export const usePlanStore = defineStore('plan', () => {
           wtMap.set(v.coords, detected ? 1_000_000 + chord : 0)
         }
       }
-      const nonReserved = villages.filter(v => !reservedVillages.value.has(v.coords))
       const byDist = [...nonReserved].sort((a, b) => {
         const sa = (wtMap.get(a.coords) ?? 0) + (distMap.get(a.coords) ?? 0)
         const sb = (wtMap.get(b.coords) ?? 0) + (distMap.get(b.coords) ?? 0)
@@ -1379,12 +1379,11 @@ export const usePlanStore = defineStore('plan', () => {
         }
 
       } else if (role.type === 'cat_squad') {
-        const minCats     = preset.builtIn ? presStore.catMinSize : (role.catMinCats ?? 50)
+        const minCats         = preset.builtIn ? presStore.catMinSize : (role.catMinCats ?? 50)
         const effectiveCatTarget: CatTarget | undefined = role.catTarget ?? presStore.catDefaultTarget
-        const presetColor = preset.color ?? defaultColorForRole('cat_squad')
+        const presetColor     = preset.color ?? defaultColorForRole('cat_squad')
         const usedCatVillages = new Set<string>()
 
-        // Build cat-only composition: all cats from the village
         function buildCatComp(v: Village): AttackComposition | null {
           const cats = villagesStore.villages.find(x => x.coords === v.coords)?.troops.catapult ?? 0
           if (cats < minCats) return null
@@ -1393,61 +1392,44 @@ export const usePlanStore = defineStore('plan', () => {
           return c
         }
 
-        if (offDistribution.value !== 'default') {
-          const pointers = new Map<string, number>()
-          let anyAssigned = true
-          while (anyAssigned) {
-            anyAssigned = false
-            for (const target of gTargets) {
-              const filled = targetFilled.get(target.id) ?? 0
-              if (filled >= slot.count) continue
-              const td = targetDataMap.get(target.id)!
-              const catList = (offDistribution.value === 'far_first' ? td.byDistFar : td.byDist)
-                .filter(v => (villagesStore.villages.find(x => x.coords === v.coords)?.troops.catapult ?? 0) >= minCats)
-              const slotArrT = slotArrTMap.get(target.id)!
-              let ptr = pointers.get(target.id) ?? 0
-              let assigned = false
-              while (ptr < catList.length && !assigned) {
-                const v = catList[ptr++]
-                if (usedCatVillages.has(v.coords)) continue
-                if (nightExcludes(v, target, 'cat', slotArrT)) {
-                  targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
-                }
-                const c = buildCatComp(v)
-                if (!c) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
-                if (!pushAtk('cat', v, target, c, slotArrT, preset.name, presetColor, undefined, undefined, effectiveCatTarget)) continue
-                usedCatVillages.add(v.coords)
-                targetFilled.set(target.id, (targetFilled.get(target.id) ?? 0) + 1)
-                anyAssigned = true
-                assigned = true
-              }
-              pointers.set(target.id, ptr)
-            }
-          }
-        } else {
-          type CatPair = { target: Target; village: Village; slotArrT: Date; score: number }
-          const allPairs: CatPair[] = []
+        // Group cat villages by player — round-robin across players per target
+        const catByPlayer = new Map<string, Village[]>()
+        for (const v of nonReserved) {
+          const cats = villagesStore.villages.find(x => x.coords === v.coords)?.troops.catapult ?? 0
+          if (cats < minCats) continue
+          if (!catByPlayer.has(v.player)) catByPlayer.set(v.player, [])
+          catByPlayer.get(v.player)!.push(v)
+        }
+        const catPlayers = [...catByPlayer.keys()]
+        let pIdx = 0  // rotating player pointer
+
+        let anyAssigned = true
+        while (anyAssigned) {
+          anyAssigned = false
           for (const target of gTargets) {
-            const { byDist } = targetDataMap.get(target.id)!
-            const slotArrT = slotArrTMap.get(target.id)!
-            for (const v of byDist) {
-              if ((villagesStore.villages.find(x => x.coords === v.coords)?.troops.catapult ?? 0) >= minCats)
-                allPairs.push({ target, village: v, slotArrT, score: pairScore(v.coords, target.id) })
-            }
-          }
-          allPairs.sort((a, b) => a.score - b.score)
-          for (const { target, village: v, slotArrT } of allPairs) {
             const filled = targetFilled.get(target.id) ?? 0
             if (filled >= slot.count) continue
-            if (usedCatVillages.has(v.coords)) continue
-            if (nightExcludes(v, target, 'cat', slotArrT)) {
-              targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
+            const slotArrT = slotArrTMap.get(target.id)!
+
+            // Try each player starting from current pIdx (round-robin)
+            let assigned = false
+            for (let pi = 0; pi < catPlayers.length && !assigned; pi++) {
+              const player = catPlayers[(pIdx + pi) % catPlayers.length]
+              const pvs = catByPlayer.get(player)!
+              for (const v of pvs) {
+                if (usedCatVillages.has(v.coords)) continue
+                if (nightExcludes(v, target, 'cat', slotArrT)) continue
+                const c = buildCatComp(v)
+                if (!c) continue
+                if (!pushAtk('cat', v, target, c, slotArrT, preset.name, presetColor, undefined, undefined, effectiveCatTarget)) continue
+                usedCatVillages.add(v.coords)
+                targetFilled.set(target.id, filled + 1)
+                pIdx = (pIdx + pi + 1) % catPlayers.length
+                anyAssigned = true
+                assigned = true
+                break
+              }
             }
-            const c = buildCatComp(v)
-            if (!c) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
-            if (!pushAtk('cat', v, target, c, slotArrT, preset.name, presetColor, undefined, undefined, effectiveCatTarget)) continue
-            usedCatVillages.add(v.coords)
-            targetFilled.set(target.id, filled + 1)
           }
         }
 
@@ -2040,10 +2022,12 @@ export const usePlanStore = defineStore('plan', () => {
     for (const v of villages) noblesTotal += v.troops.snob
 
     const usedOffCoords = new Set<string>()
+    const usedCatCoords = new Set<string>()
     let noblesUsed = 0
     for (const atk of attacks.value) {
       if (atk.excluded) continue
       if (atk.type === 'off' || atk.type === 'paladin_off') usedOffCoords.add(atk.fromVillage.coords)
+      if (atk.type === 'cat') usedCatCoords.add(atk.fromVillage.coords)
       noblesUsed += atk.composition.snob
     }
 
@@ -2052,6 +2036,12 @@ export const usePlanStore = defineStore('plan', () => {
     const offsTotal = offsTotalSet.size
 
     const nobleVillagesTotal = villages.filter(v => v.troops.snob > 0).length
+
+    // Cat squads: villages with enough cats (not reserved)
+    const catMinSize = presStore.catMinSize
+    const catSquadsTotal = villages.filter(v =>
+      !reservedVillages.value.has(v.coords) && v.troops.catapult >= catMinSize
+    ).length
 
     return {
       offsTotal,
@@ -2063,6 +2053,10 @@ export const usePlanStore = defineStore('plan', () => {
       noblesUsed,
       noblesAvailable: noblesTotal - noblesUsed,
       nobleVillagesTotal,
+
+      catSquadsTotal,
+      catSquadsUsed: usedCatCoords.size,
+      catSquadsLeft: catSquadsTotal - usedCatCoords.size,
     }
   })
 
