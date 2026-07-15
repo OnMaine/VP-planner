@@ -114,6 +114,7 @@
     </section>
 
     <PalOffPanel v-if="worldStore.settings.paladinMode === 'manual'" ref="palOffPanel" />
+    <CatMassPanel v-if="massConfigStore.active?.catMassEnabled" />
     <TargetsTable />
     <WatchtowerTable />
 
@@ -135,6 +136,7 @@ import PalOffPanel from '@/components/PalOffPanel.vue'
 import WatchtowerTable from '@/components/WatchtowerTable.vue'
 import AttackResultsPanel from '@/components/AttackResultsPanel.vue'
 import AIPlanPanel from '@/components/AIPlanPanel.vue'
+import CatMassPanel from '@/components/CatMassPanel.vue'
 
 const planStore = usePlanStore()
 const aiStore = useAIPlanStore()

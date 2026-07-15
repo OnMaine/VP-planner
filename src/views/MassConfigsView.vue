@@ -59,6 +59,10 @@
           Описание (необяз.)
           <input v-model="form.description" type="text" class="input" />
         </label>
+        <label class="f-label f-checkbox">
+          <input type="checkbox" v-model="form.catMassEnabled" />
+          Кат волна
+        </label>
       </div>
 
 
@@ -384,9 +388,10 @@ interface FormData {
   name: string
   description: string
   slots: FormSlot[]
+  catMassEnabled: boolean
 }
 
-const form = reactive<FormData>({ name: '', description: '', slots: [] })
+const form = reactive<FormData>({ name: '', description: '', slots: [], catMassEnabled: false })
 
 const canSave = computed(() => form.name.trim().length > 0 && form.slots.length > 0)
 
@@ -416,22 +421,24 @@ function formSlotToMassSlot(s: FormSlot): MassSlot {
 }
 
 function openNew() {
-  form.name          = ''
-  form.description   = ''
-  form.slots         = []
-  editingId.value    = null
-  editorOpen.value   = true
+  form.name            = ''
+  form.description     = ''
+  form.slots           = []
+  form.catMassEnabled  = false
+  editingId.value      = null
+  editorOpen.value     = true
   scrollToEditor()
 }
 
 function openEdit(id: string) {
   const cfg = store.all.find(c => c.id === id)
   if (!cfg) return
-  form.name          = cfg.name
-  form.description   = cfg.description
-  form.slots         = cfg.slots.map(slotToForm)
-  editingId.value    = id
-  editorOpen.value   = true
+  form.name            = cfg.name
+  form.description     = cfg.description
+  form.slots           = cfg.slots.map(slotToForm)
+  form.catMassEnabled  = cfg.catMassEnabled ?? false
+  editingId.value      = id
+  editorOpen.value     = true
   scrollToEditor()
 }
 
@@ -443,9 +450,10 @@ function closeEditor() {
 function save() {
   if (!canSave.value) return
   const data = {
-    name:        form.name.trim(),
-    description: form.description.trim(),
-    slots:       form.slots.map(formSlotToMassSlot),
+    name:            form.name.trim(),
+    description:     form.description.trim(),
+    slots:           form.slots.map(formSlotToMassSlot),
+    catMassEnabled:  form.catMassEnabled || undefined,
   }
   if (editingId.value) {
     store.update(editingId.value, data)
@@ -735,6 +743,14 @@ function moveSlotDown(i: number) {
 }
 
 .f-wide { flex: 1 1 200px; }
+.f-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  align-self: flex-end;
+  padding-bottom: 0.35rem;
+}
 
 // ── Slots ─────────────────────────────────────────────────────────────────
 .slots-section {

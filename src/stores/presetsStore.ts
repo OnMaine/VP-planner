@@ -28,6 +28,50 @@ export const CAT_TARGET_LABELS: Record<CatTarget, string> = {
   statue:     'Статуя',
 }
 
+// Standard TW max building levels (same across most worlds)
+export const BUILDING_MAX_LEVEL: Record<CatTarget, number> = {
+  main:       30,
+  barracks:   25,
+  stable:     20,
+  garage:     15,
+  smith:      20,
+  market:     25,
+  wood:       30,
+  stone:      30,
+  iron:       30,
+  farm:       30,
+  storage:    30,
+  hide:       10,
+  wall:       20,
+  watchtower: 20,
+  statue:     1,
+}
+
+// Cats needed to fully demolish a building of given level (level → 0)
+// Source: TW catapult table (row L, col L = full destruction)
+export const CATS_TO_DESTROY_LEVEL: Record<number, number> = {
+  1: 2,    2: 6,    3: 10,   4: 15,   5: 21,
+  6: 28,   7: 36,   8: 45,   9: 56,   10: 68,
+  11: 82,  12: 98,  13: 115, 14: 136, 15: 159,
+  16: 185, 17: 215, 18: 248, 19: 286, 20: 328,
+  21: 376, 22: 430, 23: 490, 24: 558, 25: 634,
+  26: 720, 27: 815, 28: 922, 29: 1041, 30: 1175,
+}
+
+export function catsToDestroyBuilding(b: CatTarget): number {
+  return CATS_TO_DESTROY_LEVEL[BUILDING_MAX_LEVEL[b]] ?? 0
+}
+
+// Cats needed to reduce building from max level down to targetLevel (0 = full destruction).
+// Uses linear interpolation on the diagonal table — always rounds up (never under-counts).
+export function catsToReachLevel(b: CatTarget, targetLevel: number): number {
+  const maxLvl = BUILDING_MAX_LEVEL[b]
+  if (targetLevel >= maxLvl) return 0
+  if (targetLevel <= 0) return CATS_TO_DESTROY_LEVEL[maxLvl] ?? 0
+  const total = CATS_TO_DESTROY_LEVEL[maxLvl] ?? 0
+  return Math.ceil(total * (maxLvl - targetLevel) / maxLvl)
+}
+
 // ---------------------------------------------------------------------------
 // Village role — what ONE village contributes to an attack
 // ---------------------------------------------------------------------------

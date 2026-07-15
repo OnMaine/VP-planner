@@ -14,6 +14,9 @@
         <label class="tog" title="Маршруты спам-атак (по умолчанию скрыты — слишком много линий)">
           <input type="checkbox" v-model="showSpam" /> Спам
         </label>
+        <label class="tog" title="Показывать кат волну на карте (цели и линии атак)">
+          <input type="checkbox" v-model="showCatMass" /> Кат волна
+        </label>
         <label class="tog" title="Координаты и имена игроков над деревнями">
           <input type="checkbox" v-model="showLabels" /> Подписи
         </label>
@@ -394,6 +397,7 @@ const { toDatetimeLocal } = useDateFormat()
 // ── Display toggles ───────────────────────────────────────────────────
 const showTowers      = ref(true)
 const showSpam        = ref(false)
+const showCatMass     = ref(false)
 const showAllVillages = ref(false)
 const hideAssigned   = ref(false)
 const showLabels      = ref(true)
@@ -401,18 +405,19 @@ const filterPlayer    = ref('')
 const filterEnemy     = ref('')
 
 // ── Village pool filter ───────────────────────────────────────────────
-type VillageFilter = 'all' | 'offs' | 'full_off' | 'mid_off' | 'mini_off' | 'breach' | 'paladin' | 'nobles'
+type VillageFilter = 'all' | 'offs' | 'full_off' | 'mid_off' | 'mini_off' | 'breach' | 'paladin' | 'nobles' | 'cat_wave'
 const villageFilter = ref<VillageFilter>('all')
 
 const VFILTER_OPTS: Array<{ value: VillageFilter; label: string; color?: string; hint: string }> = [
-  { value: 'all',      label: 'Все',      hint: 'Весь пул деревень без фильтра' },
-  { value: 'offs',     label: 'Все оффы', color: '#e94560', hint: 'Все офф-деревни (Full + Mid + Mini)' },
-  { value: 'full_off', label: 'Full_OFF', color: '#e94560', hint: 'Full_OFF — полные оффы (высший порог offFarm)' },
-  { value: 'mid_off',  label: 'Mid_OFF',  color: '#c87d3e', hint: 'Mid_OFF — средний офф (между порогами Mid и Full)' },
-  { value: 'mini_off', label: 'Mini_OFF', color: '#b8a832', hint: 'Mini_OFF — мини офф (между порогами Mini и Mid)' },
-  { value: 'breach',   label: 'Пробой',   color: '#89b4fa', hint: 'Full_OFF с таранами ≥ порога пробоя (могут пробить стену)' },
-  { value: 'paladin',  label: 'Пал-офф',  color: '#a99ef0', hint: 'Деревни с офф-паладином (pal_off или breach+pal)' },
-  { value: 'nobles',   label: 'Дворяне',  color: '#a78bfa', hint: 'Деревни, из которых идёт дворянская атака в плане' },
+  { value: 'all',      label: 'Все',       hint: 'Весь пул деревень без фильтра' },
+  { value: 'offs',     label: 'Все оффы',  color: '#e94560', hint: 'Все офф-деревни (Full + Mid + Mini)' },
+  { value: 'full_off', label: 'Full_OFF',  color: '#e94560', hint: 'Full_OFF — полные оффы (высший порог offFarm)' },
+  { value: 'mid_off',  label: 'Mid_OFF',   color: '#c87d3e', hint: 'Mid_OFF — средний офф (между порогами Mid и Full)' },
+  { value: 'mini_off', label: 'Mini_OFF',  color: '#b8a832', hint: 'Mini_OFF — мини офф (между порогами Mini и Mid)' },
+  { value: 'breach',   label: 'Пробой',    color: '#89b4fa', hint: 'Full_OFF с таранами ≥ порога пробоя (могут пробить стену)' },
+  { value: 'paladin',  label: 'Пал-офф',   color: '#a99ef0', hint: 'Деревни с офф-паладином (pal_off или breach+pal)' },
+  { value: 'nobles',   label: 'Дворяне',   color: '#a78bfa', hint: 'Деревни, из которых идёт дворянская атака в плане' },
+  { value: 'cat_wave', label: 'Кат волна', color: '#89b4fa', hint: 'Деревни, назначенные в кат волну' },
 ]
 
 function villageMatchesFilter(v: Village): boolean {
@@ -426,9 +431,10 @@ function villageMatchesFilter(v: Village): boolean {
     case 'mid_off':  return offFarm >= ps.halfOffMinOffFarm && offFarm < ps.fullOffMinOffFarm
     case 'mini_off': return offFarm >= ps.smallOffMinOffFarm && offFarm < ps.halfOffMinOffFarm
     case 'breach':   return offFarm >= ps.fullOffMinOffFarm && v.troops.ram >= ps.breachMinRams
-    case 'paladin':  return planStore.palVillageCoords.has(v.coords)
-    case 'nobles':   return nobleAttackCoords.value.has(v.coords)
-    default:         return true
+    case 'paladin':   return planStore.palVillageCoords.has(v.coords)
+    case 'nobles':    return nobleAttackCoords.value.has(v.coords)
+    case 'cat_wave':  return catWaveCoords.value.has(v.coords)
+    default:          return true
   }
 }
 
@@ -627,6 +633,7 @@ const visiblePairs = computed(() => {
     : new Set(renderedVillages.value.map(v => v.coords))
   return uniquePairs.value.filter(p => {
     if (p.isSpam && !showSpam.value) return false
+    if (p.attacks[0]?.catMass && !showCatMass.value) return false
     const fromCoords = p.attacks[0]?.fromVillage.coords
     if (hideAssigned.value && fromCoords && attackingCoords.value.has(fromCoords)) return false
     if (filteredCoords) {
@@ -642,14 +649,23 @@ const detectedCount  = computed(() => uniquePairs.value.filter(p =>
 
 // ── Villages ──────────────────────────────────────────────────────────
 const attackingCoords = computed(() => {
-  const attacks = filterEnemy.value
+  let attacks = filterEnemy.value
     ? planStore.attacks.filter(a => a.target.enemyPlayer === filterEnemy.value)
     : planStore.attacks
+  if (!showCatMass.value) {
+    // exclude villages whose only attacks are cat mass
+    const nonCatCoords = new Set(attacks.filter(a => !a.catMass).map(a => a.fromVillage.coords))
+    attacks = attacks.filter(a => nonCatCoords.has(a.fromVillage.coords))
+  }
   return new Set(attacks.map(a => a.fromVillage.coords))
 })
 
 const nobleAttackCoords = computed(() =>
   new Set(planStore.attacks.filter(a => (a.composition.snob ?? 0) > 0).map(a => a.fromVillage.coords))
+)
+
+const catWaveCoords = computed(() =>
+  new Set(planStore.attacks.filter(a => a.catMass).map(a => a.fromVillage.coords))
 )
 
 const renderedVillages = computed(() => {
@@ -1072,6 +1088,71 @@ function drawTargets(ctx: CanvasRenderingContext2D) {
       ctx.fillText('T', bx3, by3 + 0.3 / _scale)
     }
   }
+
+  // ── Cat wave targets (drawn only when showCatMass is on) ──────────────
+  if (showCatMass.value) {
+    const CAT_COLOR = '#89b4fa'
+    for (const t of planStore.catTargets) {
+      if (!t.coords || !t.x) continue
+      const r2 = VS_R / _scale
+
+      if (img) {
+        const epts = enemyStore.lookupCoords(t.coords)?.village.points ?? 0
+        const sp   = villageSprite(epts)
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(t.x, t.y, r2, 0, Math.PI * 2)
+        ctx.clip()
+        ctx.drawImage(img, sp.col * cellW, sp.row * cellH, cellW, cellH, t.x - r2, t.y - r2, r2 * 2, r2 * 2)
+        ctx.restore()
+      } else {
+        ctx.beginPath()
+        ctx.arc(t.x, t.y, r2, 0, Math.PI * 2)
+        ctx.fillStyle = '#1e2030'
+        ctx.fill()
+      }
+
+      ctx.beginPath()
+      ctx.arc(t.x, t.y, r2, 0, Math.PI * 2)
+      ctx.strokeStyle = CAT_COLOR
+      ctx.lineWidth   = 2 / _scale
+      ctx.globalAlpha = 0.9
+      ctx.stroke()
+      ctx.globalAlpha = 1
+
+      ctx.beginPath()
+      ctx.arc(t.x, t.y, (VS_R + 3.5) / _scale, 0, Math.PI * 2)
+      ctx.strokeStyle = CAT_COLOR
+      ctx.lineWidth   = 1 / _scale
+      ctx.setLineDash([3 / _scale, 2.5 / _scale])
+      ctx.globalAlpha = 0.4
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.globalAlpha = 1
+
+      if (showLabels.value) {
+        ctx.textAlign   = 'center'
+        ctx.strokeStyle = '#0d0e14'
+        ctx.globalAlpha  = 0.9
+        ctx.fillStyle    = CAT_COLOR
+        ctx.font         = `bold ${9 / _scale}px sans-serif`
+        ctx.lineWidth    = 2.5 / _scale
+        ctx.textBaseline = 'bottom'
+        ctx.strokeText(t.coords, t.x, t.y - (VS_R + 6) / _scale)
+        ctx.fillText(t.coords, t.x, t.y - (VS_R + 6) / _scale)
+        if (t.enemyPlayer) {
+          ctx.globalAlpha  = 0.7
+          ctx.fillStyle    = '#a6adc8'
+          ctx.font         = `${7 / _scale}px sans-serif`
+          ctx.lineWidth    = 2 / _scale
+          ctx.textBaseline = 'top'
+          ctx.strokeText(t.enemyPlayer, t.x, t.y + (VS_R + 4) / _scale)
+          ctx.fillText(t.enemyPlayer, t.x, t.y + (VS_R + 4) / _scale)
+        }
+        ctx.globalAlpha = 1
+      }
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1489,7 +1570,9 @@ watchEffect(() => {
   const _st = showTowers.value
   const _sl = showLabels.value
   const _il = imgLoaded.value
-  void [_vp, _rv, _tl, _al, _sv, _si, _hk, _st, _sl, _il]
+  const _cm = showCatMass.value
+  const _ctl = planStore.catTargets.length
+  void [_vp, _rv, _tl, _al, _sv, _si, _hk, _st, _sl, _il, _cm, _ctl]
   scheduleFrame()
 })
 

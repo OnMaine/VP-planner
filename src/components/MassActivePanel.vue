@@ -115,6 +115,15 @@
         <option value="manual">Вручную</option>
         <option value="auto">Автоматически</option>
       </select>
+
+      <div class="v-sep" />
+
+      <button
+        v-if="store.active"
+        :class="['toggle-btn', { 'toggle-on': store.active.catMassEnabled }]"
+        title="Кат волна: вторичная волна из свободных офов и кат отрядов по отдельным целям"
+        @click="store.update(store.active!.id, { catMassEnabled: store.active.catMassEnabled ? undefined : true })"
+      >🐱 Кат волна</button>
     </div>
 
   </section>

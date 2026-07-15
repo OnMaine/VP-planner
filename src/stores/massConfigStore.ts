@@ -24,6 +24,7 @@ export interface MassConfig {
   name: string
   description: string
   slots: MassSlot[]
+  catMassEnabled?: boolean
 }
 
 // ---------------------------------------------------------------------------

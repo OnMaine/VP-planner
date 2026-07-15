@@ -7,7 +7,12 @@ import type { UnitPop } from './worldStore'
 import { useMassConfigStore } from './massConfigStore'
 import { usePresetsStore } from './presetsStore'
 import type { VillageRole, CatTarget } from './presetsStore'
-import { defaultColorForRole } from './presetsStore'
+import { defaultColorForRole, BUILDING_MAX_LEVEL, CATS_TO_DESTROY_LEVEL, catsToDestroyBuilding, catsToReachLevel } from './presetsStore'
+
+export interface CatMassBuildingEntry {
+  building: CatTarget
+  targetLevel: number  // reduce to this level (0 = full destruction)
+}
 import { useEnemyDataStore } from './enemyDataStore'
 import { calcDistance } from '@/utils/coords'
 import { calcTravelSeconds, calcSendTime, isInNightWindow } from '@/utils/travelTime'
@@ -141,6 +146,7 @@ export interface Attack {
   buildNobles?: number    // player needs to build this many nobles in fromVillage before sending
   buildPaladin?: boolean  // player needs to recruit a paladin in fromVillage before sending
   trainGroupId?: string   // shared by all attacks of the same spam train run
+  catMass?: boolean       // belongs to cat mass (secondary wave), not main mass
 }
 
 // ---------------------------------------------------------------------------
@@ -274,11 +280,18 @@ function slowestUnitInComp(comp: AttackComposition, unitTimes: Record<string, nu
 
 
 // ---------------------------------------------------------------------------
+// Default cat mass building priority (used when user hasn't configured a custom queue)
+export const CAT_MASS_DEFAULT_QUEUE: import('./presetsStore').CatTarget[] = [
+  'farm', 'main', 'smith', 'stable', 'iron', 'stone', 'wood', 'hide', 'market', 'storage',
+]
+
+// ---------------------------------------------------------------------------
 // localStorage helpers
 // ---------------------------------------------------------------------------
 
 const LS_TARGETS = 'vp_targets'
 const LS_CAT_TARGETS = 'vp_cat_targets'
+const LS_CAT_MASS_QUEUE = 'vp_cat_mass_queue'
 const LS_PLAYER_DATA = 'vp_player_data'
 const LS_WATCHTOWER = 'vp_watchtower'
 const LS_SPAM_NOBLE_TARGETS = 'vp_spam_noble_targets'
@@ -354,6 +367,18 @@ export const usePlanStore = defineStore('plan', () => {
   // Persisted state
   const targets = ref<Target[]>(loadTargets())
   const catTargets = ref<Target[]>(loadCatTargets())
+  const catMassBuildingQueue = ref<CatMassBuildingEntry[]>((() => {
+    try {
+      const r = localStorage.getItem(LS_CAT_MASS_QUEUE)
+      if (!r) return []
+      const parsed = JSON.parse(r)
+      // migrate old CatTarget[] format
+      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') {
+        return (parsed as CatTarget[]).map(building => ({ building, targetLevel: 0 }))
+      }
+      return parsed as CatMassBuildingEntry[]
+    } catch { return [] }
+  })())
   const reservedVillages = ref<Set<string>>(loadReservedVillages())
   const spamNobleTargets = ref<Target[]>(loadSpamNobleTargets())
   const playerData = ref<PlayerData[]>(loadPlayerData())
@@ -538,7 +563,13 @@ export const usePlanStore = defineStore('plan', () => {
   function addCatTarget(coords: string, arrivalTime: Date, options?: Partial<Omit<Target, 'id' | 'coords' | 'arrivalTime' | 'x' | 'y'>>): Target | null {
     const xy = coordsToXY(coords)
     if (!xy) return null
-    const t: Target = { id: genId(), coords, x: xy.x, y: xy.y, arrivalTime, ...options }
+    const info = useEnemyDataStore().lookupCoords(coords)
+    const t: Target = {
+      id: genId(), coords, x: xy.x, y: xy.y, arrivalTime,
+      ...(info?.player ? { enemyPlayer: info.player.name } : {}),
+      ...(info?.ally   ? { enemyAllyTag: info.ally.tag }   : {}),
+      ...options,
+    }
     catTargets.value.push(t)
     saveCatTargets()
     return t
@@ -564,6 +595,9 @@ export const usePlanStore = defineStore('plan', () => {
     if (patch.coords) {
       const xy = coordsToXY(patch.coords)
       if (xy) { t.x = xy.x; t.y = xy.y }
+      const info = useEnemyDataStore().lookupCoords(patch.coords)
+      t.enemyPlayer  = info?.player?.name
+      t.enemyAllyTag = info?.ally?.tag
     }
     saveCatTargets()
   }
@@ -571,6 +605,32 @@ export const usePlanStore = defineStore('plan', () => {
   function clearCatTargets() {
     catTargets.value = []
     saveCatTargets()
+  }
+
+  function saveCatMassBuildingQueue() {
+    localStorage.setItem(LS_CAT_MASS_QUEUE, JSON.stringify(catMassBuildingQueue.value))
+  }
+  function addCatMassBuilding(b: CatTarget): void {
+    if (catMassBuildingQueue.value.some(e => e.building === b)) return
+    catMassBuildingQueue.value = [...catMassBuildingQueue.value, { building: b, targetLevel: 0 }]
+    saveCatMassBuildingQueue()
+  }
+  function removeCatMassBuilding(b: CatTarget): void {
+    catMassBuildingQueue.value = catMassBuildingQueue.value.filter(x => x.building !== b)
+    saveCatMassBuildingQueue()
+  }
+  function setCatMassBuildingTarget(b: CatTarget, targetLevel: number): void {
+    const entry = catMassBuildingQueue.value.find(e => e.building === b)
+    if (!entry) return
+    entry.targetLevel = Math.max(0, targetLevel)
+    saveCatMassBuildingQueue()
+  }
+  function moveCatMassBuilding(fromIdx: number, toIdx: number): void {
+    const arr = [...catMassBuildingQueue.value]
+    const [item] = arr.splice(fromIdx, 1)
+    arr.splice(toIdx, 0, item)
+    catMassBuildingQueue.value = arr
+    saveCatMassBuildingQueue()
   }
 
   // ---------------------------------------------------------------------------
@@ -1743,6 +1803,237 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   // ---------------------------------------------------------------------------
+  // Cat mass (secondary wave: leftover offs + cat squads on cat targets)
+  // ---------------------------------------------------------------------------
+
+  function generateCatMass(): void {
+    const presStore  = usePresetsStore()
+    const { settings } = worldStore
+    const { villages } = villagesStore
+    const now = new Date()
+
+    // Remove previous cat mass, keep main mass
+    attacks.value = attacks.value.filter(a => !a.catMass)
+
+    // Coords already used in main mass
+    const usedCoords = new Set(
+      attacks.value.filter(a => !a.excluded).map(a => a.fromVillage.coords)
+    )
+
+    if (catTargets.value.length === 0) return
+
+    const catMinSize = presStore.catMinSize
+
+    // Off candidates: not reserved, not in main mass, at least mini_off threshold.
+    // Priority: mid_off → mini_off → full_off (saves best offs for main mass by default)
+    const offCandidates = (() => {
+      const full = presStore.fullOffMinOffFarm
+      const half = presStore.halfOffMinOffFarm
+      const mini = presStore.smallOffMinOffFarm
+      function offRank(v: Village): number {
+        const of = calcOffFarm(v.troops, settings.unitPop)
+        if (of >= half && of < full) return 0  // mid_off — first
+        if (of >= mini && of <  half) return 1  // mini_off — second
+        return 2                                 // full_off — last
+      }
+      return villages
+        .filter(v =>
+          !reservedVillages.value.has(v.coords) &&
+          !usedCoords.has(v.coords) &&
+          calcOffFarm(v.troops, settings.unitPop) >= mini &&
+          v.troops.ram > 0
+        )
+        .sort((a, b) => {
+          const ra = offRank(a), rb = offRank(b)
+          if (ra !== rb) return ra - rb
+          return calcOffFarm(a.troops, settings.unitPop) - calcOffFarm(b.troops, settings.unitPop)
+        })
+    })()
+
+    // Cat candidates grouped by player (not reserved, not in main mass)
+    const catByPlayer = new Map<string, Village[]>()
+    for (const v of villages) {
+      if (reservedVillages.value.has(v.coords)) continue
+      if (usedCoords.has(v.coords)) continue
+      if (v.troops.catapult < catMinSize) continue
+      if (!catByPlayer.has(v.player)) catByPlayer.set(v.player, [])
+      catByPlayer.get(v.player)!.push(v)
+    }
+    const catPlayers = [...catByPlayer.keys()]
+
+    const effectiveCatTarget: CatTarget | undefined = presStore.catDefaultTarget
+
+    // Night exclusion helper (mirrors the one in generate())
+    function nightExclCat(v: Village, target: Target, type: AttackType, arrT: Date): boolean {
+      if (!settings.sendExcludeEnabled) return false
+      const unitBaseSec = settings.unitTimes[speedUnitForType(type)]
+      const dist = calcDistance({ x: v.x, y: v.y }, { x: target.x, y: target.y }, settings.mapSize)
+      const travelSec = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
+      return isInNightWindow(calcSendTime(arrT, travelSec), settings.nightFrom, settings.nightTo)
+    }
+
+    // Push a single cat-mass attack directly into attacks.value
+    function pushCatMassAtk(
+      type: AttackType, village: Village, target: Target,
+      composition: AttackComposition, catTarget?: CatTarget,
+      skipNightExcl = false,
+    ): boolean {
+      const speedUnit   = slowestUnitInComp(composition, settings.unitTimes)
+      const unitBaseSec = settings.unitTimes[speedUnit]
+      const dist        = calcDistance({ x: village.x, y: village.y }, { x: target.x, y: target.y }, settings.mapSize)
+      const travelSec   = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
+      const sendTime    = calcSendTime(target.arrivalTime, travelSec)
+
+      if (!skipNightExcl && settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return false
+
+      const total = totalUnits(composition)
+      if (totalPop(composition, settings.unitPop) < settings.minAttackSize) return false
+
+      const { color: wtColor, icon: wtIcon } = calcWatchtower(total, false)
+      const warnings: WarningCode[] = []
+      if (sendTime < now) warnings.push('SEND_IN_PAST')
+      if (settings.nightActive) {
+        if (isInNightWindow(target.arrivalTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_ARRIVAL')
+        if (isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_SEND')
+      }
+
+      attacks.value.push({
+        id: genId(), type, fromVillage: village, target, composition,
+        speedUnit, totalUnits: total, watchtowerColor: wtColor, watchtowerIcon: wtIcon,
+        distance: dist, travelSeconds: travelSec,
+        arrivalTime: target.arrivalTime, sendTime,
+        warnings, excluded: false, catMass: true,
+        color: defaultColorForRole('cat_squad'),
+        ...(catTarget ? { catTarget } : {}),
+      })
+      return true
+    }
+
+    const usedOffInCatMass = new Set<string>()
+    const usedCatInCatMass = new Set<string>()
+
+    // 1 off per cat target (weakest first, night-excluded skipped)
+    for (const target of catTargets.value) {
+      for (const v of offCandidates) {
+        if (usedOffInCatMass.has(v.coords)) continue
+        if (nightExclCat(v, target, 'off', target.arrivalTime)) continue
+        const c = emptyComposition()
+        c.axe   = v.troops.axe
+        c.light = v.troops.light
+        c.heavy = v.troops.heavy
+        c.ram   = v.troops.ram
+        if (!pushCatMassAtk('off', v, target, c)) continue
+        usedOffInCatMass.add(v.coords)
+        break
+      }
+    }
+
+    // ── Cat squads with building-queue logic ──────────────────────────────────
+    // Per-target state: tracks remaining cats needed for each building in queue
+    type TgtState = { queue: CatMassBuildingEntry[]; remaining: number[]; buildingIdx: number }
+
+    const userQueue = catMassBuildingQueue.value
+
+    // Default fallback buildings (used to extend user queue or as full queue when user has none)
+    const DEFAULT_BUILDINGS: CatTarget[] = [
+      'farm', 'main', 'smith', 'stable', 'iron', 'stone', 'wood', 'hide', 'market', 'storage',
+    ]
+    const watchtowerCoords = new Set(watchtowerVillages.value.map(w => w.coords))
+
+    // Effective queue = user-configured buildings (priority) + default buildings not already in user queue.
+    // This ensures targets never "run out" of buildings after the short user list is satisfied.
+    function queueForTarget(target: Target): CatMassBuildingEntry[] {
+      const userBuildings = new Set(userQueue.map(e => e.building))
+      const defaultExtras: CatMassBuildingEntry[] = DEFAULT_BUILDINGS
+        .filter(b => !userBuildings.has(b))
+        .map(b => ({ building: b, targetLevel: 0 }))
+
+      if (userQueue.length === 0) {
+        // No user config — use defaults with optional watchtower prepend
+        const base: CatMassBuildingEntry[] = defaultExtras
+        return watchtowerCoords.has(target.coords)
+          ? [{ building: 'watchtower', targetLevel: 0 }, ...base]
+          : base
+      }
+
+      // User has configured priorities — user first, then remaining defaults
+      return [...userQueue, ...defaultExtras]
+    }
+
+    const tgtState = new Map<string, TgtState>()
+    for (const t of catTargets.value) {
+      const q = queueForTarget(t)
+      tgtState.set(t.id, { queue: q, remaining: q.map(e => catsToReachLevel(e.building, e.targetLevel)), buildingIdx: 0 })
+    }
+
+    // Returns the current catTarget for a given target (which building slot we're filling)
+    function currentCatTarget(targetId: string): CatTarget | undefined {
+      const s = tgtState.get(targetId)!
+      if (s.buildingIdx >= s.queue.length) return undefined
+      return s.queue[s.buildingIdx].building
+    }
+
+    // After assigning `cats` cats to a target, advance its building slot.
+    function registerCats(targetId: string, cats: number): void {
+      const s = tgtState.get(targetId)!
+      s.remaining[s.buildingIdx] -= cats
+      while (s.buildingIdx < s.queue.length && s.remaining[s.buildingIdx] <= 0) {
+        s.buildingIdx++
+      }
+    }
+
+    function targetDone(targetId: string): boolean {
+      return (tgtState.get(targetId)?.buildingIdx ?? 0) >= (tgtState.get(targetId)?.queue.length ?? 0)
+    }
+
+    function resetAllTargets(): void {
+      for (const s of tgtState.values()) {
+        s.buildingIdx = 0
+        s.remaining = s.queue.map(e => catsToReachLevel(e.building, e.targetLevel))
+      }
+    }
+
+    let pIdx = 0
+    let anyAssigned = true
+    while (anyAssigned) {
+      anyAssigned = false
+
+      // When ALL targets have filled their queue, reset all together and cycle
+      if (catTargets.value.every(t => targetDone(t.id))) {
+        resetAllTargets()
+      }
+
+      for (const target of catTargets.value) {
+        if (targetDone(target.id)) continue
+        const catTarget = currentCatTarget(target.id)
+        if (!catTarget) continue
+
+        let assigned = false
+        for (let pi = 0; pi < catPlayers.length && !assigned; pi++) {
+          const player = catPlayers[(pIdx + pi) % catPlayers.length]
+          const pvs = catByPlayer.get(player)!
+          for (const v of pvs) {
+            if (usedCatInCatMass.has(v.coords)) continue
+            const c = emptyComposition()
+            c.catapult = v.troops.catapult
+            if (!pushCatMassAtk('cat', v, target, c, catTarget, true)) continue
+            usedCatInCatMass.add(v.coords)
+            registerCats(target.id, v.troops.catapult)
+            pIdx = (pIdx + pi + 1) % catPlayers.length
+            anyAssigned = true
+            assigned = true
+            break
+          }
+        }
+      }
+    }
+  }
+
+  function clearCatMass(): void {
+    attacks.value = attacks.value.filter(a => !a.catMass)
+  }
+
+  // ---------------------------------------------------------------------------
   // Manual overrides
   // ---------------------------------------------------------------------------
 
@@ -1918,6 +2209,15 @@ export const usePlanStore = defineStore('plan', () => {
       if (tower && info.player) updateWatchtowerVillage(tower.id, { player: info.player.name })
       count++
     }
+    for (const t of catTargets.value) {
+      const info = enemyStore.lookupCoords(t.coords)
+      if (!info?.player && !info?.ally) continue
+      const patch: Parameters<typeof updateCatTarget>[1] = {}
+      if (info.player) patch.enemyPlayer = info.player.name
+      if (info.ally)   patch.enemyAllyTag = info.ally.tag
+      updateCatTarget(t.id, patch)
+      count++
+    }
     for (const wt of watchtowerVillages.value) {
       const info = enemyStore.lookupCoords(wt.coords)
       if (!info?.player) continue
@@ -2037,10 +2337,15 @@ export const usePlanStore = defineStore('plan', () => {
 
     const nobleVillagesTotal = villages.filter(v => v.troops.snob > 0).length
 
-    // Cat squads: villages with enough cats (not reserved)
+    // Cat squads: villages with enough cats (not reserved, not already used in main mass)
     const catMinSize = presStore.catMinSize
+    const mainMassCoords = new Set(
+      attacks.value.filter(a => !a.excluded && !a.catMass).map(a => a.fromVillage.coords)
+    )
     const catSquadsTotal = villages.filter(v =>
-      !reservedVillages.value.has(v.coords) && v.troops.catapult >= catMinSize
+      !reservedVillages.value.has(v.coords) &&
+      !mainMassCoords.has(v.coords) &&
+      v.troops.catapult >= catMinSize
     ).length
 
     return {
@@ -2057,6 +2362,40 @@ export const usePlanStore = defineStore('plan', () => {
       catSquadsTotal,
       catSquadsUsed: usedCatCoords.size,
       catSquadsLeft: catSquadsTotal - usedCatCoords.size,
+    }
+  })
+
+  const catMassStats = computed(() => {
+    const presStore = usePresetsStore()
+    const { unitPop } = useWorldStore().settings
+    const { villages } = villagesStore
+
+    const usedCoords = new Set(
+      attacks.value.filter(a => !a.excluded).map(a => a.fromVillage.coords)
+    )
+    const catMinSize = presStore.catMinSize
+
+    const availableOffs = villages.filter(v =>
+      !reservedVillages.value.has(v.coords) &&
+      !usedCoords.has(v.coords) &&
+      calcOffFarm(v.troops, unitPop) >= presStore.smallOffMinOffFarm &&
+      v.troops.ram > 0
+    ).length
+
+    const availableCats = villages.filter(v =>
+      !reservedVillages.value.has(v.coords) &&
+      !usedCoords.has(v.coords) &&
+      v.troops.catapult >= catMinSize
+    ).length
+
+    const catMassAtks = attacks.value.filter(a => a.catMass)
+    return {
+      availableOffs,
+      availableCats,
+      catMassOffs: catMassAtks.filter(a => a.type === 'off').length,
+      catMassCats: catMassAtks.filter(a => a.type === 'cat').length,
+      catTargetsCount: catTargets.value.length,
+      isGenerated: catMassAtks.length > 0,
     }
   })
 
@@ -2290,6 +2629,8 @@ export const usePlanStore = defineStore('plan', () => {
     clearSpamNobleTargets: clearSpamNobleTargetsAndSave,
     // Plan
     generate,
+    generateCatMass,
+    clearCatMass,
     resolveAllFromMap,
     toggleExclude,
     clearTargets,
@@ -2309,6 +2650,7 @@ export const usePlanStore = defineStore('plan', () => {
     palVillageCoords,
     poolStatsByPlayer,
     poolUsageStats,
+    catMassStats,
     coverageEstimate,
 
     // Reserved villages
@@ -2320,6 +2662,12 @@ export const usePlanStore = defineStore('plan', () => {
     removeCatTarget,
     updateCatTarget,
     clearCatTargets,
+    // Cat mass building queue
+    catMassBuildingQueue,
+    addCatMassBuilding,
+    removeCatMassBuilding,
+    setCatMassBuildingTarget,
+    moveCatMassBuilding,
 
     patchAttack,
     swapAttackTimes,

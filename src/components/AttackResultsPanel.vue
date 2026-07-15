@@ -191,6 +191,7 @@
               <span class="player-name-label">{{ coords }}</span>
               <span v-if="tgtAttacks[0].target.enemyPlayer" class="target-player-label">{{ tgtAttacks[0].target.enemyPlayer }}</span>
               <span class="player-attack-count">({{ tgtAttacks.filter(a => !a.excluded).length }} / {{ tgtAttacks.length }} атак)</span>
+              <span v-if="tgtAttacks.some(a => a.catMass)" class="cat-wave-tag">кат волна</span>
             </span>
             <span class="collapse-icon">{{ openTargets.has(coords) ? '▲' : '▼' }}</span>
           </button>
@@ -1026,5 +1027,20 @@ $yellow:       #f0c040;
   font-size: 0.78rem;
   color: $text-faint;
   margin: 0;
+}
+
+.cat-wave-tag {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.05rem 0.35rem;
+  border-radius: 8px;
+  background: rgba(137, 180, 250, 0.12);
+  border: 1px solid rgba(137, 180, 250, 0.35);
+  color: #89b4fa;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 </style>
