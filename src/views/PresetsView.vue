@@ -28,10 +28,17 @@
           >{{ preset.name }}</span>
           <span v-for="(d, i) in roleDetails(preset.role, preset.builtIn)" :key="i" :class="['chip', d.warn ? 'chip-warn' : 'chip-detail']">{{ d.label }}</span>
         </div>
+        <div v-if="preset.id === 'bi_cat_squad'" class="card-cat-target">
+          <label class="cat-target-label">Здание на снос</label>
+          <select v-model="store.catDefaultTarget" class="cat-target-select">
+            <option :value="undefined">— не указано —</option>
+            <option v-for="[key, label] in CAT_TARGET_LIST" :key="key" :value="key">{{ label }}</option>
+          </select>
+        </div>
         <div class="card-actions">
           <button v-if="!preset.builtIn" class="btn btn-secondary btn-sm" @click="openEdit(preset.id)">Изменить</button>
           <button
-            v-if="!(preset.builtIn && ['full_off','half_off','mini_off'].includes(preset.role.type)) && preset.id !== 'bi_spam_weak'"
+            v-if="!(preset.builtIn && ['full_off','half_off','mini_off'].includes(preset.role.type)) && preset.id !== 'bi_spam_weak' && preset.id !== 'bi_cat_squad'"
             class="btn btn-secondary btn-sm"
             @click="store.clone(preset.id)"
           >{{ preset.builtIn ? 'Клонировать' : 'Копия' }}</button>
@@ -147,10 +154,6 @@
             Мин. катапульт для отряда
             <input v-model.number="form.role.catMinCats" type="number" min="1" class="input" />
           </label>
-          <label class="f-label">
-            Макс. сопровождение (юнитов)
-            <input v-model.number="form.role.catMaxEscort" type="number" min="1" max="9999" class="input" />
-          </label>
         </div>
       </template>
 
@@ -223,6 +226,15 @@
         <div v-if="customFixedPop !== null" class="cu-pop-summary">
           Фиксированный состав: <strong>{{ customFixedPop.toLocaleString('ru') }}</strong> усадьбы
         </div>
+        <div v-if="(form.role.customUnits?.catapult ?? 0) !== 0" class="form-row cu-cat-target-row">
+          <label class="f-label">
+            Здание на снос (катапульты)
+            <select v-model="form.role.catTarget" class="input">
+              <option :value="undefined">— не указано —</option>
+              <option v-for="[key, label] in CAT_TARGET_LIST" :key="key" :value="key">{{ label }}</option>
+            </select>
+          </label>
+        </div>
         <h3 class="sub-head">Отображение</h3>
         <div v-if="customPopWarning" class="custom-pop-warning">{{ customPopWarning }}</div>
         <div class="form-row">
@@ -268,9 +280,10 @@ import { ref, reactive, computed } from 'vue'
 import { usePresetsStore } from '@/stores/presetsStore'
 import { useWorldStore } from '@/stores/worldStore'
 import {
-  ALL_ROLE_TYPES, defaultRoleForType, defaultColorForRole,
+  ALL_ROLE_TYPES, defaultRoleForType, defaultColorForRole, CAT_TARGET_LABELS,
 } from '@/stores/presetsStore'
-import type { VillageRole, VillageRoleType, AttackPreset } from '@/stores/presetsStore'
+import type { VillageRole, VillageRoleType, AttackPreset, CatTarget } from '@/stores/presetsStore'
+const CAT_TARGET_LIST = Object.entries(CAT_TARGET_LABELS) as [CatTarget, string][]
 import attackLarge  from '@/assets/images/attack_large.webp'
 import attackMedium from '@/assets/images/attack_medium.webp'
 import attackSmall  from '@/assets/images/attack_small.webp'
@@ -354,7 +367,7 @@ function roleIcons(role: VillageRole): string[] {
 }
 
 function cardNote(preset: AttackPreset): string {
-  if (preset.id === 'bi_cat_squad') return '⚠ макс. кат в отряде не должен превышать 400'
+  if (preset.id === 'bi_cat_squad') return ''
   if (preset.id === 'bi_spam_weak') return 'ℹ Для спама нужен хотя бы 1 таран или 1 катапульта — не влияет на подбор деревень'
   if (preset.id === 'bi_spam_train') return 'ℹ Подбор деревни — только по наличию дворов (реальных или виртуальных); состав войск не учитывается'
   return ''
@@ -362,10 +375,7 @@ function cardNote(preset: AttackPreset): string {
 
 function cardDescription(preset: AttackPreset): string {
   if (preset.id === 'bi_cat_squad') {
-    if (store.catSplitSquads) {
-      return `Катапульты + сопровождение = 1000 юн. (сопровождение = 1000 − кол-во кат); отряд: мин. ${store.catMinSize}, макс. ${store.catMaxSize} кат.`
-    }
-    return `Все каты деревни = 1 отряд (мин. ${store.catMinSize} кат.); сопровождение = 1000 − кол-во кат`
+    return `Все каты деревни в одном отряде (мин. ${store.catMinSize} кат.)`
   }
   return preset.description || '—'
 }
@@ -411,17 +421,7 @@ function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
       break
     case 'cat_squad': {
       const minC = builtIn ? store.catMinSize : (role.catMinCats ?? 50)
-      const maxC = builtIn ? store.catMaxSize : (role.catMaxEscort ?? 200)
-      const splitting = builtIn ? store.catSplitSquads : true
       d.push(chip(`мин. ${minC} кат.`))
-      if (splitting) {
-        d.push(chip(`макс. ${maxC} кат.`))
-        d.push(chip(`эскорт ${1000 - maxC}`))
-        if (maxC > 400) d.push(chip('⚠ >400 кат!', true))
-      } else {
-        d.push(chip('1 отряд'))
-      }
-      d.push(chip('= 1000'))
       break
     }
     case 'spam': {
@@ -755,6 +755,28 @@ function scrollToEditor(): void {
 .chip-detail { background: a($text-faint, 0.1); color: $text-dim;  border: 1px solid a($text-faint, 0.2); }
 .chip-warn   { background: a($orange, 0.15);   color: $orange;    border: 1px solid a($orange, 0.35); }
 
+.card-cat-target {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.cat-target-label {
+  font-size: 0.75rem;
+  color: $text-dim;
+  white-space: nowrap;
+}
+.cat-target-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+  background: transparent;
+  color: inherit;
+  border: 1px solid $border;
+  border-radius: 4px;
+  cursor: pointer;
+}
 .card-actions {
   display: flex;
   gap: 0.4rem;

@@ -2,6 +2,33 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 
 // ---------------------------------------------------------------------------
+// Catapult target building
+// ---------------------------------------------------------------------------
+
+export type CatTarget =
+  | 'main' | 'barracks' | 'stable' | 'garage' | 'smith'
+  | 'market' | 'wood' | 'stone' | 'iron' | 'farm'
+  | 'storage' | 'hide' | 'wall' | 'watchtower' | 'statue'
+
+export const CAT_TARGET_LABELS: Record<CatTarget, string> = {
+  main:       'Ратуша',
+  barracks:   'Казарма',
+  stable:     'Конюшня',
+  garage:     'Мастерская',
+  smith:      'Кузница',
+  market:     'Рынок',
+  wood:       'Лесопилка',
+  stone:      'Глиняная яма',
+  iron:       'Железная шахта',
+  farm:       'Усадьба',
+  storage:    'Склад',
+  hide:       'Тайник',
+  wall:       'Стена',
+  watchtower: 'Сторожевая башня',
+  statue:     'Статуя',
+}
+
+// ---------------------------------------------------------------------------
 // Village role — what ONE village contributes to an attack
 // ---------------------------------------------------------------------------
 
@@ -38,7 +65,7 @@ export interface VillageRole {
   minRams?: number
   // cat_squad
   catMinCats?: number    // мин катапульт для отряда (def 50)
-  catMaxEscort?: number  // макс юнитов сопровождения всего (def 999)
+  catTarget?: CatTarget  // целевое здание
   // spam
   spamCount?: number               // кол-во спам-атак (def 10)
   spamStrength?: 'weak' | 'strong' | 'full' // слабый / рыжий (1000+) / фуллами (def 'weak')
@@ -93,7 +120,7 @@ export function defaultRoleForType(type: VillageRoleType): VillageRole {
   switch (type) {
     case 'half_off':   return { type, halfMin: 1001, halfMax: 5000, halfFixedComp: false }
     case 'custom_off': return { type, customMin: 0, customMax: 99999, customColor: '#e07b39', customUnits: { spear: 0, sword: 0, axe: -1, spy: 0, light: -1, heavy: -1, ram: -1, catapult: 0, knight: 0, snob: 0 } }
-    case 'cat_squad':  return { type, catMinCats: 50, catMaxEscort: 999 }
+    case 'cat_squad':  return { type, catMinCats: 50 }
     case 'spam':       return { type, spamCount: 10, spamStrength: 'weak', spamNobleCount: 0, spamTrainSize: 0 }
     default:           return { type }
   }
@@ -128,9 +155,9 @@ const BUILT_IN: AttackPreset[] = [
   {
     id: 'bi_cat_squad',
     name: 'CAT',
-    description: 'Катапульты + сопровождение = 1000 юнитов (сопровождение = 1000 − кол-во кат в отряде)',
+    description: 'Все катапульты деревни в одном отряде',
     builtIn: true,
-    role: { type: 'cat_squad', catMinCats: 50, catMaxEscort: 999 },
+    role: { type: 'cat_squad', catMinCats: 50 },
   },
   {
     id: 'bi_spam_weak',
@@ -184,9 +211,12 @@ export const usePresetsStore = defineStore('presets', () => {
   const halfOffMinOffFarm = _lsRef('vp_half_off_min_off_farm', 8175)
   const smallOffMinOffFarm= _lsRef('vp_small_off_min_off_farm',3100)
   const catMinSize     = _lsRef('vp_cat_min',            50)
-  const catMaxSize     = _lsRef('vp_cat_max',            200)
-  const catSplitSquads = ref(localStorage.getItem('vp_cat_split') !== 'false')
-  watch(catSplitSquads, (v) => localStorage.setItem('vp_cat_split', String(v)))
+  const _rawCatTarget  = localStorage.getItem('vp_cat_target') as CatTarget | null
+  const catDefaultTarget = ref<CatTarget | undefined>(_rawCatTarget ?? undefined)
+  watch(catDefaultTarget, (v) => {
+    if (v) localStorage.setItem('vp_cat_target', v)
+    else   localStorage.removeItem('vp_cat_target')
+  })
 
   const custom = ref<AttackPreset[]>(_load())
   const all = computed<AttackPreset[]>(() => [...BUILT_IN, ...custom.value])
@@ -219,5 +249,5 @@ export const usePresetsStore = defineStore('presets', () => {
     })
   }
 
-  return { all, custom, breachMinRams, fullOffMinOffFarm, halfOffMinOffFarm, smallOffMinOffFarm, catMinSize, catMaxSize, catSplitSquads, add, update, remove, clone }
+  return { all, custom, breachMinRams, fullOffMinOffFarm, halfOffMinOffFarm, smallOffMinOffFarm, catMinSize, catDefaultTarget, add, update, remove, clone }
 })

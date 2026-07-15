@@ -322,6 +322,8 @@ import { ref, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { usePlanStore } from '@/stores/planStore'
 import type { Attack, AttackType, WarningCode, AttackComposition, GenerationIssue, GenerationIssueType } from '@/stores/planStore'
+import { CAT_TARGET_LABELS } from '@/stores/presetsStore'
+import type { CatTarget } from '@/stores/presetsStore'
 import { useDateFormat } from '@/composables/useDateFormat'
 import { UNIT_ICONS, attackSmall, attackMedium, attackLarge } from '@/utils/unitIcons'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
@@ -461,19 +463,20 @@ function playerTypeChips(attacks: Attack[]): TypeChip[] {
   return [...counts.values()]
 }
 
-function typeLabel(type: AttackType): string {
+function typeLabel(type: AttackType, catTarget?: CatTarget): string {
   switch (type) {
     case 'off':            return 'Офф'
     case 'paladin_off':    return 'Пал-Офф'
     case 'split_off_rams': return 'Сплит (тараны)'
     case 'split_off_rest': return 'Сплит (остальное)'
+    case 'cat':            return catTarget ? `Каты (${CAT_TARGET_LABELS[catTarget]})` : 'Каты'
     case 'spam':           return 'Спам'
     case 'spam_noble':     return 'Спам-двор'
   }
 }
 
 function attackLabel(atk: Attack): string {
-  return atk.label ?? typeLabel(atk.type)
+  return atk.label ?? typeLabel(atk.type, atk.catTarget)
 }
 
 function typeBadgeClass(type: AttackType): string {
@@ -482,6 +485,7 @@ function typeBadgeClass(type: AttackType): string {
     case 'paladin_off':
     case 'split_off_rams':
     case 'split_off_rest': return 'badge-off'
+    case 'cat':            return 'badge-cat'
     case 'spam':
     case 'spam_noble':     return 'badge-spam'
   }
@@ -561,12 +565,16 @@ const allPlayers = computed(() => [...planStore.attacksByPlayer.keys()])
 
 interface BBMeta { unit: string; color: string; label: string }
 
-function attackBBMeta(type: AttackType): BBMeta {
-  switch (type) {
+function attackBBMeta(atk: Attack): BBMeta {
+  switch (atk.type) {
     case 'off':            return { unit: 'ram',   color: '#ff0000', label: 'ФУЛЛ_ОФФ' }
     case 'paladin_off':    return { unit: 'ram',   color: '#ff00ff', label: 'ФУЛЛ_ОФФ_(+ПАЛ)' }
     case 'split_off_rams': return { unit: 'ram',   color: '#ff8800', label: 'ПОДЕЛЁНКА_(тараны)' }
     case 'split_off_rest': return { unit: 'axe',   color: '#ff8800', label: 'ПОДЕЛЁНКА_(без_таранов)' }
+    case 'cat': {
+      const b = atk.catTarget ? `_(${CAT_TARGET_LABELS[atk.catTarget].toUpperCase()})` : ''
+      return { unit: 'catapult', color: '#89b4fa', label: `КАТЫ${b}` }
+    }
     case 'spam':           return { unit: 'spear', color: '#888888', label: 'СПАМ' }
     case 'spam_noble':     return { unit: 'snob',  color: '#666688', label: 'СПАМ_ДВОР' }
   }
@@ -600,7 +608,7 @@ function attackBBColor(atk: Attack): string {
 }
 
 function attackToLine(atk: Attack): string {
-  const base  = attackBBMeta(atk.type)
+  const base  = attackBBMeta(atk)
   const unit  = base.unit
   const raw   = atk.label ?? base.label
   const label = raw.toUpperCase().replace(/ /g, '_')
@@ -700,7 +708,7 @@ function attackMapBlock(filterPlayer?: string): string {
       const mo = String(d.getMonth() + 1).padStart(2, '0')
       const dy = String(d.getDate()).padStart(2, '0')
       const time    = `${dy}.${mo} ${hh}:${mm}:${ss}`
-      const label   = a.label ?? atkTypeLabelShort(a.type)
+      const label   = a.label ?? (a.type === 'cat' ? typeLabel('cat', a.catTarget) : atkTypeLabelShort(a.type))
       const isMine  = filterPlayer ? a.fromVillage.player === filterPlayer : false
       const mark    = isMine ? '► ' : ''
       const typeCol = isMine ? `[b]${mark}${label}[/b]` : `${label}`
@@ -909,6 +917,7 @@ $yellow:       #f0c040;
   white-space: nowrap;
 }
 .badge-off  { background: a($accent, 0.18); color: #ff4466; border: 1px solid a(#ff4466, 0.45); }
+.badge-cat  { background: rgba(137,180,250,0.18); color: #89b4fa; border: 1px solid rgba(137,180,250,0.45); }
 .badge-spam { background: a($text-dim, 0.15); color: $text-dim; border: 1px solid a($text-dim, 0.3); }
 
 // Warning badges

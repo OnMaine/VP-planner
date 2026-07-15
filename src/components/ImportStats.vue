@@ -14,12 +14,8 @@
           <label class="sg-field">тар. <input v-model.number="presetsStore.breachMinRams" type="number" min="1" class="inline-input sg-input" /></label>
         </div>
         <div class="settings-group">
-          <label class="sg-checkbox">
-            <input v-model="presetsStore.catSplitSquads" type="checkbox" />
-            Кат. отряды
-          </label>
+          <span class="sg-label">Каты</span>
           <label class="sg-field">мин <input v-model.number="presetsStore.catMinSize" type="number" min="1" class="inline-input sg-input" /></label>
-          <label v-if="presetsStore.catSplitSquads" class="sg-field">макс <input v-model.number="presetsStore.catMaxSize" type="number" min="1" class="inline-input sg-input" /></label>
         </div>
       </div>
     </div>
@@ -244,16 +240,8 @@
         <div class="ftt-row"><span class="ftt-lbl">Формат</span><span class="ftt-val">отряды (кат)</span></div>
         <div class="ftt-sep"></div>
         <div class="ftt-hint">
-          <template v-if="presetsStore.catSplitSquads">
-            Деление по отрядам включено.<br/>
-            Мин. отряд: <strong>{{ presetsStore.catMinSize }}</strong> кат — меньше не считается.<br/>
-            Макс. отряд: <strong>{{ presetsStore.catMaxSize }}</strong> кат — больше делится.<br/>
-            Эскорт: <strong>{{ 1000 - presetsStore.catMaxSize }}</strong> юн. (1000 − макс кат).
-          </template>
-          <template v-else>
-            Деление отключено — все каты деревни считаются<br/>
-            <strong>одним отрядом</strong> без учёта лимитов.
-          </template>
+          Все катапульты деревни = 1 отряд.<br/>
+          Мин. отряд: <strong>{{ presetsStore.catMinSize }}</strong> кат — меньше не считается.
         </div>
       </template>
       <template v-else-if="thTooltip.id === 'trains'">
@@ -290,9 +278,7 @@ function offFarm(troops: { axe: number; light: number; ram: number }): number {
 }
 
 function catSquads(cats: number): number {
-  if (cats < presetsStore.catMinSize) return 0
-  if (!presetsStore.catSplitSquads) return 1
-  return Math.ceil(cats / presetsStore.catMaxSize)
+  return cats >= presetsStore.catMinSize ? 1 : 0
 }
 function catSquadsForPlayer(player: string): number {
   return villagesStore.villages
@@ -499,6 +485,7 @@ defineExpose({ prefillAll })
 }
 
 .sg-input { width: 68px !important; }
+.sg-select { width: auto !important; max-width: 130px; }
 
 // Stat cards
 .stats-grid {
