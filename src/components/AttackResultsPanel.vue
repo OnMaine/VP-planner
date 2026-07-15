@@ -454,7 +454,7 @@ function playerTypeChips(attacks: Attack[]): TypeChip[] {
   const rows = groupAttacks(attacks.filter(a => !a.excluded))
   const counts = new Map<string, { label: string; count: number; cls: string }>()
   for (const row of rows) {
-    const label = row.representative.label ?? typeLabel(row.representative.type)
+    const label = attackLabel(row.representative)
     const cls   = typeBadgeClass(row.representative.type)
     const prev  = counts.get(label)
     if (prev) prev.count++
@@ -476,6 +476,7 @@ function typeLabel(type: AttackType, catTarget?: CatTarget): string {
 }
 
 function attackLabel(atk: Attack): string {
+  if (atk.type === 'cat') return typeLabel('cat', atk.catTarget)
   return atk.label ?? typeLabel(atk.type, atk.catTarget)
 }
 
@@ -610,8 +611,10 @@ function attackBBColor(atk: Attack): string {
 function attackToLine(atk: Attack): string {
   const base  = attackBBMeta(atk)
   const unit  = base.unit
-  const raw   = atk.label ?? base.label
-  const label = raw.toUpperCase().replace(/ /g, '_')
+  const raw   = atk.type === 'cat' ? base.label : (atk.label ?? base.label)
+  const catSuffix = atk.type !== 'cat' && atk.catTarget
+    ? `_(${CAT_TARGET_LABELS[atk.catTarget].toUpperCase()})` : ''
+  const label = (raw + catSuffix).toUpperCase().replace(/ /g, '_')
   const color = attackBBColor(atk)
   const sd = bbDate(atk.sendTime), st = bbTime(atk.sendTime)
   const ad = bbDate(atk.arrivalTime), at = bbTime(atk.arrivalTime)

@@ -25,7 +25,7 @@
           <span
             class="chip"
             :style="chipStyle(preset)"
-          >{{ preset.name }}</span>
+          >{{ preset.id === 'bi_cat_squad' && store.catDefaultTarget ? `CAT (${CAT_TARGET_LABELS[store.catDefaultTarget]})` : preset.name }}</span>
           <span v-for="(d, i) in roleDetails(preset.role, preset.builtIn)" :key="i" :class="['chip', d.warn ? 'chip-warn' : 'chip-detail']">{{ d.label }}</span>
         </div>
         <div v-if="preset.id === 'bi_cat_squad'" class="card-cat-target">
@@ -154,6 +154,13 @@
             Мин. катапульт для отряда
             <input v-model.number="form.role.catMinCats" type="number" min="1" class="input" />
           </label>
+          <label class="f-label">
+            Здание на снос
+            <select v-model="form.role.catTarget" class="input" :class="{ 'input-warn': !form.role.catTarget }">
+              <option :value="undefined">— не указано (из глобального дефолта) —</option>
+              <option v-for="[key, label] in CAT_TARGET_LIST" :key="key" :value="key">{{ label }}</option>
+            </select>
+          </label>
         </div>
       </template>
 
@@ -270,6 +277,7 @@
           {{ editingId ? 'Сохранить изменения' : 'Создать пресет' }}
         </button>
         <button class="btn btn-secondary" @click="closeEditor">Отмена</button>
+        <span v-if="catTargetRequired" class="save-block-hint">Укажите здание на снос для катапульт</span>
       </div>
     </section>
   </div>
@@ -347,7 +355,15 @@ const customPopWarning = computed((): string | null => {
   return `Фиксированный состав даёт ${fixedPop} усадьбы — меньше минимума атаки (${minAtk}). Атаки с таким пресетом не будут созданы.`
 })
 
-const canSave = computed(() => form.name.trim().length > 0 && !customPopWarning.value)
+const catTargetRequired = computed(() => {
+  if (form.role.type === 'cat_squad') return !form.role.catTarget
+  if (form.role.type === 'custom_off') return (form.role.customUnits?.catapult ?? 0) !== 0 && !form.role.catTarget
+  return false
+})
+
+const canSave = computed(() =>
+  form.name.trim().length > 0 && !customPopWarning.value && !catTargetRequired.value
+)
 
 function roleIcons(role: VillageRole): string[] {
   switch (role.type) {
@@ -422,6 +438,10 @@ function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
     case 'cat_squad': {
       const minC = builtIn ? store.catMinSize : (role.catMinCats ?? 50)
       d.push(chip(`мин. ${minC} кат.`))
+      if (!builtIn) {
+        if (role.catTarget) d.push(chip(`→ ${CAT_TARGET_LABELS[role.catTarget]}`))
+        else d.push(chip('цель не задана', true))
+      }
       break
     }
     case 'spam': {
@@ -440,6 +460,10 @@ function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
       if (active.length) d.push(chip(active.join('+')))
       if ((role.customMin ?? 0) > 0) d.push(chip(`мин.${role.customMin}`))
       if ((role.customMax ?? 99999) < 99999) d.push(chip(`макс.${role.customMax}`))
+      if ((units.catapult ?? 0) !== 0) {
+        if (role.catTarget) d.push(chip(`→ ${CAT_TARGET_LABELS[role.catTarget]}`))
+        else d.push(chip('цель кат. не задана', true))
+      }
       break
     }
   }
@@ -1108,4 +1132,7 @@ function scrollToEditor(): void {
   color: #fff;
   text-shadow: 0 1px 2px rgba(0,0,0,0.4);
 }
+
+.input-warn     { border-color: #e94560 !important; }
+.save-block-hint { font-size: 0.8rem; color: #e94560; align-self: center; }
 </style>

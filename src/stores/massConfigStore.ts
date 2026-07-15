@@ -46,6 +46,7 @@ export function blankMassConfig(): Omit<MassConfig, 'id'> {
 
 const LS_CUSTOM = 'vp_mass_configs_v3'
 const LS_ACTIVE = 'vp_mass_active_id'
+const LS_CAT_ACTIVE = 'vp_mass_cat_active_id'
 
 function genId() { return `mc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` }
 
@@ -72,6 +73,18 @@ export const useMassConfigStore = defineStore('massConfig', () => {
   function setActive(id: string) {
     activeId.value = id
     localStorage.setItem(LS_ACTIVE, id)
+  }
+
+  const activeCatConfigId = ref<string | null>(localStorage.getItem(LS_CAT_ACTIVE))
+
+  const activeCatConfig = computed<MassConfig | null>(
+    () => activeCatConfigId.value ? (all.value.find((c) => c.id === activeCatConfigId.value) ?? null) : null
+  )
+
+  function setCatActive(id: string | null) {
+    activeCatConfigId.value = id
+    if (id) localStorage.setItem(LS_CAT_ACTIVE, id)
+    else localStorage.removeItem(LS_CAT_ACTIVE)
   }
 
   function add(data: Omit<MassConfig, 'id'>): MassConfig {
@@ -141,5 +154,5 @@ export const useMassConfigStore = defineStore('massConfig', () => {
     _persist()
   }
 
-  return { all, custom, active, activeId, setActive, add, update, remove, clone, addSlot, removeSlot, updateSlot, reorderSlots }
+  return { all, custom, active, activeId, setActive, activeCatConfigId, activeCatConfig, setCatActive, add, update, remove, clone, addSlot, removeSlot, updateSlot, reorderSlots }
 })

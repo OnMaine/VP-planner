@@ -278,11 +278,13 @@ function slowestUnitInComp(comp: AttackComposition, unitTimes: Record<string, nu
 // ---------------------------------------------------------------------------
 
 const LS_TARGETS = 'vp_targets'
+const LS_CAT_TARGETS = 'vp_cat_targets'
 const LS_PLAYER_DATA = 'vp_player_data'
 const LS_WATCHTOWER = 'vp_watchtower'
 const LS_SPAM_NOBLE_TARGETS = 'vp_spam_noble_targets'
 const LS_OFF_DISTRIBUTION = 'vp_off_distribution'
 const LS_ATTACKS = 'vp_attacks'
+const LS_RESERVED = 'vp_reserved_villages'
 
 function loadTargets(): Target[] {
   try {
@@ -322,6 +324,25 @@ function loadSpamNobleTargets(): Target[] {
   return []
 }
 
+function loadCatTargets(): Target[] {
+  try {
+    const raw = localStorage.getItem(LS_CAT_TARGETS)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Array<Omit<Target, 'arrivalTime'> & { arrivalTime: string }>
+      return parsed.map((t) => ({ ...t, arrivalTime: new Date(t.arrivalTime) }))
+    }
+  } catch { /* ignore */ }
+  return []
+}
+
+function loadReservedVillages(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_RESERVED)
+    if (raw) return new Set<string>(JSON.parse(raw) as string[])
+  } catch { /* ignore */ }
+  return new Set()
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -332,6 +353,8 @@ export const usePlanStore = defineStore('plan', () => {
 
   // Persisted state
   const targets = ref<Target[]>(loadTargets())
+  const catTargets = ref<Target[]>(loadCatTargets())
+  const reservedVillages = ref<Set<string>>(loadReservedVillages())
   const spamNobleTargets = ref<Target[]>(loadSpamNobleTargets())
   const playerData = ref<PlayerData[]>(loadPlayerData())
   const watchtowerVillages = ref<WatchtowerVillage[]>(loadWatchtowerVillages())
@@ -351,6 +374,20 @@ export const usePlanStore = defineStore('plan', () => {
 
   function saveTargets() {
     localStorage.setItem(LS_TARGETS, JSON.stringify(targets.value))
+  }
+
+  function saveCatTargets() {
+    localStorage.setItem(LS_CAT_TARGETS, JSON.stringify(catTargets.value))
+  }
+
+  function setReservedVillages(coords: string[]) {
+    reservedVillages.value = new Set(coords)
+    localStorage.setItem(LS_RESERVED, JSON.stringify(coords))
+  }
+
+  function clearReservedVillages() {
+    reservedVillages.value = new Set()
+    localStorage.removeItem(LS_RESERVED)
   }
 
   function savePlayerData() {
@@ -492,6 +529,48 @@ export const usePlanStore = defineStore('plan', () => {
   function clearSpamNobleTargets() {
     spamNobleTargets.value = []
     saveSpamNobleTargets()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cat targets CRUD
+  // ---------------------------------------------------------------------------
+
+  function addCatTarget(coords: string, arrivalTime: Date, options?: Partial<Omit<Target, 'id' | 'coords' | 'arrivalTime' | 'x' | 'y'>>): Target | null {
+    const xy = coordsToXY(coords)
+    if (!xy) return null
+    const t: Target = { id: genId(), coords, x: xy.x, y: xy.y, arrivalTime, ...options }
+    catTargets.value.push(t)
+    saveCatTargets()
+    return t
+  }
+
+  function addEmptyCatTarget(arrivalTime: Date): Target {
+    const t: Target = { id: genId(), coords: '', x: 0, y: 0, arrivalTime }
+    catTargets.value.push(t)
+    saveCatTargets()
+    return t
+  }
+
+  function removeCatTarget(id: string) {
+    catTargets.value = catTargets.value.filter((t) => t.id !== id)
+    attacks.value = attacks.value.filter((a) => a.target.id !== id)
+    saveCatTargets()
+  }
+
+  function updateCatTarget(id: string, patch: Partial<Omit<Target, 'id'>>) {
+    const t = catTargets.value.find((t) => t.id === id)
+    if (!t) return
+    Object.assign(t, patch)
+    if (patch.coords) {
+      const xy = coordsToXY(patch.coords)
+      if (xy) { t.x = xy.x; t.y = xy.y }
+    }
+    saveCatTargets()
+  }
+
+  function clearCatTargets() {
+    catTargets.value = []
+    saveCatTargets()
   }
 
   // ---------------------------------------------------------------------------
@@ -642,8 +721,11 @@ export const usePlanStore = defineStore('plan', () => {
     const genIssues: GenerationIssue[] = []
 
     // Pool: available troops per village (consumed as attacks are assigned)
+    // Reserved villages are excluded — they stay visible in import but never get assigned.
     const pool = new Map<string, AttackComposition>()
-    for (const v of villages) pool.set(v.coords, { ...v.troops })
+    for (const v of villages) {
+      if (!reservedVillages.value.has(v.coords)) pool.set(v.coords, { ...v.troops })
+    }
 
     // Virtual noble pool keyed by player — capacity depends on noblePollMode:
     //   real:    sum of built snobs from CSV
@@ -898,12 +980,13 @@ export const usePlanStore = defineStore('plan', () => {
           wtMap.set(v.coords, detected ? 1_000_000 + chord : 0)
         }
       }
-      const byDist = [...villages].sort((a, b) => {
+      const nonReserved = villages.filter(v => !reservedVillages.value.has(v.coords))
+      const byDist = [...nonReserved].sort((a, b) => {
         const sa = (wtMap.get(a.coords) ?? 0) + (distMap.get(a.coords) ?? 0)
         const sb = (wtMap.get(b.coords) ?? 0) + (distMap.get(b.coords) ?? 0)
         return sa - sb
       })
-      const byDistFar = [...villages].sort((a, b) => {
+      const byDistFar = [...nonReserved].sort((a, b) => {
         const wa = wtMap.get(a.coords) ?? 0
         const wb = wtMap.get(b.coords) ?? 0
         const aDetected = wa > 0
@@ -1297,7 +1380,7 @@ export const usePlanStore = defineStore('plan', () => {
 
       } else if (role.type === 'cat_squad') {
         const minCats     = preset.builtIn ? presStore.catMinSize : (role.catMinCats ?? 50)
-        const effectiveCatTarget: CatTarget | undefined = role.catTarget ?? (preset.builtIn ? presStore.catDefaultTarget : undefined)
+        const effectiveCatTarget: CatTarget | undefined = role.catTarget ?? presStore.catDefaultTarget
         const presetColor = preset.color ?? defaultColorForRole('cat_squad')
         const usedCatVillages = new Set<string>()
 
@@ -1374,6 +1457,9 @@ export const usePlanStore = defineStore('plan', () => {
         const units    = role.customUnits ?? {}
         const unitPct  = role.customUnitPct ?? {}
         const unitMinReq = role.customUnitMin ?? {}
+        const customCatTarget: CatTarget | undefined = (units.catapult ?? 0) !== 0
+          ? (role.catTarget ?? presStore.catDefaultTarget)
+          : undefined
         const unitKeys: Array<keyof AttackComposition> = ['spear','sword','axe','spy','light','heavy','ram','catapult','knight','snob']
         // Check per-unit minimum requirements against village's original troops
         const meetsUnitMin = (v: Village): boolean => {
@@ -1463,7 +1549,7 @@ export const usePlanStore = defineStore('plan', () => {
                 if (snobSpec > 0) virtualNoblePool.set(v.player, (virtualNoblePool.get(v.player) ?? 0) - snobSpec)
                 for (const k of unitKeys) { if (k !== 'snob') a[k] -= c[k] }
                 if (snobSpec === -1) a.snob -= c.snob
-                if (!pushAtk('off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role), snobBuildNeeded || undefined)) {
+                if (!pushAtk('off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role), snobBuildNeeded || undefined, undefined, customCatTarget)) {
                   if (snobSpec > 0) virtualNoblePool.set(v.player, (virtualNoblePool.get(v.player) ?? 0) + snobSpec)
                   for (const k of unitKeys) { if (k !== 'snob') a[k] += c[k] }
                   if (snobSpec === -1) a.snob += c.snob
@@ -1939,12 +2025,15 @@ export const usePlanStore = defineStore('plan', () => {
     const presStore = usePresetsStore()
     const villages  = villagesStore.villages
 
-    // Eligible by threshold
+    // Eligible by threshold (reserved villages excluded from pool)
     const { unitPop } = useWorldStore().settings
     const eligibleOffCoords = new Set<string>()
+    let reservedOffCount = 0
     for (const v of villages) {
-      if (calcOffFarm(v.troops, unitPop) >= presStore.fullOffMinOffFarm && v.troops.ram > 0)
+      if (calcOffFarm(v.troops, unitPop) >= presStore.fullOffMinOffFarm && v.troops.ram > 0) {
+        if (reservedVillages.value.has(v.coords)) { reservedOffCount++; continue }
         eligibleOffCoords.add(v.coords)
+      }
     }
 
     let noblesTotal = 0
@@ -1968,6 +2057,7 @@ export const usePlanStore = defineStore('plan', () => {
       offsTotal,
       offsUsed: usedOffCoords.size,
       offsAvailable: offsTotal - usedOffCoords.size,
+      reservedOffCount,
 
       noblesTotal,
       noblesUsed,
@@ -2175,9 +2265,11 @@ export const usePlanStore = defineStore('plan', () => {
   return {
     // State
     targets,
+    catTargets,
     spamNobleTargets,
     playerData,
     watchtowerVillages,
+    reservedVillages,
     attacks,
     noblePlacements,
     paladinPlacements,
@@ -2224,6 +2316,16 @@ export const usePlanStore = defineStore('plan', () => {
     poolStatsByPlayer,
     poolUsageStats,
     coverageEstimate,
+
+    // Reserved villages
+    setReservedVillages,
+    clearReservedVillages,
+    // Cat targets CRUD
+    addCatTarget,
+    addEmptyCatTarget,
+    removeCatTarget,
+    updateCatTarget,
+    clearCatTargets,
 
     patchAttack,
     swapAttackTimes,

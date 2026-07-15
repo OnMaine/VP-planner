@@ -32,6 +32,7 @@
       <div class="stat-card stat-card--red">
         <span class="stat-num">{{ totals.fullOff }}</span>
         <span class="stat-label">Фулл офф</span>
+        <span v-if="totals.reserveFull > 0" class="stat-sublabel stat-reserve">({{ totals.reserveFull }} резерв)</span>
       </div>
       <div class="stat-card stat-card--accent" :title="`Подмножество фулл оффов: офф-ферм ≥ ${presetsStore.fullOffMinOffFarm} И тараны ≥ ${presetsStore.breachMinRams}`">
         <span class="stat-num">{{ totals.breakOff }}</span>
@@ -41,10 +42,12 @@
       <div class="stat-card stat-card--orange">
         <span class="stat-num">{{ totals.halfOff }}</span>
         <span class="stat-label">Медиум офф</span>
+        <span v-if="totals.reserveHalf > 0" class="stat-sublabel stat-reserve">({{ totals.reserveHalf }} резерв)</span>
       </div>
       <div class="stat-card stat-card--yellow">
         <span class="stat-num">{{ totals.smallOff }}</span>
         <span class="stat-label">Мини</span>
+        <span v-if="totals.reserveSmall > 0" class="stat-sublabel stat-reserve">({{ totals.reserveSmall }} резерв)</span>
       </div>
       <div class="stat-card stat-card--purple">
         <span class="stat-num">{{ totals.snobs }}</span>
@@ -59,9 +62,9 @@
         <span class="stat-label">Офф-палов</span>
       </div>
       <div class="stat-card stat-card--teal">
-        <span class="stat-num">{{ totals.catSquadsTotal }}</span>
-        <span class="stat-label">Кат отрядов</span>
-        <span class="stat-sublabel">({{ totals.catapults }} кат)</span>
+        <span class="stat-num">{{ totals.catapults }}</span>
+        <span class="stat-label">Катапульты</span>
+        <span class="stat-sublabel">({{ totals.catSquadsTotal }} отр.)</span>
       </div>
     </div>
 
@@ -97,7 +100,20 @@
         </thead>
         <tbody>
           <tr v-for="p in allPlayers" :key="p.player">
-            <td class="td-remove"><button class="remove-btn" title="Удалить игрока и все его деревни" @click="removePlayer(p.player)">×</button></td>
+            <td class="td-actions">
+              <div class="td-actions-inner">
+                <button class="remove-btn" title="Удалить игрока и все его деревни" @click="removePlayer(p.player)">×</button>
+                <button
+                  class="reserve-toggle-btn"
+                  :class="{
+                    'is-reserved': playerReserveState(p.player) === 'all',
+                    'is-partial':  playerReserveState(p.player) === 'partial',
+                  }"
+                  :title="playerReserveState(p.player) === 'all' ? 'Снять резерв с игрока' : 'Зарезервировать все деревни игрока'"
+                  @click="togglePlayerReserve(p.player)"
+                >R</button>
+              </div>
+            </td>
             <td class="player-name">{{ p.player }}</td>
             <td class="num" :class="{ 'num-accent': p.breakOff > 0 }">{{ p.breakOff || '—' }}</td>
             <td class="num" :class="{ 'num-hi': p.fullOff > 0 }">
@@ -191,8 +207,24 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="v in villagesStore.villages" :key="v.coords" :class="{ 'row-highlighted': v.coords === props.highlight }">
-            <td class="td-remove"><button class="remove-btn" title="Удалить деревню" @click="villagesStore.removeVillage(v.coords)">×</button></td>
+          <tr
+            v-for="v in villagesStore.villages" :key="v.coords"
+            :class="{
+              'row-highlighted': v.coords === props.highlight,
+              'row-reserved': planStore.reservedVillages.has(v.coords),
+            }"
+          >
+            <td class="td-actions">
+              <div class="td-actions-inner">
+                <button class="remove-btn" title="Удалить деревню" @click="villagesStore.removeVillage(v.coords)">×</button>
+                <button
+                  class="reserve-toggle-btn"
+                  :class="{ 'is-reserved': planStore.reservedVillages.has(v.coords) }"
+                  :title="planStore.reservedVillages.has(v.coords) ? 'Убрать из резерва' : 'Добавить в резерв'"
+                  @click="toggleReserve(v.coords)"
+                >R</button>
+              </div>
+            </td>
             <td>{{ v.player }}</td>
             <td>{{ v.coords }}</td>
             <td class="cell-editable" @click="startEdit(v.coords, 'points', v.points)">
@@ -206,12 +238,7 @@
                 v-model="editingValue" type="number" min="0" class="cell-input"
                 @blur="commitEdit" @keydown="onEditKeydown" @click.stop />
               <template v-else-if="key === 'catapult'">
-                <template v-if="catSquads(v.troops.catapult) > 0">
-                  <span class="num-hi">{{ catSquads(v.troops.catapult) }}</span>
-                  <span class="cat-squads">({{ v.troops.catapult }})</span>
-                </template>
-                <span v-else-if="v.troops.catapult > 0" class="cat-below-min">{{ v.troops.catapult }}</span>
-                <span v-else>0</span>
+                <span :class="catSquads(v.troops.catapult) > 0 ? 'num-hi' : (v.troops.catapult > 0 ? 'cat-below-min' : '')">{{ v.troops.catapult }}</span>
               </template>
               <span v-else>{{ v.troops[key] }}</span>
             </td>
@@ -271,6 +298,32 @@ const villagesStore = useVillagesStore()
 const planStore     = usePlanStore()
 const presetsStore  = usePresetsStore()
 const worldStore    = useWorldStore()
+
+function toggleReserve(coords: string) {
+  const cur = new Set(planStore.reservedVillages)
+  if (cur.has(coords)) cur.delete(coords)
+  else cur.add(coords)
+  planStore.setReservedVillages([...cur])
+}
+
+function playerReserveState(player: string): 'none' | 'partial' | 'all' {
+  const coords = villagesStore.villages.filter(v => v.player === player).map(v => v.coords)
+  if (coords.length === 0) return 'none'
+  const reserved = coords.filter(c => planStore.reservedVillages.has(c)).length
+  if (reserved === 0) return 'none'
+  return reserved === coords.length ? 'all' : 'partial'
+}
+
+function togglePlayerReserve(player: string) {
+  const coords = villagesStore.villages.filter(v => v.player === player).map(v => v.coords)
+  const cur = new Set(planStore.reservedVillages)
+  if (playerReserveState(player) === 'all') {
+    coords.forEach(c => cur.delete(c))
+  } else {
+    coords.forEach(c => cur.add(c))
+  }
+  planStore.setReservedVillages([...cur])
+}
 
 function offFarm(troops: { axe: number; light: number; ram: number }): number {
   const pop = worldStore.settings.unitPop
@@ -383,23 +436,28 @@ const allPlayers = computed<PlayerStat[]>(() => {
 
 const totals = computed(() => {
   let breakOff = 0, fullOff = 0, halfOff = 0, smallOff = 0, catapults = 0
+  let reserveFull = 0, reserveHalf = 0, reserveSmall = 0
   for (const v of villagesStore.villages) {
     const of = offFarm(v.troops)
     const ram = v.troops.ram
+    const isRes = planStore.reservedVillages.has(v.coords)
     if (of >= presetsStore.fullOffMinOffFarm) {
       fullOff++
       if (ram >= presetsStore.breachMinRams) breakOff++
+      if (isRes) reserveFull++
     } else if (of >= presetsStore.halfOffMinOffFarm) {
       halfOff++
+      if (isRes) reserveHalf++
     } else if (of >= presetsStore.smallOffMinOffFarm) {
       smallOff++
+      if (isRes) reserveSmall++
     }
     catapults += v.troops.catapult
   }
   const catSquadsTotal = villagesStore.villages.reduce((sum, v) => sum + catSquads(v.troops.catapult), 0)
   const snobs = allPlayers.value.reduce((sum, p) => sum + planStore.getPlayerData(p.player).totalNobles, 0)
   const trains = allPlayers.value.reduce((sum, p) => sum + Math.floor(planStore.getPlayerData(p.player).totalNobles / 5), 0)
-  return { breakOff, fullOff, halfOff, smallOff, snobs, trains, catapults, catSquadsTotal }
+  return { breakOff, fullOff, halfOff, smallOff, snobs, trains, catapults, catSquadsTotal, reserveFull, reserveHalf, reserveSmall }
 })
 
 function removePlayer(player: string) {
@@ -510,14 +568,16 @@ defineExpose({ prefillAll })
 .stat-num      { font-size: 1.35rem; font-weight: 700; color: $accent; line-height: 1.2; }
 .stat-label    { font-size: 0.72rem; color: $text-dim; white-space: nowrap; }
 .stat-sublabel { font-size: 0.68rem; color: $text-faint; white-space: nowrap; }
+.stat-reserve  { color: #c8a020; }
 
-.stat-card--blue .stat-num   { color: #5b9bd5; }
-.stat-card--accent .stat-num { color: $purple; font-weight: 800; }
-.stat-card--red .stat-num    { color: $accent; }
-.stat-card--purple .stat-num { color: $purple; }
-.stat-card--teal .stat-num   { color: $green; }
-.stat-card--gold .stat-num   { color: #f0c040; }
-.stat-card--green .stat-num  { color: #6abf7b; }
+.stat-card--blue .stat-num     { color: #5b9bd5; }
+.stat-card--accent .stat-num   { color: $purple; font-weight: 800; }
+.stat-card--red .stat-num      { color: $accent; }
+.stat-card--purple .stat-num   { color: $purple; }
+.stat-card--teal .stat-num     { color: $green; }
+.stat-card--gold .stat-num     { color: #f0c040; }
+.stat-card--green .stat-num    { color: #6abf7b; }
+.stat-card--reserved .stat-num { color: #c8a020; }
 
 // Players table
 .players-table {
@@ -643,14 +703,40 @@ defineExpose({ prefillAll })
   td { color: $text !important; }
 }
 
+.row-reserved {
+  opacity: 0.45;
+  td { color: $text-faint !important; }
+  &:hover { opacity: 0.7; }
+}
+
+.reserved-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 3px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.4;
+  border-radius: 3px;
+  background: a(#f0c040, 0.18);
+  color: #c8a020;
+  border: 1px solid a(#f0c040, 0.35);
+  vertical-align: middle;
+  letter-spacing: 0.03em;
+}
+
 .cell-editable {
   cursor: pointer;
   &:hover { background: a($accent, 0.06); }
 }
 
-.td-remove {
-  width: 20px;
+.td-remove { width: 20px; padding: 0 2px; }
+
+.td-actions {
+  width: 42px;
+  min-width: 42px;
+  max-width: 42px;
   padding: 0 2px;
+  white-space: nowrap;
 }
 
 .remove-btn {
@@ -666,12 +752,54 @@ defineExpose({ prefillAll })
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
-  opacity: 0;
+  opacity: 0.4;
   transition: opacity 0.1s, color 0.1s;
+  flex-shrink: 0;
 
-  tr:hover & { opacity: 1; }
-  &:hover { color: $accent; }
+  &:hover { opacity: 1; color: $accent; }
 }
+
+.td-actions-inner {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.reserve-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: $text-faint;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.12s, color 0.12s, background 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+
+  &:hover { opacity: 1; color: #c8a020; border-color: a(#c8a020, 0.5); }
+
+  &.is-reserved {
+    opacity: 1;
+    color: #c8a020;
+    background: a(#c8a020, 0.15);
+    border-color: a(#c8a020, 0.45);
+  }
+
+  &.is-partial {
+    opacity: 1;
+    color: #c8a020;
+    border-color: a(#c8a020, 0.35);
+    border-style: dashed;
+  }
+}
+
 
 
 .cell-input {

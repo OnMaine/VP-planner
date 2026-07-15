@@ -20,6 +20,9 @@
         <label class="tog" title="Показывать деревни без атак в плане (когда выключено — только атакующие)">
           <input type="checkbox" v-model="showAllVillages" /> Без атак
         </label>
+        <label class="tog" title="Скрыть деревни из которых уже назначены атаки">
+          <input type="checkbox" v-model="hideAssigned" /> Скрыть назначенные
+        </label>
       </div>
 
       <span class="vsep" />
@@ -210,7 +213,7 @@
                 <span class="dp-drag" title="Перетащить" @click.stop>⠿</span>
                 <div class="dp-atk-body">
                   <div class="dp-atk-main">
-                    <span class="dp-badge" :style="atkBadgeStyle(atk)">{{ atk.label ?? atkTypeShort(atk) }}</span>
+                    <span class="dp-badge" :style="atkBadgeStyle(atk)">{{ atkLabel(atk) }}</span>
                     <span class="dp-from">{{ selectedVillage ? atk.target.coords : atk.fromVillage.coords }}</span>
                     <span v-if="!selectedVillage" class="dp-player-dot" :style="{ background: playerColor(atk.fromVillage.player) }" :title="atk.fromVillage.player" />
                     <span class="dp-arr">{{ fmtTime(atk.arrivalTime) }}</span>
@@ -361,6 +364,10 @@
         <span class="leg-dot" style="background:#2a2d3e; outline: 2px solid #e94560; outline-offset: 1px;" />
         <span>Цель</span>
       </div>
+      <div v-if="planStore.reservedVillages.size > 0" class="leg-item">
+        <span class="leg-dot leg-dot-reserved" />
+        <span>Резерв ({{ planStore.reservedVillages.size }})</span>
+      </div>
     </div>
   </div>
 </template>
@@ -370,7 +377,7 @@ import { ref, computed, onMounted, onUnmounted, watchEffect } from 'vue'
 import { usePlanStore } from '@/stores/planStore'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { useWorldStore } from '@/stores/worldStore'
-import { usePresetsStore } from '@/stores/presetsStore'
+import { usePresetsStore, CAT_TARGET_LABELS } from '@/stores/presetsStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useDateFormat } from '@/composables/useDateFormat'
 import { watchtowerIcon } from '@/utils/unitIcons'
@@ -388,6 +395,7 @@ const { toDatetimeLocal } = useDateFormat()
 const showTowers      = ref(true)
 const showSpam        = ref(false)
 const showAllVillages = ref(false)
+const hideAssigned   = ref(false)
 const showLabels      = ref(true)
 const filterPlayer    = ref('')
 const filterEnemy     = ref('')
@@ -531,7 +539,13 @@ function atkTypeShort(atk: Attack): string {
   if (t === 'spam')           return 'Спам'
   if (t === 'split_off_rams') return 'Медиум'
   if (t === 'split_off_rest') return 'Медиум-'
+  if (t === 'cat')            return atk.catTarget ? `CAT (${CAT_TARGET_LABELS[atk.catTarget]})` : 'CAT'
   return t
+}
+
+function atkLabel(atk: Attack): string {
+  if (atk.type === 'cat') return atkTypeShort(atk)
+  return atk.label ?? atkTypeShort(atk)
 }
 
 const WARN_TEXT: Record<string, string> = {
@@ -613,8 +627,9 @@ const visiblePairs = computed(() => {
     : new Set(renderedVillages.value.map(v => v.coords))
   return uniquePairs.value.filter(p => {
     if (p.isSpam && !showSpam.value) return false
+    const fromCoords = p.attacks[0]?.fromVillage.coords
+    if (hideAssigned.value && fromCoords && attackingCoords.value.has(fromCoords)) return false
     if (filteredCoords) {
-      const fromCoords = p.attacks[0]?.fromVillage.coords
       if (fromCoords && !filteredCoords.has(fromCoords)) return false
     }
     return true
@@ -644,8 +659,11 @@ const renderedVillages = computed(() => {
   const filtered = villageFilter.value === 'all'
     ? base
     : base.filter(v => villageMatchesFilter(v))
-  if (showAllVillages.value) return filtered
-  return filtered.filter(v => attackingCoords.value.has(v.coords))
+  const byAssigned = hideAssigned.value
+    ? filtered.filter(v => !attackingCoords.value.has(v.coords))
+    : filtered
+  if (showAllVillages.value) return byAssigned
+  return byAssigned.filter(v => attackingCoords.value.has(v.coords))
 })
 
 function isAttacking(coords: string): boolean {
@@ -866,9 +884,10 @@ function drawVillages(ctx: CanvasRenderingContext2D) {
   const cellH = img ? img.naturalHeight / VS_ROWS : 0
 
   for (const v of renderedVillages.value) {
-    const isAtk = attackingCoords.value.has(v.coords)
-    const isSel = selectedVillageCoords.value === v.coords
-    ctx.globalAlpha = isAtk || isSel ? 1 : 0.42
+    const isAtk      = attackingCoords.value.has(v.coords)
+    const isSel      = selectedVillageCoords.value === v.coords
+    const isReserved = planStore.reservedVillages.has(v.coords)
+    ctx.globalAlpha = isReserved ? 0.25 : (isAtk || isSel ? 1 : 0.42)
 
     if (img) {
       const sp = villageSprite(v.points)
@@ -885,13 +904,22 @@ function drawVillages(ctx: CanvasRenderingContext2D) {
       ctx.fill()
     }
 
-    // Ring — only for selected
+    // Ring — selected (white) or reserved (gold)
     if (isSel) {
       ctx.beginPath()
       ctx.arc(v.x, v.y, r, 0, Math.PI * 2)
       ctx.strokeStyle = '#ffffff'
       ctx.lineWidth   = 3.5 / _scale
       ctx.stroke()
+    } else if (isReserved) {
+      ctx.globalAlpha = 0.7
+      ctx.beginPath()
+      ctx.arc(v.x, v.y, r + 2 / _scale, 0, Math.PI * 2)
+      ctx.strokeStyle = '#00e5ff'
+      ctx.lineWidth   = 2 / _scale
+      ctx.setLineDash([4 / _scale, 3 / _scale])
+      ctx.stroke()
+      ctx.setLineDash([])
     }
 
     if (showLabels.value) {
@@ -1186,7 +1214,7 @@ function buildVillageTip(v: Village, x: number, y: number) {
   const attacks = planStore.attacks.filter(a => a.fromVillage.coords === v.coords && !a.excluded)
   const byType  = new Map<string, number>()
   for (const a of attacks) {
-    const lbl = a.label ?? atkTypeShort(a)
+    const lbl = atkLabel(a)
     byType.set(lbl, (byType.get(lbl) ?? 0) + 1)
   }
   const atkRows: TooltipRow[] = attacks.length === 0
@@ -1202,7 +1230,7 @@ function buildTargetTip(t: Target, x: number, y: number) {
   const atks   = attacksByTarget.value.get(t.id) ?? []
   const byType = new Map<string, number>()
   for (const a of atks.filter(a => !a.excluded)) {
-    const lbl = a.label ?? atkTypeShort(a)
+    const lbl = atkLabel(a)
     byType.set(lbl, (byType.get(lbl) ?? 0) + 1)
   }
   tooltip.value = {
@@ -1859,7 +1887,8 @@ onMounted(() => {
 }
 
 .leg-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: $text-dim; }
-.leg-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.leg-dot           { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.leg-dot-reserved  { background: rgba(0,229,255,0.2); outline: 2px dashed #00e5ff; outline-offset: 1px; opacity: 0.8; }
 .leg-line { width: 20px; height: 3px; border-radius: 2px; flex-shrink: 0; }
 .leg-dash {
   width: 20px; height: 2px; flex-shrink: 0;

@@ -10,38 +10,40 @@
       >✕ Очистить всю инфу по импорту</button>
     </div>
 
-    <!-- Drop zone -->
-    <div
-      class="drop-zone"
+    <!-- CSV import toolbar -->
+    <section
+      class="panel import-toolbar"
       :class="{ 'drag-over': isDragging }"
       @dragover.prevent="isDragging = true"
       @dragleave.prevent="isDragging = false"
       @drop.prevent="onDrop"
-      @click="triggerFileInput"
     >
-      <div class="drop-icon">📂</div>
-      <p>Перетащите CSV файл сюда или нажмите для выбора</p>
-      <p class="drop-format">Формат: <code>Игрок,Координаты,Очки,Копья,Мечи,Топоры,Лазы,ЛК,ТК,Тараны,Каты,Пал,Двор</code></p>
-      <input ref="fileInput" type="file" accept=".csv,text/csv" class="hidden-input" @change="onFileChange" />
-    </div>
-
-    <!-- Paste area -->
-    <section class="panel">
-      <h2>Или вставьте CSV-текст</h2>
-      <textarea
-        v-model="csvText"
-        class="csv-textarea"
-        placeholder="Игрок,Координаты,Очки,Копья,Мечи,Топоры,Лазы,ЛК,ТК,Тараны,Каты,Пал,Двор&#10;8Taras8,494|564,9289,13096,3156,0,581,0,0,4,0,0,1&#10;SomePlayer,510|549,4120,0,0,6200,0,0,0,120,0,1,3"
-        rows="6"
-      ></textarea>
-      <div class="btn-row">
-        <button class="btn btn-primary" @click="doParseText">Парсить</button>
-        <button class="btn btn-secondary" @click="clearAll">Очистить</button>
+      <div class="toolbar-row">
+        <button class="btn btn-primary btn-sm" @click="triggerFileInput">↑ Загрузить файл</button>
+        <button
+          class="btn btn-secondary btn-sm"
+          :class="{ 'btn-active': pasteOpen }"
+          @click="pasteOpen = !pasteOpen"
+        >{{ pasteOpen ? '▲' : '▼' }} Вставить текст</button>
+        <span class="toolbar-hint">или перетащите .csv сюда</span>
+        <span v-if="villagesStore.villages.length" class="toolbar-count">{{ villagesStore.villages.length }} деревень загружено</span>
+        <input ref="fileInput" type="file" accept=".csv,text/csv" class="hidden-input" @change="onFileChange" />
       </div>
+      <div v-if="pasteOpen" class="paste-expand">
+        <p class="drop-format">Формат: <code>Игрок,Координаты,Очки,Копья,Мечи,Топоры,Лазы,ЛК,ТК,Тараны,Каты,Пал,Двор</code></p>
+        <textarea
+          v-model="csvText"
+          class="csv-textarea"
+          rows="6"
+          placeholder="Игрок,Координаты,Очки,...&#10;8Taras8,494|564,9289,13096,3156,0,581,0,0,4,0,0,1"
+        ></textarea>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" @click="doParseText">Парсить</button>
+          <button class="btn btn-secondary btn-sm" @click="csvText = ''; pasteOpen = false">Очистить</button>
+        </div>
+      </div>
+      <div v-if="error" class="status-msg status-err" style="margin-top:0.5rem">{{ error }}</div>
     </section>
-
-    <!-- Error -->
-    <div v-if="error" class="status-msg status-err">{{ error }}</div>
 
     <!-- Manual village entry -->
     <section class="panel">
@@ -179,6 +181,34 @@
       </div>
     </section>
 
+    <!-- Reserve import -->
+    <section v-if="villagesStore.villages.length > 0" class="panel">
+      <button class="collapse-toggle" @click="reserveOpen = !reserveOpen">
+        <span>
+          Резерв деревень
+          <span v-if="planStore.reservedVillages.size > 0" class="reserve-count-badge">{{ planStore.reservedVillages.size }}</span>
+        </span>
+        <span class="collapse-icon">{{ reserveOpen ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="reserveOpen" class="reserve-body">
+        <p class="reserve-hint">Вставьте список деревень (одна строка = одна деревня). Координаты вида <code>NNN|NNN</code> извлекаются автоматически. Резервные деревни не попадают в офф-пул при генерации масса.</p>
+        <textarea
+          v-model="reservedRaw"
+          class="csv-textarea reserve-textarea"
+          rows="4"
+          placeholder="500|500&#10;501|499 PlayerName&#10;..."
+        ></textarea>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" @click="applyReserved">Применить</button>
+          <button v-if="planStore.reservedVillages.size > 0" class="btn btn-danger btn-sm" @click="clearReserved">Очистить резерв</button>
+          <span v-if="planStore.reservedVillages.size > 0" class="reserve-active-hint">
+            Активно: {{ planStore.reservedVillages.size }} дер.
+            ({{ reservedKnown }}/{{ planStore.reservedVillages.size }} из импорта)
+          </span>
+        </div>
+      </div>
+    </section>
+
     <ImportStats v-if="statsVisible" ref="importStatsRef" :highlight="highlightCoords" />
   </div>
 </template>
@@ -201,6 +231,33 @@ const importStatsRef = ref<InstanceType<typeof ImportStats> | null>(null)
 
 const isDragging = ref(false)
 const csvText = ref('')
+const pasteOpen = ref(false)
+
+// ── Reserve section ──────────────────────────────────────────────────────
+const reserveOpen = ref(false)
+const reservedRaw = ref('')
+
+function parseReservedCoords(text: string): string[] {
+  const coords = new Set<string>()
+  for (const line of text.split('\n')) {
+    const m = line.match(/\b(\d{1,3}\|\d{1,3})\b/)
+    if (m) coords.add(m[1])
+  }
+  return [...coords]
+}
+
+function applyReserved() {
+  planStore.setReservedVillages(parseReservedCoords(reservedRaw.value))
+}
+
+function clearReserved() {
+  reservedRaw.value = ''
+  planStore.clearReservedVillages()
+}
+
+const reservedKnown = computed(() =>
+  [...planStore.reservedVillages].filter(c => villagesStore.villages.some(v => v.coords === c)).length
+)
 const error = ref('')
 const statsVisible = ref(villagesStore.villages.length > 0)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -439,21 +496,31 @@ function clearEverything() {
   &:hover { background: a($accent, 0.18); border-color: a($accent, 0.6); }
 }
 
-.drop-zone {
-  border: 2px dashed $border;
-  border-radius: 10px;
-  padding: 3rem 1rem;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  margin-bottom: 1.5rem;
-  background: $bg-panel;
-
-  &:hover, &.drag-over { border-color: $accent; background: a($accent, 0.05); }
-  p { color: $text-dim; margin: 0; }
+.import-toolbar {
+  &.drag-over { border-color: $accent; background: a($accent, 0.04); }
 }
 
-.drop-icon { font-size: 3rem; margin-bottom: 0.5rem; }
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.toolbar-hint  { font-size: 0.76rem; color: $text-faint; }
+.toolbar-count { font-size: 0.76rem; color: $green; font-weight: 600; margin-left: auto; }
+
+.btn-active {
+  border-color: a($accent, 0.5) !important;
+  color: $accent !important;
+}
+
+.paste-expand {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
 
 .drop-format {
   font-size: 0.72rem;
@@ -570,4 +637,61 @@ function clearEverything() {
 
   &:hover { color: $accent; }
 }
+
+// Reserve section
+.collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  color: $text-dim;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.3rem 0;
+  gap: 0.5rem;
+  text-align: left;
+  &:hover { color: $text; }
+}
+.collapse-icon { color: $text-faint; font-size: 0.7rem; flex-shrink: 0; }
+
+.reserve-count-badge {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 10px;
+  background: a(#c8a020, 0.2);
+  color: #c8a020;
+  border: 1px solid a(#c8a020, 0.35);
+}
+
+.reserve-body {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reserve-hint {
+  font-size: 0.76rem;
+  color: $text-faint;
+  margin: 0;
+  line-height: 1.5;
+  code { color: $text-dim; background: a($border, 0.4); padding: 1px 4px; border-radius: 3px; }
+}
+
+.reserve-textarea { max-height: 120px; resize: vertical; }
+
+.reserve-active-hint {
+  font-size: 0.75rem;
+  color: #c8a020;
+  align-self: center;
+}
+
+.btn-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.btn-sm  { padding: 0.2rem 0.6rem; font-size: 0.78rem; }
 </style>

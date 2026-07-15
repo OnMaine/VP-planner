@@ -1,5 +1,14 @@
 <template>
   <div class="planner-view">
+    <Transition name="gen-overlay">
+      <div v-if="isGenerating" class="gen-overlay">
+        <div class="gen-overlay-box">
+          <div class="gen-overlay-spinner"></div>
+          <span class="gen-overlay-text">Генерация плана...</span>
+        </div>
+      </div>
+    </Transition>
+
     <h1>Планер атак</h1>
 
     <section class="panel mode-bar">
@@ -25,7 +34,7 @@
       <div class="generate-main">
         <button
           :class="['btn', 'btn-primary', 'btn-generate', { 'btn-flash': justGenerated }]"
-          :disabled="!canGenerate"
+          :disabled="!canGenerate || isGenerating"
           :title="generateBlockReason ?? ''"
           @click="onGenerate"
         >Сгенерировать план</button>
@@ -87,6 +96,10 @@
           <span class="pool-sep">·</span>
           <span class="pool-unused">{{ planStore.poolUsageStats.offsAvailable }} офов не в плане</span>
         </template>
+        <template v-if="planStore.poolUsageStats.reservedOffCount > 0">
+          <span class="pool-sep">·</span>
+          <span class="pool-reserved">Резерв: {{ planStore.poolUsageStats.reservedOffCount }}</span>
+        </template>
       </div>
     </section>
 
@@ -99,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { RouterLink } from 'vue-router'
 import { usePlanStore } from '@/stores/planStore'
 import { useAIPlanStore } from '@/stores/aiPlanStore'
@@ -118,8 +131,9 @@ const aiStore = useAIPlanStore()
 const worldStore = useWorldStore()
 const enemyStore = useEnemyDataStore()
 const massConfigStore = useMassConfigStore()
-const resultsPanel = ref<InstanceType<typeof AttackResultsPanel> | null>(null)
-const palOffPanel  = ref<InstanceType<typeof PalOffPanel> | null>(null)
+const resultsPanel   = ref<InstanceType<typeof AttackResultsPanel> | null>(null)
+const palOffPanel    = ref<InstanceType<typeof PalOffPanel> | null>(null)
+const isGenerating   = ref(false)
 
 const activeAttackCount = computed(() => planStore.attacks.filter((a) => !a.excluded).length)
 
@@ -217,8 +231,12 @@ async function onImportPlan(e: Event) {
   ;(e.target as HTMLInputElement).value = ''
 }
 
-function doGenerate(): void {
+async function doGenerate(): Promise<void> {
+  if (isGenerating.value) return
   showSpecialOffWarning.value = false
+  isGenerating.value = true
+  await nextTick()
+  await new Promise<void>(resolve => setTimeout(resolve, 30))
   planStore.resolveAllFromMap()
   planStore.generate()
   resultsPanel.value?.expandAll(planStore.attacksByPlayer.keys())
@@ -226,6 +244,7 @@ function doGenerate(): void {
   lastGeneratedAt.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
   justGenerated.value = true
   specialOffWarningDismissed.value = false
+  isGenerating.value = false
   setTimeout(() => { justGenerated.value = false }, 600)
 }
 
@@ -258,6 +277,14 @@ function onGenerate(): void {
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.btn-generate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 170px;
+  justify-content: center;
 }
 
 .plan-file-group {
@@ -345,7 +372,8 @@ function onGenerate(): void {
 .pool-item  { display: flex; align-items: center; gap: 0.25rem; }
 .pool-item--dim { font-size: 0.82rem; color: $text-faint; strong { color: $text-dim; } }
 .pool-sep   { color: $text-faint; }
-.pool-unused { color: $orange; font-weight: 600; }
+.pool-unused    { color: $orange; font-weight: 600; }
+.pool-reserved  { color: #c8a020; font-weight: 600; }
 
 .stat-ok   { color: $green !important; }
 .stat-warn { color: $orange !important; }
@@ -417,4 +445,52 @@ function onGenerate(): void {
   &:hover { border-color: $accent; color: $text; }
   &.active { border-color: $accent; color: $accent; background: rgba(100, 80, 200, 0.08); }
 }
+
+// ── Generation overlay ─────────────────────────────────────────────────────
+.gen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(8, 16, 32, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gen-overlay-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  background: #101828;
+  border: 1px solid rgba(100, 80, 200, 0.3);
+  border-radius: 14px;
+  padding: 2.5rem 3.5rem;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+
+@keyframes gen-spin { to { transform: rotate(360deg) } }
+.gen-overlay-spinner {
+  width: 44px;
+  height: 44px;
+  border: 4px solid rgba(255,255,255,0.12);
+  border-top-color: #6450c8;
+  border-radius: 50%;
+  animation: gen-spin 0.75s linear infinite;
+}
+
+.gen-overlay-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.75);
+  letter-spacing: 0.02em;
+}
+
+.gen-overlay-enter-active,
+.gen-overlay-leave-active { transition: opacity 0.15s ease }
+.gen-overlay-enter-from,
+.gen-overlay-leave-to   { opacity: 0 }
+
+.btn-generate { min-width: 170px; }
 </style>
