@@ -70,8 +70,8 @@ export interface OffPoolStats {
 export type AttackType =
   | 'off'               // regular off (axes + LC + rams)
   | 'paladin_off'       // off with offensive paladin (wall-busting priority)
-  | 'split_off_rams'    // split off part 1 — rams + half troops
-  | 'split_off_rest'    // split off part 2 — rest of troops (faster, no rams)
+  | 'mid_off'    // mid-off attack — all troops from a medium-strength village
+  | 'mini_off'   // mini-off attack — all troops from a weak-off village
   | 'cat'               // catapult squad — cats only, independent pool
   | 'spam'              // fake attack (min troops + 1 ram)
   | 'spam_noble'        // noble on decoy target
@@ -265,7 +265,7 @@ function buildPoolTags(
 function speedUnitForType(type: AttackType): keyof VillageTroops {
   switch (type) {
     case 'spam_noble':     return 'snob'
-    case 'split_off_rest': return 'light'
+
     case 'cat':            return 'catapult'
     default:               return 'ram'
   }
@@ -1287,7 +1287,7 @@ export const usePlanStore = defineStore('plan', () => {
                 if (of < midMin || of >= midMax) {
                   targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue
                 }
-                if (nightExcludes(v, target, 'split_off_rams', slotArrT)) {
+                if (nightExcludes(v, target, 'mid_off', slotArrT)) {
                   targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
                 }
                 const c = emptyComposition()
@@ -1301,7 +1301,7 @@ export const usePlanStore = defineStore('plan', () => {
                   c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
                   a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
                 }
-                if (!pushAtk('split_off_rams', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
+                if (!pushAtk('mid_off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
                   a.axe += c.axe; a.light += c.light; a.heavy += c.heavy; a.ram += c.ram
                   continue
                 }
@@ -1335,7 +1335,7 @@ export const usePlanStore = defineStore('plan', () => {
             if (of < midMin || of >= midMax) {
               targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue
             }
-            if (nightExcludes(v, target, 'split_off_rams', slotArrT)) {
+            if (nightExcludes(v, target, 'mid_off', slotArrT)) {
               targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
             }
             const c = emptyComposition()
@@ -1349,7 +1349,7 @@ export const usePlanStore = defineStore('plan', () => {
               c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
               a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
             }
-            if (!pushAtk('split_off_rams', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
+            if (!pushAtk('mid_off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
               a.axe += c.axe; a.light += c.light; a.heavy += c.heavy; a.ram += c.ram
               continue
             }
@@ -1384,13 +1384,13 @@ export const usePlanStore = defineStore('plan', () => {
                 if (of < miniMin || of >= miniMax) {
                   targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue
                 }
-                if (nightExcludes(v, target, 'split_off_rams', slotArrT)) {
+                if (nightExcludes(v, target, 'mini_off', slotArrT)) {
                   targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
                 }
                 const c = emptyComposition()
                 c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
                 a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
-                if (!pushAtk('split_off_rams', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
+                if (!pushAtk('mini_off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
                   a.axe = c.axe; a.light = c.light; a.heavy = c.heavy; a.ram = c.ram
                   continue
                 }
@@ -1423,13 +1423,13 @@ export const usePlanStore = defineStore('plan', () => {
             if (of < miniMin || of >= miniMax) {
               targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue
             }
-            if (nightExcludes(v, target, 'split_off_rams', slotArrT)) {
+            if (nightExcludes(v, target, 'mini_off', slotArrT)) {
               targetSkippedN.set(target.id, (targetSkippedN.get(target.id) ?? 0) + 1); continue
             }
             const c = emptyComposition()
             c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
             a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
-            if (!pushAtk('split_off_rams', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
+            if (!pushAtk('mini_off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role))) {
               a.axe = c.axe; a.light = c.light; a.heavy = c.heavy; a.ram = c.ram
               continue
             }

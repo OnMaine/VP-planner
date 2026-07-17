@@ -305,6 +305,9 @@
 <button class="btn btn-secondary" @click="copyBBCode">
             {{ copied ? 'Скопировано ✓' : 'Копировать' }}
           </button>
+          <button class="btn btn-secondary" @click="doExportXlsx" title="Экспорт в Excel (.xlsx) — формат для форума TW">
+            Скачать xlsx
+          </button>
         </div>
 
         <textarea class="bbcode-area" readonly :value="bbcodeOutput" />
@@ -322,6 +325,7 @@
 import { ref, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { usePlanStore } from '@/stores/planStore'
+import { exportAttacksToXlsx } from '@/composables/useExcelExport'
 import type { Attack, AttackType, WarningCode, AttackComposition, GenerationIssue, GenerationIssueType } from '@/stores/planStore'
 import { CAT_TARGET_LABELS } from '@/stores/presetsStore'
 import type { CatTarget } from '@/stores/presetsStore'
@@ -468,8 +472,8 @@ function typeLabel(type: AttackType, catTarget?: CatTarget): string {
   switch (type) {
     case 'off':            return 'Офф'
     case 'paladin_off':    return 'Пал-Офф'
-    case 'split_off_rams': return 'Сплит (тараны)'
-    case 'split_off_rest': return 'Сплит (остальное)'
+    case 'mid_off':        return 'Мид-Офф'
+    case 'mini_off':       return 'Мини-Офф'
     case 'cat':            return catTarget ? `Каты (${CAT_TARGET_LABELS[catTarget]})` : 'Каты'
     case 'spam':           return 'Спам'
     case 'spam_noble':     return 'Спам-двор'
@@ -485,8 +489,8 @@ function typeBadgeClass(type: AttackType): string {
   switch (type) {
     case 'off':
     case 'paladin_off':
-    case 'split_off_rams':
-    case 'split_off_rest': return 'badge-off'
+    case 'mid_off':
+    case 'mini_off':       return 'badge-off'
     case 'cat':            return 'badge-cat'
     case 'spam':
     case 'spam_noble':     return 'badge-spam'
@@ -571,8 +575,8 @@ function attackBBMeta(atk: Attack): BBMeta {
   switch (atk.type) {
     case 'off':            return { unit: 'ram',   color: '#ff0000', label: 'ФУЛЛ_ОФФ' }
     case 'paladin_off':    return { unit: 'ram',   color: '#ff00ff', label: 'ФУЛЛ_ОФФ_(+ПАЛ)' }
-    case 'split_off_rams': return { unit: 'ram',   color: '#ff8800', label: 'ПОДЕЛЁНКА_(тараны)' }
-    case 'split_off_rest': return { unit: 'axe',   color: '#ff8800', label: 'ПОДЕЛЁНКА_(без_таранов)' }
+    case 'mid_off':         return { unit: 'ram',   color: '#c87d3e', label: 'МИД_ОФФ' }
+    case 'mini_off':        return { unit: 'ram',   color: '#b8a832', label: 'МИНИ_ОФФ' }
     case 'cat': {
       const b = atk.catTarget ? `_(${CAT_TARGET_LABELS[atk.catTarget].toUpperCase()})` : ''
       return { unit: 'catapult', color: '#89b4fa', label: `КАТЫ${b}` }
@@ -611,7 +615,7 @@ function attackBBColor(atk: Attack): string {
 
 function attackToLine(atk: Attack): string {
   const base  = attackBBMeta(atk)
-  const unit  = base.unit
+  const unit  = atk.speedUnit
   const raw   = atk.type === 'cat' ? base.label : (atk.label ?? base.label)
   const catSuffix = atk.type !== 'cat' && atk.catTarget
     ? `_(${CAT_TARGET_LABELS[atk.catTarget].toUpperCase()})` : ''
@@ -734,8 +738,8 @@ function atkTypeLabelShort(type: string): string {
   if (type === 'off')            return 'Офф'
   if (type === 'spam_noble')     return 'Спам-двор'
   if (type === 'spam')           return 'Спам'
-  if (type === 'split_off_rams') return 'Медиум'
-  if (type === 'split_off_rest') return 'Медиум-'
+  if (type === 'mid_off')  return 'Медиум'
+  if (type === 'mini_off') return 'Мини'
   return type
 }
 
@@ -788,6 +792,17 @@ function copyBBCode(): void {
     copied.value = true
     setTimeout(() => { copied.value = false }, 2000)
   })
+}
+
+function doExportXlsx(): void {
+  const idLookup = (coords: string): number | null =>
+    enemyStore.lookupCoords(coords)?.village.id ?? null
+
+  const date = new Date()
+  const ds = `${date.getDate().toString().padStart(2,'0')}.${(date.getMonth()+1).toString().padStart(2,'0')}`
+  const filename = `mass_plan_${ds}.xlsx`
+
+  exportAttacksToXlsx(planStore.attacks, idLookup, bbcodePlayer.value, filename)
 }
 
 

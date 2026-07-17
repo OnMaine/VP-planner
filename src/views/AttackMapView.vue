@@ -543,8 +543,8 @@ function atkTypeShort(atk: Attack): string {
   if (t === 'off')            return 'Офф'
   if (t === 'spam_noble')     return 'Спам-двор'
   if (t === 'spam')           return 'Спам'
-  if (t === 'split_off_rams') return 'Медиум'
-  if (t === 'split_off_rest') return 'Медиум-'
+  if (t === 'mid_off')  return 'Медиум'
+  if (t === 'mini_off') return 'Мини'
   if (t === 'cat')            return atk.catTarget ? `CAT (${CAT_TARGET_LABELS[atk.catTarget]})` : 'CAT'
   return t
 }
@@ -1421,8 +1421,9 @@ function onDragEnd() { dragSourceId.value = null; dragOverId.value = null }
 const ATK_TYPE_OPTIONS: Array<{ type: AttackType; label: string; color: string }> = [
   { type: 'off',            label: 'Офф',      color: C_OFF   },
   { type: 'paladin_off',    label: 'Пал-Офф',  color: C_OFF   },
-  { type: 'split_off_rams', label: 'Медиум',   color: C_SPLIT },
-  { type: 'spam_noble',     label: 'Спам-двор', color: C_NOBLE },
+  { type: 'mid_off',         label: 'Медиум',    color: C_SPLIT },
+  { type: 'mini_off',        label: 'Мини',      color: C_SPLIT },
+  { type: 'spam_noble',      label: 'Спам-двор', color: C_NOBLE },
   { type: 'spam',           label: 'Спам',     color: C_SPAM  },
 ]
 

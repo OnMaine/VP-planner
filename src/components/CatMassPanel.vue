@@ -32,11 +32,6 @@
           class="btn btn-danger btn-sm"
           @click="planStore.clearCatMass()"
         >Сбросить волну</button>
-        <button
-          v-if="planStore.catTargets.length > 0"
-          class="btn btn-danger btn-sm"
-          @click="planStore.clearCatTargets()"
-        >Очистить цели</button>
       </div>
     </div>
 
@@ -103,6 +98,11 @@
       <button class="btn btn-secondary btn-sm" @click="bulkOpen = !bulkOpen">
         {{ bulkOpen ? '▲' : '▼' }} Вставить несколько
       </button>
+      <button
+        v-if="planStore.catTargets.length > 0"
+        class="btn btn-danger btn-sm"
+        @click="planStore.clearCatTargets()"
+      >Очистить цели</button>
     </div>
 
     <div v-if="bulkOpen" class="bulk-panel">
