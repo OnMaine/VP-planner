@@ -1,5 +1,14 @@
 <template>
   <section class="panel cat-mass-panel">
+    <Transition name="cat-gen-overlay">
+      <div v-if="isGenerating" class="cat-gen-overlay">
+        <div class="cat-gen-box">
+          <div class="cat-gen-spinner"></div>
+          <span class="cat-gen-text">Генерация кат волны...</span>
+        </div>
+      </div>
+    </Transition>
+
     <div class="section-header">
       <h2>Кат волна</h2>
       <div class="header-stats">
@@ -14,9 +23,9 @@
       <div class="header-actions">
         <button
           class="btn btn-primary btn-sm"
-          :disabled="planStore.catTargets.length === 0 || !mainMassGenerated"
+          :disabled="planStore.catTargets.length === 0 || !mainMassGenerated || isGenerating"
           :title="!mainMassGenerated ? 'Сначала сгенерируйте основной масс' : ''"
-          @click="planStore.generateCatMass()"
+          @click="doGenerateCatMass()"
         >Сгенерировать</button>
         <button
           v-if="stats.isGenerated"
@@ -165,7 +174,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { usePlanStore } from '@/stores/planStore'
 import { CAT_TARGET_LABELS as LABELS, BUILDING_MAX_LEVEL as MAX_LEVEL, catsToReachLevel, type CatTarget } from '@/stores/presetsStore'
 import { CAT_MASS_DEFAULT_QUEUE } from '@/stores/planStore'
@@ -173,6 +182,17 @@ import { useEnemyDataStore } from '@/stores/enemyDataStore'
 
 const planStore = usePlanStore()
 const enemyStore = useEnemyDataStore()
+
+const isGenerating = ref(false)
+
+async function doGenerateCatMass() {
+  if (isGenerating.value) return
+  isGenerating.value = true
+  await nextTick()
+  await new Promise<void>(resolve => setTimeout(resolve, 30))
+  planStore.generateCatMass()
+  isGenerating.value = false
+}
 
 const stats = computed(() => planStore.catMassStats)
 
@@ -284,6 +304,7 @@ function onTimeChange(id: string, raw: string) {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  position: relative;
 }
 
 .section-header {
@@ -550,4 +571,49 @@ function onTimeChange(id: string, raw: string) {
 
 .status-msg { font-size: 0.85rem; margin-top: 0.4rem; }
 .status-err { color: #e94560; }
+
+// ── Generate overlay ────────────────────────────────────────────────────────
+.cat-gen-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  border-radius: inherit;
+  backdrop-filter: blur(2px);
+}
+
+.cat-gen-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  background: $bg-panel;
+  border-radius: 14px;
+  padding: 2rem 3rem;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+
+@keyframes cat-gen-spin { to { transform: rotate(360deg) } }
+.cat-gen-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255,255,255,0.12);
+  border-top-color: #89b4fa;
+  border-radius: 50%;
+  animation: cat-gen-spin 0.75s linear infinite;
+}
+
+.cat-gen-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.75);
+}
+
+.cat-gen-overlay-enter-active,
+.cat-gen-overlay-leave-active { transition: opacity 0.15s ease }
+.cat-gen-overlay-enter-from,
+.cat-gen-overlay-leave-to   { opacity: 0 }
 </style>

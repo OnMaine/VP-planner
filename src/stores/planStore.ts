@@ -1876,7 +1876,6 @@ export const usePlanStore = defineStore('plan', () => {
     function pushCatMassAtk(
       type: AttackType, village: Village, target: Target,
       composition: AttackComposition, catTarget?: CatTarget,
-      skipNightExcl = false,
     ): boolean {
       const speedUnit   = slowestUnitInComp(composition, settings.unitTimes)
       const unitBaseSec = settings.unitTimes[speedUnit]
@@ -1884,7 +1883,7 @@ export const usePlanStore = defineStore('plan', () => {
       const travelSec   = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
       const sendTime    = calcSendTime(target.arrivalTime, travelSec)
 
-      if (!skipNightExcl && settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return false
+      if (settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return false
 
       const total = totalUnits(composition)
       if (totalPop(composition, settings.unitPop) < settings.minAttackSize) return false
@@ -2014,9 +2013,10 @@ export const usePlanStore = defineStore('plan', () => {
           const pvs = catByPlayer.get(player)!
           for (const v of pvs) {
             if (usedCatInCatMass.has(v.coords)) continue
+            if (nightExclCat(v, target, 'cat', target.arrivalTime)) continue
             const c = emptyComposition()
             c.catapult = v.troops.catapult
-            if (!pushCatMassAtk('cat', v, target, c, catTarget, true)) continue
+            if (!pushCatMassAtk('cat', v, target, c, catTarget)) continue
             usedCatInCatMass.add(v.coords)
             registerCats(target.id, v.troops.catapult)
             pIdx = (pIdx + pi + 1) % catPlayers.length
