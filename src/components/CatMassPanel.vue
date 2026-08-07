@@ -111,7 +111,7 @@
           <input
             type="datetime-local" class="input dt-input" step="0.001"
             v-model="bulkSetTime"
-            @change="localStorage.setItem(LS_BULK_TIME, bulkSetTime)"
+            @change="saveBulkTime"
           />
           <button class="btn btn-secondary btn-sm" :disabled="!bulkSetTime" @click="applyBulkTime">Применить</button>
         </div>
@@ -289,6 +289,10 @@ function doBulkAdd() {
 }
 
 // ── Bulk set time ─────────────────────────────────────────────────────────────
+function saveBulkTime() {
+  localStorage.setItem(LS_BULK_TIME, bulkSetTime.value)
+}
+
 function applyBulkTime() {
   if (!bulkSetTime.value) return
   const d = new Date(bulkSetTime.value)
