@@ -1,13 +1,20 @@
 <template>
   <section class="panel">
-    <div class="section-header">
-      <h2>Цели</h2>
-      <button
-        v-if="planStore.targets.length"
-        class="btn btn-danger btn-sm"
-        @click="clearAllTargets()"
-      >Очистить</button>
-    </div>
+    <button class="collapse-toggle" @click="open = !open">
+      <span>Цели<template v-if="planStore.targets.length"> ({{ planStore.targets.length }})</template></span>
+      <span class="collapse-right">
+        <span @click.stop>
+          <button
+            v-if="planStore.targets.length"
+            class="btn btn-danger btn-sm"
+            @click="clearAllTargets()"
+          >Очистить</button>
+        </span>
+        <span class="collapse-icon">{{ open ? '▲' : '▼' }}</span>
+      </span>
+    </button>
+
+    <template v-if="open">
 
     <div class="add-targets-bar">
       <button class="btn btn-primary" @click="addEmptyTarget">+ Вручную</button>
@@ -114,6 +121,8 @@
       </table>
     </div>
     <p v-else class="muted-text">Целей ещё нет. Добавь выше.</p>
+
+    </template><!-- end v-if="open" -->
   </section>
 </template>
 
@@ -139,6 +148,7 @@ const { filterCoordsInput } = useCoordInput()
 const { resolveTargetPlayer } = usePlayerResolution()
 
 // UI state
+const open = ref(true)
 const bulkOpen = ref(false)
 const bulkText = ref('')
 const bulkDatetime = ref(toDatetimeLocal(new Date(Math.floor((Date.now() + 3600_000) / 1000) * 1000)))
@@ -214,14 +224,16 @@ function parseTargetsFromText(text: string): ParsedTarget[] {
 
 function addTargetsFromParsed(entries: ParsedTarget[], arrivalTime: Date): { added: number; skipped: number } {
   let added = 0; let skipped = 0
+  const existing = new Set(planStore.targets.map(t => t.coords).filter(Boolean))
   for (const e of entries) {
+    if (existing.has(e.coords)) { skipped++; continue }
     const info = enemyStore.lookupCoords(e.coords)
     const opts: Record<string, unknown> = {}
     if (info) {
       opts.villageId = info.village.id
       if (info.player) { opts.enemyPlayer = info.player.name; opts.enemyAllyTag = info.ally?.tag ?? '' }
     }
-    if (planStore.addTarget(e.coords, arrivalTime, opts)) added++
+    if (planStore.addTarget(e.coords, arrivalTime, opts)) { added++; existing.add(e.coords) }
     else skipped++
   }
   return { added, skipped }
@@ -257,6 +269,15 @@ function onTargetFile(event: Event): void {
 </script>
 
 <style lang="scss" scoped>
+.collapse-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; background: none; border: none; cursor: pointer;
+  padding: 0; color: inherit; font-size: 1rem; font-weight: 600; text-align: left;
+  &:hover { opacity: 0.85; }
+}
+.collapse-right { display: flex; align-items: center; gap: 0.5rem; }
+.collapse-icon  { font-size: 0.75rem; color: $text-faint; }
+
 .targets-table td { vertical-align: middle; }
 
 .group-sep-row td {

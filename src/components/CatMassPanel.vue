@@ -9,31 +9,38 @@
       </div>
     </Transition>
 
-    <div class="section-header">
-      <h2>Кат волна</h2>
-      <div class="header-stats">
-        <span class="stat-item">Свободных офов: <strong>{{ stats.availableOffs }}</strong></span>
-        <span class="stat-sep">·</span>
-        <span class="stat-item">Кат отрядов: <strong>{{ stats.availableCats }}</strong></span>
-        <template v-if="stats.isGenerated">
+    <button class="collapse-toggle" @click="open = !open">
+      <span class="collapse-title">
+        <span class="collapse-title-main">Кат волна</span>
+        <span class="header-stats-inline">
+          <span class="stat-item">Свободных офов: <strong>{{ stats.availableOffs }}</strong></span>
           <span class="stat-sep">·</span>
-          <span class="stat-item stat-result">Назначено: <strong>{{ stats.catMassOffs }}</strong> офов, <strong>{{ stats.catMassCats }}</strong> кат</span>
-        </template>
-      </div>
-      <div class="header-actions">
-        <button
-          class="btn btn-primary btn-sm"
-          :disabled="planStore.catTargets.length === 0 || !mainMassGenerated || isGenerating"
-          :title="!mainMassGenerated ? 'Сначала сгенерируйте основной масс' : ''"
-          @click="doGenerateCatMass()"
-        >Сгенерировать</button>
-        <button
-          v-if="stats.isGenerated"
-          class="btn btn-danger btn-sm"
-          @click="planStore.clearCatMass()"
-        >Сбросить волну</button>
-      </div>
-    </div>
+          <span class="stat-item">Кат отрядов: <strong>{{ stats.availableCats }}</strong></span>
+          <template v-if="stats.isGenerated">
+            <span class="stat-sep">·</span>
+            <span class="stat-item stat-result">Назначено: <strong>{{ stats.catMassOffs }}</strong> офов, <strong>{{ stats.catMassCats }}</strong> кат</span>
+          </template>
+        </span>
+      </span>
+      <span class="collapse-right">
+        <span class="header-actions" @click.stop>
+          <button
+            class="btn btn-primary btn-sm"
+            :disabled="planStore.catTargets.length === 0 || !mainMassGenerated || isGenerating"
+            :title="!mainMassGenerated ? 'Сначала сгенерируйте основной масс' : ''"
+            @click="doGenerateCatMass()"
+          >Сгенерировать</button>
+          <button
+            v-if="stats.isGenerated"
+            class="btn btn-danger btn-sm"
+            @click="planStore.clearCatMass()"
+          >Сбросить волну</button>
+        </span>
+        <span class="collapse-icon">{{ open ? '▲' : '▼' }}</span>
+      </span>
+    </button>
+
+    <template v-if="open">
 
     <!-- Building priority queue -->
     <div class="queue-section">
@@ -90,7 +97,7 @@
       </div>
     </div>
 
-    <p class="off-hint">Офф подбирается по приоритету: мид → мини → фулл (фуллы сохраняются для основного масса)</p>
+    <p class="off-hint">Офф подбирается из свободных (не в основном массе): фулл → мид → мини</p>
 
     <!-- Add targets bar -->
     <div class="add-bar">
@@ -98,11 +105,18 @@
       <button class="btn btn-secondary btn-sm" @click="bulkOpen = !bulkOpen">
         {{ bulkOpen ? '▲' : '▼' }} Вставить несколько
       </button>
-      <button
-        v-if="planStore.catTargets.length > 0"
-        class="btn btn-danger btn-sm"
-        @click="planStore.clearCatTargets()"
-      >Очистить цели</button>
+      <template v-if="planStore.catTargets.length > 0">
+        <div class="bulk-time-row">
+          <span class="bulk-time-label">Тайминг всем:</span>
+          <input
+            type="datetime-local" class="input dt-input" step="0.001"
+            v-model="bulkSetTime"
+            @change="localStorage.setItem(LS_BULK_TIME, bulkSetTime)"
+          />
+          <button class="btn btn-secondary btn-sm" :disabled="!bulkSetTime" @click="applyBulkTime">Применить</button>
+        </div>
+        <button class="btn btn-danger btn-sm" @click="planStore.clearCatTargets()">Очистить цели</button>
+      </template>
     </div>
 
     <div v-if="bulkOpen" class="bulk-panel">
@@ -170,6 +184,7 @@
 
     <div v-else class="empty-hint">Нет кат целей — добавьте координаты выше.</div>
 
+    </template><!-- end v-if="open" -->
   </section>
 </template>
 
@@ -183,6 +198,7 @@ import { useEnemyDataStore } from '@/stores/enemyDataStore'
 const planStore = usePlanStore()
 const enemyStore = useEnemyDataStore()
 
+const open = ref(true)
 const isGenerating = ref(false)
 
 async function doGenerateCatMass() {
@@ -230,6 +246,8 @@ function addBuilding() {
 const bulkOpen = ref(false)
 const bulkText = ref('')
 const bulkError = ref('')
+const LS_BULK_TIME = 'vp_cat_bulk_time'
+const bulkSetTime = ref(localStorage.getItem(LS_BULK_TIME) ?? '')
 
 function toDatetimeLocal(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -270,11 +288,22 @@ function doBulkAdd() {
   bulkOpen.value = false
 }
 
+// ── Bulk set time ─────────────────────────────────────────────────────────────
+function applyBulkTime() {
+  if (!bulkSetTime.value) return
+  const d = new Date(bulkSetTime.value)
+  if (isNaN(d.getTime())) return
+  localStorage.setItem(LS_BULK_TIME, bulkSetTime.value)
+  for (const t of planStore.catTargets) {
+    planStore.updateCatTarget(t.id, { arrivalTime: d })
+  }
+}
+
 // ── Add empty ─────────────────────────────────────────────────────────────────
 function addEmpty() {
-  const d = new Date()
-  d.setHours(d.getHours() + 1, 0, 0, 0)
-  planStore.addEmptyCatTarget(d)
+  const saved = localStorage.getItem(LS_BULK_TIME)
+  const d = saved ? new Date(saved) : new Date(Math.ceil(Date.now() / 60000) * 60000 + 3600_000)
+  planStore.addEmptyCatTarget(isNaN(d.getTime()) ? new Date() : d)
 }
 
 // ── Inline edit ───────────────────────────────────────────────────────────────
@@ -307,24 +336,29 @@ function onTimeChange(id: string, raw: string) {
   position: relative;
 }
 
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  h2 { margin: 0; flex-shrink: 0; }
+.collapse-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; background: none; border: none; cursor: pointer;
+  padding: 0; color: inherit; text-align: left; gap: 0.75rem;
+  &:hover { opacity: 0.85; }
+}
+.collapse-title {
+  display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 0;
+}
+.collapse-title-main {
+  font-size: 1rem; font-weight: 600; flex-shrink: 0;
+}
+.collapse-right {
+  display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;
+}
+.collapse-icon { font-size: 0.75rem; color: $text-faint; }
+
+.header-stats-inline {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.82rem; color: $text-dim; flex-wrap: wrap;
 }
 
-.header-stats {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex: 1;
-  font-size: 0.82rem;
-  color: $text-dim;
-  flex-wrap: wrap;
-}
-
-.header-actions { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; }
+.header-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
 
 // ── Building queue ─────────────────────────────────────────────────────────────
 .queue-section {
@@ -483,6 +517,12 @@ function onTimeChange(id: string, raw: string) {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.bulk-time-row {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.82rem; color: $text-dim;
 }
 
 .bulk-panel {

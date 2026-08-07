@@ -463,6 +463,14 @@ export const usePlanStore = defineStore('plan', () => {
   const generationIssues = ref<GenerationIssue[]>([])
   const nobleRecommendations = ref<Map<string, number>>(new Map())
 
+  interface UnusedVillageStats {
+    noSlots: number        // eligible but no target needed them
+    nightExcluded: number  // would be excluded by night window for all targets
+    earliestExcluded: number // would be excluded by earliest send for all targets
+  }
+  const unusedOffStats = ref<UnusedVillageStats>({ noSlots: 0, nightExcluded: 0, earliestExcluded: 0 })
+  const unusedCatStats = ref<UnusedVillageStats>({ noSlots: 0, nightExcluded: 0, earliestExcluded: 0 })
+
   function saveSpamNobleTargets() {
     localStorage.setItem(LS_SPAM_NOBLE_TARGETS, JSON.stringify(spamNobleTargets.value))
   }
@@ -474,6 +482,7 @@ export const usePlanStore = defineStore('plan', () => {
   function addTarget(coords: string, arrivalTime: Date, options?: Partial<Omit<Target, 'id' | 'coords' | 'arrivalTime' | 'x' | 'y'>>): Target | null {
     const xy = coordsToXY(coords)
     if (!xy) return null
+    if (targets.value.some(t => t.coords === coords)) return null
     const t: Target = {
       id: genId(),
       coords,
@@ -507,6 +516,7 @@ export const usePlanStore = defineStore('plan', () => {
   function updateTarget(id: string, patch: Partial<Omit<Target, 'id'>>) {
     const t = targets.value.find((t) => t.id === id)
     if (!t) return
+    if (patch.coords && targets.value.some(other => other.id !== id && other.coords === patch.coords)) return
     Object.assign(t, patch)
     if (patch.coords) {
       const xy = coordsToXY(patch.coords)
@@ -909,11 +919,16 @@ export const usePlanStore = defineStore('plan', () => {
 
     // ── nightExcludes pre-check (call BEFORE pool mutation) ──────────────
     function nightExcludes(village: Village, target: Target, type: AttackType, arrivalTime: Date): boolean {
-      if (!settings.sendExcludeEnabled) return false
       const unitBaseSec = settings.unitTimes[speedUnitForType(type)]
       const dist = calcDistance({ x: village.x, y: village.y }, { x: target.x, y: target.y }, settings.mapSize)
       const travelSec = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
-      return isInNightWindow(calcSendTime(arrivalTime, travelSec), settings.nightFrom, settings.nightTo)
+      const sendTime = calcSendTime(arrivalTime, travelSec)
+      if (settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return true
+      if (settings.earliestSendEnabled && settings.earliestSendTime) {
+        const floor = new Date(settings.earliestSendTime)
+        if (!isNaN(floor.getTime()) && sendTime < floor) return true
+      }
+      return false
     }
 
     // ── trackNoble ───────────────────────────────────────────────────────
@@ -1801,6 +1816,37 @@ export const usePlanStore = defineStore('plan', () => {
       if (used > 0) recs.set(player, used)
     }
     nobleRecommendations.value = recs
+
+    // ── Post-generation analysis: why are offs unused? ────────────────────
+    {
+      const { settings } = worldStore
+      const presStore2 = usePresetsStore()
+      const usedCoords = new Set(attacks.value.filter(a => !a.excluded).map(a => a.fromVillage.coords))
+      const unusedVils = villages.filter(v =>
+        !reservedVillages.value.has(v.coords) &&
+        !usedCoords.has(v.coords) &&
+        calcOffFarm(v.troops, settings.unitPop) >= presStore2.fullOffMinOffFarm &&
+        v.troops.ram > 0
+      )
+      // Use the target with the latest arrival time as the most permissive check
+      const latestTarget = [...targets.value].sort((a, b) => b.arrivalTime.getTime() - a.arrivalTime.getTime())[0]
+      let noSlots = 0, nightExcluded = 0, earliestExcluded = 0
+      for (const v of unusedVils) {
+        if (latestTarget) {
+          const unitBaseSec = settings.unitTimes[speedUnitForType('off')]
+          const dist = calcDistance({ x: v.x, y: v.y }, { x: latestTarget.x, y: latestTarget.y }, settings.mapSize)
+          const travelSec = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
+          const sendTime = calcSendTime(latestTarget.arrivalTime, travelSec)
+          if (settings.earliestSendEnabled && settings.earliestSendTime) {
+            const floor = new Date(settings.earliestSendTime)
+            if (!isNaN(floor.getTime()) && sendTime < floor) { earliestExcluded++; continue }
+          }
+          if (settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) { nightExcluded++; continue }
+        }
+        noSlots++
+      }
+      unusedOffStats.value = { noSlots, nightExcluded, earliestExcluded }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1826,16 +1872,16 @@ export const usePlanStore = defineStore('plan', () => {
     const catMinSize = presStore.catMinSize
 
     // Off candidates: not reserved, not in main mass, at least mini_off threshold.
-    // Priority: mid_off → mini_off → full_off (saves best offs for main mass by default)
+    // Priority: full_off first (largest), then mid_off, then mini_off
     const offCandidates = (() => {
       const full = presStore.fullOffMinOffFarm
       const half = presStore.halfOffMinOffFarm
       const mini = presStore.smallOffMinOffFarm
       function offRank(v: Village): number {
         const of = calcOffFarm(v.troops, settings.unitPop)
-        if (of >= half && of < full) return 0  // mid_off — first
-        if (of >= mini && of <  half) return 1  // mini_off — second
-        return 2                                 // full_off — last
+        if (of >= full) return 0               // full_off — first
+        if (of >= half && of < full) return 1  // mid_off — second
+        return 2                               // mini_off — last
       }
       return villages
         .filter(v =>
@@ -1847,7 +1893,7 @@ export const usePlanStore = defineStore('plan', () => {
         .sort((a, b) => {
           const ra = offRank(a), rb = offRank(b)
           if (ra !== rb) return ra - rb
-          return calcOffFarm(a.troops, settings.unitPop) - calcOffFarm(b.troops, settings.unitPop)
+          return calcOffFarm(b.troops, settings.unitPop) - calcOffFarm(a.troops, settings.unitPop)
         })
     })()
 
@@ -1866,11 +1912,16 @@ export const usePlanStore = defineStore('plan', () => {
 
     // Night exclusion helper (mirrors the one in generate())
     function nightExclCat(v: Village, target: Target, type: AttackType, arrT: Date): boolean {
-      if (!settings.sendExcludeEnabled) return false
       const unitBaseSec = settings.unitTimes[speedUnitForType(type)]
       const dist = calcDistance({ x: v.x, y: v.y }, { x: target.x, y: target.y }, settings.mapSize)
       const travelSec = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
-      return isInNightWindow(calcSendTime(arrT, travelSec), settings.nightFrom, settings.nightTo)
+      const sendTime = calcSendTime(arrT, travelSec)
+      if (settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return true
+      if (settings.earliestSendEnabled && settings.earliestSendTime) {
+        const floor = new Date(settings.earliestSendTime)
+        if (!isNaN(floor.getTime()) && sendTime < floor) return true
+      }
+      return false
     }
 
     // Push a single cat-mass attack directly into attacks.value
@@ -2027,6 +2078,36 @@ export const usePlanStore = defineStore('plan', () => {
           }
         }
       }
+    }
+
+    // ── Post-generation analysis: why are cat squads unused? ─────────────
+    {
+      const { settings } = worldStore
+      const usedCoords = new Set(attacks.value.filter(a => a.catMass && a.type === 'cat').map(a => a.fromVillage.coords))
+      const mainMassCoords = new Set(attacks.value.filter(a => !a.catMass && !usedCoords.has(a.fromVillage.coords)).map(a => a.fromVillage.coords))
+      const unusedCats = villages.filter(v =>
+        !reservedVillages.value.has(v.coords) &&
+        !mainMassCoords.has(v.coords) &&
+        !usedCoords.has(v.coords) &&
+        v.troops.catapult >= presStore.catMinSize
+      )
+      const latestTarget = [...catTargets.value].sort((a, b) => b.arrivalTime.getTime() - a.arrivalTime.getTime())[0]
+      let noSlots = 0, nightExcluded = 0, earliestExcluded = 0
+      for (const v of unusedCats) {
+        if (latestTarget) {
+          const unitBaseSec = settings.unitTimes[speedUnitForType('cat')]
+          const dist = calcDistance({ x: v.x, y: v.y }, { x: latestTarget.x, y: latestTarget.y }, settings.mapSize)
+          const travelSec = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
+          const sendTime = calcSendTime(latestTarget.arrivalTime, travelSec)
+          if (settings.earliestSendEnabled && settings.earliestSendTime) {
+            const floor = new Date(settings.earliestSendTime)
+            if (!isNaN(floor.getTime()) && sendTime < floor) { earliestExcluded++; continue }
+          }
+          if (settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) { nightExcluded++; continue }
+        }
+        noSlots++
+      }
+      unusedCatStats.value = { noSlots, nightExcluded, earliestExcluded }
     }
   }
 
@@ -2645,6 +2726,8 @@ export const usePlanStore = defineStore('plan', () => {
     attacksByPlayer,
     openOrdersTo,
     generationIssues,
+    unusedOffStats,
+    unusedCatStats,
     uncoveredTargetCoords,
     offPoolStats,
     breachPalByPlayer,

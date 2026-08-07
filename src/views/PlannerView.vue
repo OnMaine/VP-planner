@@ -94,7 +94,7 @@
         </template>
         <template v-if="planStore.poolUsageStats.offsAvailable > 0">
           <span class="pool-sep">·</span>
-          <span class="pool-unused">{{ planStore.poolUsageStats.offsAvailable }} офов не в плане</span>
+          <span class="pool-unused" :title="unusedOffTooltip">{{ planStore.poolUsageStats.offsAvailable }} офов не в плане</span>
         </template>
         <template v-if="planStore.poolUsageStats.reservedOffCount > 0">
           <span class="pool-sep">·</span>
@@ -107,8 +107,12 @@
           </span>
           <template v-if="planStore.poolUsageStats.catSquadsLeft > 0">
             <span class="pool-sep">·</span>
-            <span class="pool-unused">{{ planStore.poolUsageStats.catSquadsLeft }} кат не в плане</span>
+            <span class="pool-unused" :title="unusedCatTooltip">{{ planStore.poolUsageStats.catSquadsLeft }} кат не в плане</span>
           </template>
+        </template>
+        <template v-if="shortageTargetCount > 0">
+          <span class="pool-sep">·</span>
+          <span class="pool-shortage" :title="'Основной масс: цели, для которых не хватило войск. Подробности — в результатах по деревням.'">⚠ {{ shortageTargetCount }} цел. не покрыто (осн.)</span>
         </template>
       </div>
     </section>
@@ -148,6 +152,17 @@ const palOffPanel    = ref<InstanceType<typeof PalOffPanel> | null>(null)
 const isGenerating   = ref(false)
 
 const activeAttackCount = computed(() => planStore.attacks.filter((a) => !a.excluded).length)
+const shortageTargetCount = computed(() => new Set(planStore.generationIssues.map(i => i.targetCoords)).size)
+
+function buildUnusedTooltip(s: { noSlots: number; nightExcluded: number; earliestExcluded: number }, fallback: string): string {
+  const parts: string[] = []
+  if (s.noSlots > 0)          parts.push(`${s.noSlots} — все цели уже покрыты`)
+  if (s.nightExcluded > 0)    parts.push(`${s.nightExcluded} — ночной режим`)
+  if (s.earliestExcluded > 0) parts.push(`${s.earliestExcluded} — ранний старт`)
+  return parts.length ? parts.join('\n') : fallback
+}
+const unusedOffTooltip = computed(() => buildUnusedTooltip(planStore.unusedOffStats, 'Оффы не распределены по целям'))
+const unusedCatTooltip = computed(() => buildUnusedTooltip(planStore.unusedCatStats, 'Каты не распределены по кат-целям'))
 
 const palOffTotal    = computed(() => planStore.offPoolStats.breachPal + planStore.offPoolStats.palOnly)
 const breachOffTotal = computed(() => planStore.offPoolStats.breachPal + planStore.offPoolStats.breachOnly)
@@ -386,6 +401,7 @@ function onGenerate(): void {
 .pool-sep   { color: $text-faint; }
 .pool-unused    { color: $orange; font-weight: 600; }
 .pool-reserved  { color: #c8a020; font-weight: 600; }
+.pool-shortage  { color: #e94560; font-weight: 700; cursor: default; }
 
 .stat-ok   { color: $green !important; }
 .stat-warn { color: $orange !important; }

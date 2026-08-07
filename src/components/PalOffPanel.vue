@@ -66,14 +66,15 @@
         </div>
 
         <div class="paloff-assign">
-          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.5rem">
-            <button class="btn btn-secondary btn-sm" @click="distributePalEvenly">Пал: равномерно</button>
-            <button class="btn btn-secondary btn-sm" @click="distributeBreachEvenly">Пробой: равномерно</button>
-            <button class="btn btn-secondary btn-sm" @click="clearAssignments">Сбросить всё</button>
-            <button class="btn btn-secondary btn-sm" @click="bulkOpen = !bulkOpen">
-              {{ bulkOpen ? '▲' : '▼' }} Массовая вставка
-            </button>
-            <span class="muted-text" style="font-size:0.8rem;margin-left:auto">
+          <div class="assign-toolbar">
+            <div class="assign-actions">
+              <button class="btn btn-secondary btn-sm" @click="distributeEvenly">Распределить равномерно</button>
+              <button class="btn btn-danger btn-sm" @click="clearAssignments">Сбросить всё</button>
+              <button class="btn btn-primary btn-sm" @click="bulkOpen = !bulkOpen">
+                {{ bulkOpen ? '▲' : '▼' }} Массовая вставка
+              </button>
+            </div>
+            <span class="assign-stats">
               Пал: {{ totalPalAssigned }}/{{ totalPalAvailable }}
               · Пробой: {{ totalBreachAssigned }}/{{ totalBreachAvailable }}
               · +П+Пр: {{ totalBpAssigned }}/{{ totalBpAvailable }}
@@ -81,8 +82,8 @@
           </div>
 
           <div v-if="bulkOpen" style="margin-bottom:0.75rem">
-            <p class="bulk-hint">Формат: <code>координаты,пал,пробои</code> (0 = не менять)</p>
-            <textarea class="bulk-textarea" rows="5" v-model="bulkText" placeholder="416|535,3,1&#10;416|536,2,0&#10;416|537,1,2"></textarea>
+            <p class="bulk-hint">Формат: <code>координаты,пал,пробои,+п+пр</code> (0 = не менять)</p>
+            <textarea class="bulk-textarea" rows="5" v-model="bulkText" placeholder="416|535,3,1,2&#10;416|536,2,0,0&#10;416|537,1,2,1"></textarea>
             <div v-if="bulkError" class="status-msg status-err">{{ bulkError }}</div>
             <button class="btn btn-primary btn-sm mt" @click="applyBulk">Применить</button>
           </div>
@@ -203,27 +204,27 @@ function setBp(targetId: string, raw: number) {
   planStore.updateTarget(targetId, { bpOffCount: clamped || undefined })
 }
 
-function distributePalEvenly(): void {
-  const targets = planStore.targets.filter((t) => t.coords)
+function distributeEvenly(): void {
+  const targets = planStore.targets.filter(t => t.coords)
   if (!targets.length) return
-  const total = totalPalAvailable.value
-  const perTarget = Math.floor(total / targets.length)
-  const remainder = total - perTarget * targets.length
-  targets.forEach((t, i) =>
-    planStore.updateTarget(t.id, { palOffCount: perTarget + (i < remainder ? 1 : 0) || undefined }),
-  )
+  const n = targets.length
+
+  function spread(total: number, key: 'palOffCount' | 'breachOffCount' | 'bpOffCount') {
+    const per = Math.floor(total / n)
+    const rem = total - per * n
+    targets.forEach((t, i) =>
+      planStore.updateTarget(t.id, { [key]: per + (i < rem ? 1 : 0) || undefined })
+    )
+  }
+
+  // 1. Pal+Breach combo first
+  spread(totalBpAvailable.value, 'bpOffCount')
+  // 2. Remaining breach
+  spread(totalBreachAvailable.value, 'breachOffCount')
+  // 3. Remaining pal
+  spread(totalPalAvailable.value, 'palOffCount')
 }
 
-function distributeBreachEvenly(): void {
-  const targets = planStore.targets.filter((t) => t.coords)
-  if (!targets.length) return
-  const total = totalBreachAvailable.value
-  const perTarget = Math.floor(total / targets.length)
-  const remainder = total - perTarget * targets.length
-  targets.forEach((t, i) =>
-    planStore.updateTarget(t.id, { breachOffCount: perTarget + (i < remainder ? 1 : 0) || undefined }),
-  )
-}
 
 function clearAssignments(): void {
   for (const t of planStore.targets) {
@@ -241,13 +242,16 @@ function applyBulk(): void {
     if (!/^\d+\|\d+$/.test(coords)) { bulkError.value = `Неверный формат: ${line}`; return }
     const palCount    = parts[1] ? parseInt(parts[1].trim(), 10) : null
     const breachCount = parts[2] ? parseInt(parts[2].trim(), 10) : null
+    const bpCount     = parts[3] ? parseInt(parts[3].trim(), 10) : null
     if (palCount !== null && isNaN(palCount))    { bulkError.value = `Неверное кол-во пал: ${line}`; return }
     if (breachCount !== null && isNaN(breachCount)) { bulkError.value = `Неверное кол-во пробоев: ${line}`; return }
+    if (bpCount !== null && isNaN(bpCount))      { bulkError.value = `Неверное кол-во +п+пр: ${line}`; return }
     const t = planStore.targets.find((t) => t.coords === coords)
     if (!t) continue
-    const patch: { palOffCount?: number; breachOffCount?: number } = {}
+    const patch: { palOffCount?: number; breachOffCount?: number; bpOffCount?: number } = {}
     if (palCount !== null)    patch.palOffCount    = palCount    || undefined
     if (breachCount !== null) patch.breachOffCount = breachCount || undefined
+    if (bpCount !== null)     patch.bpOffCount     = bpCount     || undefined
     planStore.updateTarget(t.id, patch)
   }
   bulkOpen.value = false
@@ -264,6 +268,18 @@ defineExpose({ expand: () => { open.value = true } })
 
 .panel-title-row { display: inline-flex; align-items: center; gap: 6px; }
 .knight-icon { width: 16px; height: 16px; image-rendering: pixelated; }
+
+.assign-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid $border;
+  border-radius: 6px;
+}
+.assign-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.assign-stats { font-size: 0.8rem; color: $text-dim; white-space: nowrap; }
 
 .coords-cell  { display: flex; align-items: center; gap: 0.4rem; }
 .tower-badge  { display: inline-flex; align-items: center; gap: 2px; font-size: 0.72rem; color: $orange; white-space: nowrap; cursor: default; }

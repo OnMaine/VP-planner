@@ -28,14 +28,15 @@
         Тайминг
         <span class="timing-hint" title="Опорное время для цели. От него считаются все атаки: смещение слота задаёт сдвиг относительно этой точки">?</span>
       </span>
-      <input v-model="arrivalDatetime" type="datetime-local" class="arrival-input" step="0.001" />
+      <input v-model="arrivalDatetime" type="datetime-local" class="arrival-input" step="0.001"
+        @change="saveArrivalTime()" />
       <button class="apply-btn" title="Применить ко всем целям" @click="applyArrivalTime">→ всем</button>
 
       <div class="v-sep-tall" />
       <RouterLink to="/mass-configs" class="btn btn-secondary btn-sm">Изменить</RouterLink>
     </div>
 
-    <!-- Row 2: options -->
+    <!-- Row 2: toggles -->
     <div class="panel-row panel-row-opts">
       <button
         :class="['toggle-btn', { 'toggle-on': worldStore.settings.sendExcludeEnabled }]"
@@ -62,12 +63,30 @@
       <div class="v-sep" />
 
       <button
+        :class="['toggle-btn', { 'toggle-on': worldStore.settings.earliestSendEnabled }]"
+        title="Ранний старт: не генерировать атаки, отправка которых раньше указанного времени"
+        @click="worldStore.updateSettings({ earliestSendEnabled: !worldStore.settings.earliestSendEnabled })"
+      >⏰ Старт не ранее</button>
+      <transition name="fade">
+        <input
+          v-if="worldStore.settings.earliestSendEnabled"
+          type="datetime-local"
+          class="input earliest-input"
+          step="60"
+          :value="worldStore.settings.earliestSendTime"
+          @change="worldStore.updateSettings({ earliestSendTime: ($event.target as HTMLInputElement).value })"
+        />
+      </transition>
+
+      <div class="v-sep" />
+
+      <button
         :class="['toggle-btn', { 'toggle-on': worldStore.settings.moraleEnabled }]"
         title="Мораль: показывать предупреждение если очки атакующего игрока значительно превышают очки защитника. Средний риск — соотношение < 1.5×, высокий — < 1×."
         @click="worldStore.updateSettings({ moraleEnabled: !worldStore.settings.moraleEnabled })"
       >⚖ Мораль</button>
 
-      <div class="v-sep" />
+      <div class="v-sep" v-if="worldStore.settings.watchtowerEnabled" />
 
       <button
         v-if="worldStore.settings.watchtowerEnabled"
@@ -75,8 +94,19 @@
         title="Учитывать башни при распределении: засвеченные деревни уходят в конец очереди подбора"
         @click="worldStore.updateSettings({ watchtowerAvoidEnabled: !(worldStore.settings.watchtowerAvoidEnabled ?? true) })"
       >🗼 Башни</button>
-      <div class="v-sep" v-if="worldStore.settings.watchtowerEnabled" />
 
+      <div class="v-sep" v-if="store.active" />
+
+      <button
+        v-if="store.active"
+        :class="['toggle-btn', { 'toggle-on': store.active.catMassEnabled }]"
+        title="Кат волна: вторичная волна из свободных офов и кат отрядов по отдельным целям"
+        @click="store.update(store.active!.id, { catMassEnabled: store.active.catMassEnabled ? undefined : true })"
+      >🐱 Кат волна</button>
+    </div>
+
+    <!-- Row 3: distribution selects -->
+    <div class="panel-row panel-row-selects">
       <span class="opts-label">Распределение</span>
       <select
         class="input dist-select"
@@ -115,15 +145,6 @@
         <option value="manual">Вручную</option>
         <option value="auto">Автоматически</option>
       </select>
-
-      <div class="v-sep" />
-
-      <button
-        v-if="store.active"
-        :class="['toggle-btn', { 'toggle-on': store.active.catMassEnabled }]"
-        title="Кат волна: вторичная волна из свободных офов и кат отрядов по отдельным целям"
-        @click="store.update(store.active!.id, { catMassEnabled: store.active.catMassEnabled ? undefined : true })"
-      >🐱 Кат волна</button>
     </div>
 
   </section>
@@ -175,7 +196,12 @@ function slotLabel(presetId: string): string {
   return presetsStore.all.find(p => p.id === presetId)?.name ?? presetId
 }
 
-const arrivalDatetime = ref(toDatetimeLocal(new Date(Math.floor((Date.now() + 3600_000) / 1000) * 1000)))
+const LS_ARRIVAL = 'vp_mass_arrival_time'
+const arrivalDatetime = ref(localStorage.getItem(LS_ARRIVAL) ?? toDatetimeLocal(new Date(Math.floor((Date.now() + 3600_000) / 1000) * 1000)))
+
+function saveArrivalTime(): void {
+  localStorage.setItem(LS_ARRIVAL, arrivalDatetime.value)
+}
 
 function applyArrivalTime(): void {
   const d = new Date(arrivalDatetime.value)
@@ -187,10 +213,10 @@ function applyArrivalTime(): void {
 <style lang="scss" scoped>
 .active-mass-panel {
   margin-bottom: 1rem;
-  padding: 0.55rem 1rem 0.5rem;
+  padding: 0.6rem 1rem 0.65rem;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0;
 }
 
 // ── Row layout ────────────────────────────────────────────────────────────
@@ -207,8 +233,18 @@ function applyArrivalTime(): void {
 
 .panel-row-opts {
   min-height: 26px;
-  padding-top: 0.15rem;
+  padding: 0.55rem 0 0.1rem;
+  margin-top: 0.45rem;
   border-top: 1px solid a($border, 0.5);
+  flex-wrap: wrap;
+}
+
+.panel-row-selects {
+  min-height: 26px;
+  padding: 0.5rem 0 0;
+  margin-top: 0.3rem;
+  border-top: 1px solid a($border, 0.3);
+  flex-wrap: wrap;
 }
 
 .row-spacer { flex: 1; }
@@ -350,6 +386,13 @@ function applyArrivalTime(): void {
 
 .night-sep  { font-size: 0.8rem; color: $text-dim; }
 .night-unit { font-size: 0.75rem; color: $text-faint; }
+
+.earliest-input {
+  padding: 0.15rem 0.3rem; font-size: 0.78rem;
+  background: $bg-page; border: 1px solid $border;
+  border-radius: 4px; color: $text;
+  &:focus { outline: none; border-color: $accent; }
+}
 
 
 .dist-select {

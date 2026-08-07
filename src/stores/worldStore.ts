@@ -27,6 +27,8 @@ export interface WorldSettings {
   nightFrom: number
   nightTo: number
   sendExcludeEnabled: boolean
+  earliestSendEnabled: boolean
+  earliestSendTime: string    // datetime-local string: "YYYY-MM-DDTHH:MM"
   moraleEnabled: boolean
   snobMaxDist: number
   snobIntervalMs: number
@@ -94,6 +96,8 @@ function defaultSettings(): WorldSettings {
     nightFrom: 0,
     nightTo: 8,
     sendExcludeEnabled: false,
+    earliestSendEnabled: false,
+    earliestSendTime: '',
     moraleEnabled: false,
     snobMaxDist: 60,
     snobIntervalMs: 100,
@@ -229,6 +233,8 @@ export const useWorldStore = defineStore('world', () => {
         unitPop,
         minAttackSize: settings.value.minAttackSize,
         sendExcludeEnabled: settings.value.sendExcludeEnabled,
+        earliestSendEnabled: settings.value.earliestSendEnabled,
+        earliestSendTime: settings.value.earliestSendTime,
         moraleEnabled: settings.value.moraleEnabled,
         watchtowerAvoidEnabled: settings.value.watchtowerAvoidEnabled,
         noblePollMode: settings.value.noblePollMode,

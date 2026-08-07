@@ -1,22 +1,24 @@
 <template>
   <section class="panel">
-    <div class="section-header">
-      <button class="collapse-toggle" @click="open = !open">
-        <span class="panel-title-row">
-          <img :src="watchtowerIcon" class="section-icon" />
-          Башни врага
-          <span v-if="planStore.watchtowerVillages.length" class="tower-count-badge">
-            {{ planStore.watchtowerVillages.length }}
-          </span>
+    <button class="collapse-toggle" @click="open = !open">
+      <span class="panel-title-row">
+        <img :src="watchtowerIcon" class="section-icon" />
+        Башни врага
+        <span v-if="planStore.watchtowerVillages.length" class="tower-count-badge">
+          {{ planStore.watchtowerVillages.length }}
+        </span>
+      </span>
+      <span class="collapse-right">
+        <span @click.stop>
+          <button
+            v-if="planStore.watchtowerVillages.length"
+            class="btn btn-danger btn-sm"
+            @click="clearAllTowers()"
+          >Очистить</button>
         </span>
         <span class="collapse-icon">{{ open ? '▲' : '▼' }}</span>
-      </button>
-      <button
-        v-if="planStore.watchtowerVillages.length"
-        class="btn btn-danger btn-sm"
-        @click.stop="clearAllTowers()"
-      >Очистить</button>
-    </div>
+      </span>
+    </button>
 
     <div v-if="open" class="mt">
       <div class="add-targets-bar">
@@ -196,6 +198,15 @@ function onTowerFile(event: Event): void {
 </script>
 
 <style lang="scss" scoped>
+.collapse-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; background: none; border: none; cursor: pointer;
+  padding: 0; color: inherit; text-align: left;
+  &:hover { opacity: 0.85; }
+}
+.collapse-right { display: flex; align-items: center; gap: 0.5rem; }
+.collapse-icon  { font-size: 0.75rem; color: $text-faint; }
+
 .tower-group {
   border: 1px solid $border;
   border-radius: 4px;

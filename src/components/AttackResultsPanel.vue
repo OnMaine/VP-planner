@@ -8,21 +8,6 @@
       <button :class="['rtab', { active: tab === 'bbcode' }]" @click="tab = 'bbcode'">Текст (BBCode)</button>
     </div>
 
-    <!-- Generation issues banner -->
-    <div v-if="planStore.generationIssues.length > 0" class="gen-issues-banner">
-      <div class="gen-issues-title">Не хватило войск для полного покрытия</div>
-      <div class="gen-issues-list">
-        <div
-          v-for="issue in planStore.generationIssues"
-          :key="`${issue.targetCoords}-${issue.type}`"
-          :class="['gen-issue-row', issueSeverity(issue)]"
-        >
-          <span class="gen-issue-coords">{{ issue.targetCoords }}</span>
-          <span class="gen-issue-sep">—</span>
-          <span class="gen-issue-msg">{{ issueLabel(issue) }}</span>
-        </div>
-      </div>
-    </div>
 
     <!-- ── Visual tab ─────────────────────────────────────────────────── -->
     <template v-if="tab === 'visual'">
@@ -67,7 +52,11 @@
 
       <!-- Per-player results -->
       <section class="panel">
-        <h2>Результаты по игрокам</h2>
+        <button class="collapse-toggle" @click="openPlayersPanel = !openPlayersPanel">
+          <span>Результаты по игрокам</span>
+          <span class="collapse-icon">{{ openPlayersPanel ? '▲' : '▼' }}</span>
+        </button>
+        <template v-if="openPlayersPanel">
         <div
           v-for="[player, playerAttacks] in planStore.attacksByPlayer"
           :key="player"
@@ -174,24 +163,30 @@
             </div>
           </div>
         </div>
+        </template><!-- end openPlayersPanel -->
       </section>
     </template>
 
     <!-- ── Targets tab ───────────────────────────────────────────────────── -->
     <template v-if="tab === 'targets'">
       <section class="panel">
-        <h2>Результаты по деревням</h2>
+        <button class="collapse-toggle" @click="openResultsPanel = !openResultsPanel">
+          <span>Результаты по деревням</span>
+          <span class="collapse-icon">{{ openResultsPanel ? '▲' : '▼' }}</span>
+        </button>
+        <template v-if="openResultsPanel">
         <div
           v-for="[coords, tgtAttacks] in attacksByTarget"
           :key="coords"
-          class="player-block"
+          :class="['player-block', { 'player-block--shortage': issueCoords.has(coords) }]"
         >
-          <button class="collapse-toggle player-toggle" @click="toggleTarget(coords)">
+          <button :class="['collapse-toggle player-toggle', { 'toggle--shortage': issueCoords.has(coords) }]" @click="toggleTarget(coords)">
             <span>
               <span class="player-name-label">{{ coords }}</span>
               <span v-if="tgtAttacks[0].target.enemyPlayer" class="target-player-label">{{ tgtAttacks[0].target.enemyPlayer }}</span>
               <span class="player-attack-count">({{ tgtAttacks.filter(a => !a.excluded).length }} / {{ tgtAttacks.length }} атак)</span>
               <span v-if="tgtAttacks.some(a => a.catMass)" class="cat-wave-tag">кат волна</span>
+              <span v-if="issueCoords.has(coords)" class="shortage-tag" :title="issuesByCoords.get(coords)?.join('\n')">⚠ не хватило</span>
             </span>
             <span class="collapse-icon">{{ openTargets.has(coords) ? '▲' : '▼' }}</span>
           </button>
@@ -279,17 +274,41 @@
                       <input type="checkbox" :checked="row.representative.excluded" @change="row.attacks.forEach(a => planStore.toggleExclude(a.id))" />
                     </td>
                   </tr>
+                  <tr
+                    v-for="(ghost, gi) in ghostRowsFor(coords, tgtAttacks[0].target.arrivalTime)"
+                    :key="`ghost-${coords}-${gi}`"
+                    class="row-ghost"
+                  >
+                    <td><span class="type-badge badge-ghost">{{ ghost.label }}</span></td>
+                    <td class="mono ghost-cell">—</td>
+                    <td class="mono ghost-cell">{{ formatDT(ghost.arrivalTime) }}</td>
+                    <td class="ghost-cell">—</td>
+                    <td class="ghost-cell">—</td>
+                    <td class="ghost-cell">—</td>
+                    <td class="ghost-cell">
+                      <span class="ghost-missing">
+                        {{ ghost.missing > 1 ? `×${ghost.missing} · ` : '' }}{{ ghost.reason }}
+                      </span>
+                    </td>
+                    <td></td><td></td>
+                  </tr>
                 </tbody>
               </table>
             </div>
           </div>
         </div>
+        </template><!-- end v-if="openResultsPanel" -->
       </section>
     </template>
 
     <!-- ── BBCode tab ──────────────────────────────────────────────────── -->
     <template v-if="tab === 'bbcode'">
       <section class="panel bbcode-panel">
+        <button class="collapse-toggle" @click="openBBPanel = !openBBPanel">
+          <span>Текст (BBCode)</span>
+          <span class="collapse-icon">{{ openBBPanel ? '▲' : '▼' }}</span>
+        </button>
+        <template v-if="openBBPanel">
         <div class="bbcode-controls">
           <label class="f-label-inline">
             Игрок
@@ -315,6 +334,7 @@
         <p class="bbcode-note" v-if="planStore.attacks.some(a => !a.excluded && !a.fromVillage.villageId)">
           ⚠ Некоторые ссылки Attack используют координаты вместо ID — загрузите карту деревень для точных ссылок.
         </p>
+        </template><!-- end openBBPanel -->
       </section>
     </template>
 
@@ -326,7 +346,7 @@ import { ref, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { usePlanStore } from '@/stores/planStore'
 import { exportAttacksToXlsx } from '@/composables/useExcelExport'
-import type { Attack, AttackType, WarningCode, AttackComposition, GenerationIssue, GenerationIssueType } from '@/stores/planStore'
+import type { Attack, AttackType, WarningCode, AttackComposition } from '@/stores/planStore'
 import { CAT_TARGET_LABELS } from '@/stores/presetsStore'
 import type { CatTarget } from '@/stores/presetsStore'
 import { useDateFormat } from '@/composables/useDateFormat'
@@ -387,37 +407,68 @@ function groupAttacks(list: Attack[]): AttackRow[] {
   return rows
 }
 
-// ── Generation issues ──────────────────────────────────────────────────────
-
-function issueLabel(issue: GenerationIssue): string {
-  const slot = issue.slotName ? `[${issue.slotName}] ` : ''
-  switch (issue.type) {
-    case 'OFFS_SHORT': {
-      if (issue.generated > 0)
-        return `${slot}Оффы: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
-      const reason =
-        issue.offsReason === 'pool_depleted' ? 'все оффы уже заняты предыдущими целями' :
-        issue.offsReason === 'night_excluded' ? 'все деревни заблокированы ночным режимом' :
-        issue.offsReason === 'no_eligible'    ? 'нет деревень с подходящим составом' :
-        'нет подходящих деревень'
-      return `${slot}Оффы: ${reason} (запрошено ${issue.requested})`
-    }
-    case 'NOBLES_SHORT':
-      return `${slot}Зел. дворы: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
-    case 'SPAM_SHORT':
-      return `${slot}Спам: запрошено ${issue.requested}, сгенерировано ${issue.generated}`
-  }
-}
-
-function issueSeverity(issue: GenerationIssue): string {
-  if (issue.type === 'OFFS_SHORT' && issue.generated === 0) return 'issue-critical'
-  return 'issue-warn'
-}
-
 // ── Visual tab ─────────────────────────────────────────────────────────────
 
 const openPlayers = ref<Set<string>>(new Set())
 const openTargets = ref<Set<string>>(new Set())
+
+const issueCoords = computed(() => new Set(planStore.generationIssues.map(i => i.targetCoords)))
+
+const issuesByCoords = computed(() => {
+  const m = new Map<string, string[]>()
+  for (const issue of planStore.generationIssues) {
+    if (!m.has(issue.targetCoords)) m.set(issue.targetCoords, [])
+    const slot = issue.slotName ? `[${issue.slotName}] ` : ''
+    let msg: string
+    if (issue.type === 'OFFS_SHORT') {
+      if (issue.generated > 0) {
+        msg = `${slot}Оффы: нужно ${issue.requested}, получено ${issue.generated}`
+      } else {
+        const reason =
+          issue.offsReason === 'pool_depleted' ? 'пул исчерпан' :
+          issue.offsReason === 'night_excluded' ? 'ночной режим' :
+          issue.offsReason === 'no_eligible'    ? 'нет подходящих деревень' :
+          'нет деревень'
+        msg = `${slot}Оффы: 0 из ${issue.requested} (${reason})`
+      }
+    } else if (issue.type === 'NOBLES_SHORT') {
+      msg = `${slot}Дворяне: нужно ${issue.requested}, получено ${issue.generated}`
+    } else {
+      msg = `${slot}Спам: нужно ${issue.requested}, получено ${issue.generated}`
+    }
+    m.get(issue.targetCoords)!.push(msg)
+  }
+  return m
+})
+
+interface GhostRow { label: string; arrivalTime: Date; missing: number; reason: string }
+
+function ghostRowsFor(coords: string, arrivalTime: Date): GhostRow[] {
+  const issues = planStore.generationIssues.filter(i => i.targetCoords === coords)
+  const rows: GhostRow[] = []
+  for (const issue of issues) {
+    const missing = issue.requested - issue.generated
+    if (missing <= 0) continue
+    const label =
+      issue.slotName ? issue.slotName :
+      issue.type === 'NOBLES_SHORT' ? 'Дворяне' :
+      issue.type === 'SPAM_SHORT'   ? 'Спам' :
+      'Офф'
+    const reason =
+      issue.type === 'OFFS_SHORT' && issue.generated === 0
+        ? (issue.offsReason === 'pool_depleted' ? 'пул исчерпан' :
+           issue.offsReason === 'night_excluded' ? 'ночной режим' :
+           issue.offsReason === 'no_eligible'    ? 'нет подходящих деревень' :
+           'нет деревень')
+        : `нужно ${issue.requested}, получено ${issue.generated}`
+    rows.push({ label, arrivalTime, missing, reason })
+  }
+  return rows
+}
+
+const openPlayersPanel = ref(true)
+const openResultsPanel = ref(true)
+const openBBPanel = ref(true)
 
 const attacksByTarget = computed(() => {
   const map = new Map<string, Attack[]>()
@@ -894,6 +945,15 @@ $yellow:       #f0c040;
   margin-bottom: 0.75rem;
   background: $bg-page;
 }
+.collapse-toggle:not(.player-toggle) {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; background: none; border: none; cursor: pointer;
+  padding: 0; color: inherit; text-align: left; font-size: 1rem; font-weight: 600;
+  margin-bottom: 0.75rem;
+  &:hover { opacity: 0.85; }
+}
+.collapse-icon { font-size: 0.75rem; color: $text-faint; }
+
 .player-toggle          { font-size: 0.95rem; font-weight: 600; }
 .target-player-label   { color: $orange; font-size: 0.82rem; font-weight: 400; margin: 0 0.5rem; }
 .player-name-label   { color: $text; margin-right: 0.5rem; }
@@ -1042,6 +1102,48 @@ $yellow:       #f0c040;
   font-size: 0.78rem;
   color: $text-faint;
   margin: 0;
+}
+
+.player-block--shortage {
+  background: rgba(233, 69, 96, 0.04);
+  border-color: rgba(233, 69, 96, 0.4);
+}
+
+.player-block--shortage > .toggle--shortage {
+  border-left: 3px solid rgba(233, 69, 96, 0.7);
+  padding-left: 0.6rem;
+}
+
+.row-ghost {
+  opacity: 0.6;
+  td { text-decoration: line-through; color: #e94560 !important; }
+  .ghost-cell { color: #e94560; }
+}
+
+.badge-ghost {
+  background: rgba(233, 69, 96, 0.15);
+  border: 1px solid rgba(233, 69, 96, 0.4);
+  color: #e94560;
+  text-decoration: line-through;
+}
+
+.ghost-missing {
+  font-size: 0.72rem;
+  color: #e94560;
+  font-style: italic;
+  text-decoration: none;
+}
+
+.shortage-tag {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  border-radius: 8px;
+  background: rgba(233, 69, 96, 0.15);
+  border: 1px solid rgba(233, 69, 96, 0.45);
+  color: #e94560;
 }
 
 .cat-wave-tag {
