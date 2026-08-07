@@ -185,13 +185,13 @@
     <section v-if="villagesStore.villages.length > 0" class="panel">
       <button class="collapse-toggle" @click="reserveOpen = !reserveOpen">
         <span>
-          Резерв деревень
+          Ручной резерв деревень
           <span v-if="planStore.reservedVillages.size > 0" class="reserve-count-badge">{{ planStore.reservedVillages.size }}</span>
         </span>
         <span class="collapse-icon">{{ reserveOpen ? '▲' : '▼' }}</span>
       </button>
       <div v-if="reserveOpen" class="reserve-body">
-        <p class="reserve-hint">Вставьте список деревень (одна строка = одна деревня). Координаты вида <code>NNN|NNN</code> извлекаются автоматически. Резервные деревни не попадают в офф-пул при генерации масса.</p>
+        <p class="reserve-hint">Вставьте список деревень (одна строка = одна деревня). Координаты вида <code>NNN|NNN</code> извлекаются автоматически. Резервные деревни полностью исключаются из генерации: офф-пул, пул дворов, кат волна.</p>
         <textarea
           v-model="reservedRaw"
           class="csv-textarea reserve-textarea"

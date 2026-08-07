@@ -793,6 +793,7 @@ export const usePlanStore = defineStore('plan', () => {
     const noblePollMode = settings.noblePollMode ?? 'real'
     const virtualNoblePool = new Map<string, number>()
     for (const v of villages) {
+      if (reservedVillages.value.has(v.coords)) continue
       virtualNoblePool.set(v.player, (virtualNoblePool.get(v.player) ?? 0) + v.troops.snob)
     }
     if (noblePollMode === 'virtual') {
