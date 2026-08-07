@@ -103,6 +103,27 @@
         title="Кат волна: вторичная волна из свободных офов и кат отрядов по отдельным целям"
         @click="store.update(store.active!.id, { catMassEnabled: store.active.catMassEnabled ? undefined : true })"
       >🐱 Кат волна</button>
+
+      <template v-if="planStore.targets.length > 0">
+        <div class="v-sep" />
+        <button
+          :class="['toggle-btn', { 'toggle-on': worldStore.settings.frontReserveEnabled }]"
+          title="Авто-резерв фронтовых: деревни ближе N клеток к врагу исключаются из масса"
+          @click="toggleFrontReserve"
+        >🛡 Резерв фронта</button>
+        <transition name="fade">
+          <input
+            v-if="worldStore.settings.frontReserveEnabled"
+            type="number" min="1" max="200"
+            class="input front-dist-input"
+            :value="worldStore.settings.frontReserveDist"
+            @change="onFrontDistChange(+($event.target as HTMLInputElement).value)"
+          />
+        </transition>
+        <span v-if="worldStore.settings.frontReserveEnabled" class="front-count-hint">
+          {{ frontCount }} дер.
+        </span>
+      </template>
     </div>
 
     <!-- Row 3: distribution selects -->
@@ -157,12 +178,15 @@ import { useMassConfigStore } from '@/stores/massConfigStore'
 import { usePresetsStore, defaultColorForRole } from '@/stores/presetsStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { usePlanStore } from '@/stores/planStore'
+import { useVillagesStore } from '@/stores/villagesStore'
+import { calcDistance } from '@/utils/coords'
 import { useDateFormat } from '@/composables/useDateFormat'
 
 const store = useMassConfigStore()
 const presetsStore = usePresetsStore()
 const worldStore = useWorldStore()
 const planStore = usePlanStore()
+const villagesStore = useVillagesStore()
 
 const coverageBadgeClass = computed(() => {
   const est = planStore.coverageEstimate
@@ -208,6 +232,52 @@ function applyArrivalTime(): void {
   if (isNaN(d.getTime())) return
   for (const t of planStore.targets) planStore.updateTarget(t.id, { arrivalTime: d })
 }
+
+// ── Front reserve ─────────────────────────────────────────────────────────
+const frontReservedCoords = ref<Set<string>>(new Set())
+
+function computeFront(dist: number): string[] {
+  const mapSize = worldStore.settings.mapSize
+  const targets = planStore.targets
+  const result: string[] = []
+  for (const v of villagesStore.villages) {
+    for (const t of targets) {
+      if (calcDistance({ x: v.x, y: v.y }, { x: t.x, y: t.y }, mapSize) <= dist) {
+        result.push(v.coords); break
+      }
+    }
+  }
+  return result
+}
+
+function applyFront(dist: number): void {
+  const coords = computeFront(dist)
+  frontReservedCoords.value = new Set(coords)
+  const merged = new Set([...planStore.reservedVillages, ...coords])
+  // Remove old front reserved, add new
+  const nonFront = [...planStore.reservedVillages].filter(c => !frontReservedCoords.value.has(c))
+  planStore.setReservedVillages([...new Set([...nonFront, ...coords])])
+}
+
+function clearFront(): void {
+  const remaining = [...planStore.reservedVillages].filter(c => !frontReservedCoords.value.has(c))
+  planStore.setReservedVillages(remaining)
+  frontReservedCoords.value = new Set()
+}
+
+function toggleFrontReserve(): void {
+  const next = !worldStore.settings.frontReserveEnabled
+  worldStore.updateSettings({ frontReserveEnabled: next })
+  if (next) applyFront(worldStore.settings.frontReserveDist)
+  else clearFront()
+}
+
+function onFrontDistChange(dist: number): void {
+  worldStore.updateSettings({ frontReserveDist: dist })
+  if (worldStore.settings.frontReserveEnabled) applyFront(dist)
+}
+
+const frontCount = computed(() => frontReservedCoords.value.size)
 </script>
 
 <style lang="scss" scoped>
@@ -393,6 +463,16 @@ function applyArrivalTime(): void {
   border-radius: 4px; color: $text;
   &:focus { outline: none; border-color: $accent; }
 }
+
+.front-dist-input {
+  width: 52px; padding: 0.15rem 0.3rem; font-size: 0.78rem;
+  text-align: center;
+  background: $bg-page; border: 1px solid $border;
+  border-radius: 4px; color: $text;
+  &:focus { outline: none; border-color: $accent; }
+}
+
+.front-count-hint { font-size: 0.72rem; color: $text-faint; white-space: nowrap; }
 
 
 .dist-select {

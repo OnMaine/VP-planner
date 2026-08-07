@@ -2401,7 +2401,9 @@ export const usePlanStore = defineStore('plan', () => {
     }
 
     let noblesTotal = 0
-    for (const v of villages) noblesTotal += v.troops.snob
+    for (const v of villages) {
+      if (!reservedVillages.value.has(v.coords)) noblesTotal += v.troops.snob
+    }
 
     const usedOffCoords = new Set<string>()
     const usedCatCoords = new Set<string>()
@@ -2410,7 +2412,7 @@ export const usePlanStore = defineStore('plan', () => {
       if (atk.excluded) continue
       if (atk.type === 'off' || atk.type === 'paladin_off') usedOffCoords.add(atk.fromVillage.coords)
       if (atk.type === 'cat') usedCatCoords.add(atk.fromVillage.coords)
-      noblesUsed += atk.composition.snob
+      if (!reservedVillages.value.has(atk.fromVillage.coords)) noblesUsed += atk.composition.snob
     }
 
     // Total = union of threshold-eligible and actually used (used may include custom_off villages)

@@ -29,6 +29,8 @@ export interface WorldSettings {
   sendExcludeEnabled: boolean
   earliestSendEnabled: boolean
   earliestSendTime: string    // datetime-local string: "YYYY-MM-DDTHH:MM"
+  frontReserveEnabled: boolean
+  frontReserveDist: number
   moraleEnabled: boolean
   snobMaxDist: number
   snobIntervalMs: number
@@ -98,6 +100,8 @@ function defaultSettings(): WorldSettings {
     sendExcludeEnabled: false,
     earliestSendEnabled: false,
     earliestSendTime: '',
+    frontReserveEnabled: false,
+    frontReserveDist: 15,
     moraleEnabled: false,
     snobMaxDist: 60,
     snobIntervalMs: 100,
@@ -235,6 +239,8 @@ export const useWorldStore = defineStore('world', () => {
         sendExcludeEnabled: settings.value.sendExcludeEnabled,
         earliestSendEnabled: settings.value.earliestSendEnabled,
         earliestSendTime: settings.value.earliestSendTime,
+        frontReserveEnabled: settings.value.frontReserveEnabled,
+        frontReserveDist: settings.value.frontReserveDist,
         moraleEnabled: settings.value.moraleEnabled,
         watchtowerAvoidEnabled: settings.value.watchtowerAvoidEnabled,
         noblePollMode: settings.value.noblePollMode,

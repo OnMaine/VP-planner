@@ -185,13 +185,16 @@
     <section v-if="villagesStore.villages.length > 0" class="panel">
       <button class="collapse-toggle" @click="reserveOpen = !reserveOpen">
         <span>
-          Ручной резерв деревень
+          Резерв деревень
           <span v-if="planStore.reservedVillages.size > 0" class="reserve-count-badge">{{ planStore.reservedVillages.size }}</span>
         </span>
         <span class="collapse-icon">{{ reserveOpen ? '▲' : '▼' }}</span>
       </button>
       <div v-if="reserveOpen" class="reserve-body">
-        <p class="reserve-hint">Вставьте список деревень (одна строка = одна деревня). Координаты вида <code>NNN|NNN</code> извлекаются автоматически. Резервные деревни полностью исключаются из генерации: офф-пул, пул дворов, кат волна.</p>
+        <p class="reserve-hint">Резервные деревни полностью исключаются из генерации: офф-пул, пул дворов, кат волна.</p>
+
+        <!-- Manual reserve -->
+        <div class="reserve-section-title">Ручной резерв</div>
         <textarea
           v-model="reservedRaw"
           class="csv-textarea reserve-textarea"
@@ -200,12 +203,31 @@
         ></textarea>
         <div class="btn-row">
           <button class="btn btn-primary btn-sm" @click="applyReserved">Применить</button>
-          <button v-if="planStore.reservedVillages.size > 0" class="btn btn-danger btn-sm" @click="clearReserved">Очистить резерв</button>
-          <span v-if="planStore.reservedVillages.size > 0" class="reserve-active-hint">
-            Активно: {{ planStore.reservedVillages.size }} дер.
-            ({{ reservedKnown }}/{{ planStore.reservedVillages.size }} из импорта)
+          <button v-if="manualReserveCount > 0" class="btn btn-danger btn-sm" @click="clearReserved">Очистить ручной</button>
+          <span v-if="manualReserveCount > 0" class="reserve-active-hint">
+            {{ manualReserveCount }} дер. ({{ reservedKnown }} из импорта)
           </span>
         </div>
+
+        <!-- Front auto-reserve -->
+        <template v-if="planStore.targets.length > 0">
+          <div class="reserve-section-title" style="margin-top:1.1rem">Авто-резерв фронтовых</div>
+          <p class="reserve-hint" style="margin-bottom:0.5rem">
+            Деревни ближе N клеток к любой цели плана. Целей: <strong>{{ planStore.targets.length }}</strong>.
+          </p>
+          <div class="front-controls">
+            <label class="front-label">Дистанция ≤</label>
+            <input v-model="frontDist" type="number" min="1" max="200" class="input front-dist-input" />
+            <span class="front-label">клеток</span>
+            <button class="btn btn-primary btn-sm" @click="applyFrontReserve">Зарезервировать фронтовые</button>
+            <button v-if="frontReserveCount > 0" class="btn btn-danger btn-sm" @click="clearFrontReserve">Снять фронтовые ({{ frontReserveCount }})</button>
+          </div>
+          <div v-if="frontPreview.length > 0" class="front-preview">
+            <span class="front-preview-label">Найдено {{ frontPreview.length }} дер.:</span>
+            <span class="front-preview-coords">{{ frontPreview.slice(0, 20).join(', ') }}{{ frontPreview.length > 20 ? ` … ещё ${frontPreview.length - 20}` : '' }}</span>
+          </div>
+          <div v-if="frontPreview.length === 0 && frontSearched" class="front-preview muted-text">Нет деревень ближе {{ frontDist }} клеток к целям.</div>
+        </template>
       </div>
     </section>
 
@@ -218,12 +240,15 @@ import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { usePlanStore } from '@/stores/planStore'
+import { useWorldStore } from '@/stores/worldStore'
+import { calcDistance } from '@/utils/coords'
 import ImportStats from '@/components/ImportStats.vue'
 import type { VillageTroops, Village } from '@/stores/villagesStore'
 
 const route = useRoute()
 const villagesStore = useVillagesStore()
 const planStore = usePlanStore()
+const worldStore = useWorldStore()
 
 const highlightCoords = computed(() => route.query.highlight as string | undefined)
 
@@ -258,6 +283,50 @@ function clearReserved() {
 const reservedKnown = computed(() =>
   [...planStore.reservedVillages].filter(c => villagesStore.villages.some(v => v.coords === c)).length
 )
+
+// ── Auto front reserve ───────────────────────────────────────────────────
+const frontDist = ref(15)
+const frontPreview = ref<string[]>([])
+const frontSearched = ref(false)
+const frontReservedCoords = ref<Set<string>>(new Set())
+
+const frontReserveCount = computed(() => frontReservedCoords.value.size)
+
+const manualReserveCount = computed(() =>
+  [...planStore.reservedVillages].filter(c => !frontReservedCoords.value.has(c)).length
+)
+
+function computeFrontCoords(): string[] {
+  const mapSize = worldStore.settings.mapSize
+  const targets = planStore.targets
+  const result: string[] = []
+  const threshold = Number(frontDist.value)
+  for (const v of villagesStore.villages) {
+    for (const t of targets) {
+      const dist = calcDistance({ x: v.x, y: v.y }, { x: t.x, y: t.y }, mapSize)
+      if (dist <= threshold) { result.push(v.coords); break }
+    }
+  }
+  return result
+}
+
+function applyFrontReserve() {
+  const coords = computeFrontCoords()
+  frontPreview.value = coords
+  frontSearched.value = true
+  frontReservedCoords.value = new Set(coords)
+  const merged = new Set([...planStore.reservedVillages, ...coords])
+  planStore.setReservedVillages([...merged])
+}
+
+function clearFrontReserve() {
+  const remaining = [...planStore.reservedVillages].filter(c => !frontReservedCoords.value.has(c))
+  planStore.setReservedVillages(remaining)
+  frontReservedCoords.value = new Set()
+  frontPreview.value = []
+  frontSearched.value = false
+}
+
 const error = ref('')
 const statsVisible = ref(villagesStore.villages.length > 0)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -684,6 +753,17 @@ function clearEverything() {
   code { color: $text-dim; background: a($border, 0.4); padding: 1px 4px; border-radius: 3px; }
 }
 
+.reserve-section-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: $text-dim;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid a($border, 0.4);
+}
+
 .reserve-textarea { max-height: 120px; resize: vertical; }
 
 .reserve-active-hint {
@@ -694,4 +774,23 @@ function clearEverything() {
 
 .btn-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .btn-sm  { padding: 0.2rem 0.6rem; font-size: 0.78rem; }
+
+.front-controls {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.front-label { font-size: 0.82rem; color: $text-dim; white-space: nowrap; }
+.front-dist-input { width: 64px; text-align: center; }
+
+.front-preview {
+  font-size: 0.8rem;
+  color: $text-dim;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid $border;
+  border-radius: 4px;
+  line-height: 1.6;
+}
+.front-preview-label { color: $orange; font-weight: 600; margin-right: 0.4rem; }
+.front-preview-coords { color: $text-dim; }
 </style>
