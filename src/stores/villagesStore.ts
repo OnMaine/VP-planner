@@ -60,10 +60,13 @@ export const useVillagesStore = defineStore('villages', () => {
   }
 
   function parseCSV(text: string): { count: number; playerCount: number } {
-    const lines = text.split('\n').filter((l) => l.trim().length > 0)
+    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0)
     if (lines.length < 2) return { count: 0, playerCount: 0 }
 
-    const headers = lines[0].split(',').map((h) => h.trim())
+    // Auto-detect delimiter: RU-locale Excel exports use ';', default CSV uses ','
+    const delimiter = (lines[0].match(/;/g)?.length ?? 0) >= (lines[0].match(/,/g)?.length ?? 0) ? ';' : ','
+
+    const headers = lines[0].split(delimiter).map((h) => h.trim())
 
     // Locate fixed column indices
     const playerIdx = headers.indexOf('Игрок')
@@ -85,7 +88,7 @@ export const useVillagesStore = defineStore('villages', () => {
     const parsed: Village[] = []
 
     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map((c) => c.trim())
+      const cols = lines[i].split(delimiter).map((c) => c.trim())
       if (cols.length < Math.max(playerIdx, coordsIdx) + 1) continue
 
       const player    = cols[playerIdx] ?? ''
