@@ -836,9 +836,10 @@ export const usePlanStore = defineStore('plan', () => {
     }
 
     // ── buildSpamComp ─────────────────────────────────────────────────────
-    // Prefers 1 ram or 1 catapult (siege deducted from pool), but sends without
-    // siege if none available — player can build siege in ~5 min before sending.
-    // Returns null only if not enough troops to meet minAttackSize.
+    // Requires 1 ram (or 1 catapult if no ram) — siege deducted from pool.
+    // Returns null if the source village has no siege at all, or if not enough
+    // troops to meet minAttackSize. This guarantees every spam carries siege so
+    // it travels at ram/catapult speed and mimics a real off.
     function buildSpamComp(a: AttackComposition): AttackComposition | null {
       const up = settings.unitPop
       const c = emptyComposition()
@@ -846,6 +847,8 @@ export const usePlanStore = defineStore('plan', () => {
         c.ram = 1
       } else if (a.catapult >= 1) {
         c.catapult = 1
+      } else {
+        return null
       }
       let popLeft = settings.minAttackSize - c.ram * up.ram - c.catapult * up.catapult
       const order: Array<keyof AttackComposition> = ['spear', 'sword', 'axe', 'spy', 'light', 'heavy']
