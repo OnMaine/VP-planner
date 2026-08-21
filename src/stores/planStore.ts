@@ -299,6 +299,27 @@ const LS_OFF_DISTRIBUTION = 'vp_off_distribution'
 const LS_ATTACKS = 'vp_attacks'
 const LS_RESERVED = 'vp_reserved_villages'
 
+// Every localStorage key that makes up a fully reproducible plan. A v2 plan
+// export is a verbatim snapshot of these keys; importing one replaces them all.
+// API keys (vp_ai_key_*) are intentionally excluded — they are secrets.
+const PLAN_EXPORT_KEYS = [
+  // planStore
+  'vp_targets', 'vp_cat_targets', 'vp_cat_mass_queue', 'vp_reserved_villages',
+  'vp_spam_noble_targets', 'vp_player_data', 'vp_watchtower', 'vp_off_distribution',
+  'vp_attacks',
+  // worldStore (settings — speeds, night window, morale, unit times/pop, …)
+  'vp_world',
+  // presetsStore (custom attack templates + thresholds)
+  'vp_presets_v2', 'vp_breach_min_rams', 'vp_full_off_min_off_farm',
+  'vp_half_off_min_off_farm', 'vp_small_off_min_off_farm', 'vp_cat_min', 'vp_cat_target',
+  // massConfigStore (mass templates)
+  'vp_mass_configs_v3', 'vp_mass_active_id', 'vp_mass_cat_active_id',
+  // villagesStore (sender's own troops CSV)
+  'vp_villages',
+  // WorldMapView (tribe categories / hidden tribes)
+  'vp_tribe_cats', 'vp_hidden_tribes',
+] as const
+
 function loadTargets(): Target[] {
   try {
     const raw = localStorage.getItem(LS_TARGETS)
@@ -921,8 +942,11 @@ export const usePlanStore = defineStore('plan', () => {
     }
 
     // ── nightExcludes pre-check (call BEFORE pool mutation) ──────────────
-    function nightExcludes(village: Village, target: Target, type: AttackType, arrivalTime: Date): boolean {
-      const unitBaseSec = settings.unitTimes[speedUnitForType(type)]
+    function nightExcludes(village: Village, target: Target, type: AttackType, arrivalTime: Date, comp?: AttackComposition): boolean {
+      // Use the real composition speed when it's known (matches pushAtk), else
+      // fall back to the type's assumed slowest unit.
+      const speedUnit = comp ? slowestUnitInComp(comp, settings.unitTimes) : speedUnitForType(type)
+      const unitBaseSec = settings.unitTimes[speedUnit]
       const dist = calcDistance({ x: village.x, y: village.y }, { x: target.x, y: target.y }, settings.mapSize)
       const travelSec = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
       const sendTime = calcSendTime(arrivalTime, travelSec)
@@ -1789,7 +1813,7 @@ export const usePlanStore = defineStore('plan', () => {
                     new Date(slotArrT.getTime() + wAfter  * 60_000),
                   )
                 : slotArrT
-              if (nightExcludes(v, target, 'spam', arrT)) continue
+              if (nightExcludes(v, target, 'spam', arrT, c)) continue
               a.ram = Math.max(0, a.ram - c.ram); a.catapult = Math.max(0, a.catapult - c.catapult)
               pushAtk('spam', v, target, c, arrT, preset.name, presetColor)
               left--
@@ -2492,18 +2516,22 @@ export const usePlanStore = defineStore('plan', () => {
   // ---------------------------------------------------------------------------
 
   function exportPlan(): void {
+    // Flush planStore in-memory refs so the localStorage snapshot is current.
+    saveTargets(); saveCatTargets(); saveSpamNobleTargets(); savePlayerData()
+    saveWatchtowerVillages(); saveAttacks()
+
+    // v2: verbatim snapshot of every plan-defining localStorage key, so loading
+    // reproduces the sender's entire configuration (presets, mass templates,
+    // player data, reserves, world settings, villages, …).
+    const storage: Record<string, string> = {}
+    for (const key of PLAN_EXPORT_KEYS) {
+      const val = localStorage.getItem(key)
+      if (val !== null) storage[key] = val
+    }
     const data = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
-      targets: targets.value.map(t => ({ ...t, arrivalTime: t.arrivalTime.toISOString() })),
-      attacks: attacks.value.map(a => ({
-        ...a,
-        arrivalTime: a.arrivalTime.toISOString(),
-        sendTime:    a.sendTime.toISOString(),
-        target: { ...a.target, arrivalTime: a.target.arrivalTime.toISOString() },
-      })),
-      playerData: playerData.value,
-      watchtowerVillages: watchtowerVillages.value,
+      storage,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url  = URL.createObjectURL(blob)
@@ -2522,6 +2550,22 @@ export const usePlanStore = defineStore('plan', () => {
       reader.onload = (e) => {
         try {
           const data = JSON.parse(e.target!.result as string)
+
+          // v2: full-config snapshot — replace every plan-defining localStorage
+          // key and reload so all stores re-init from the imported state.
+          if (data.storage && typeof data.storage === 'object') {
+            for (const key of PLAN_EXPORT_KEYS) localStorage.removeItem(key)
+            for (const [key, val] of Object.entries(data.storage as Record<string, unknown>)) {
+              if (PLAN_EXPORT_KEYS.includes(key as typeof PLAN_EXPORT_KEYS[number]) && typeof val === 'string') {
+                localStorage.setItem(key, val)
+              }
+            }
+            resolve()
+            window.location.reload()
+            return
+          }
+
+          // v1 (legacy): partial plan — targets/attacks/playerData/watchtower only.
           if (!data.version || !Array.isArray(data.targets) || !Array.isArray(data.attacks)) {
             reject(new Error('Неверный формат файла'))
             return
