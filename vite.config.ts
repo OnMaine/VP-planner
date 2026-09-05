@@ -1,8 +1,23 @@
 import { fileURLToPath, URL } from 'node:url'
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+// Build-time version stamp: short git hash (works locally and on Netlify),
+// falling back to Netlify's COMMIT_REF env var, then 'dev'.
+function buildVersion(): string {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return process.env.COMMIT_REF?.slice(0, 7) || 'dev'
+  }
+}
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(buildVersion()),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [vue()],
   css: {
     preprocessorOptions: {

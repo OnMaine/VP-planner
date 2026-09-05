@@ -44,6 +44,16 @@ const router = createRouter({
       name: 'world-map',
       component: () => import('@/views/WorldMapView.vue'),
     },
+    {
+      path: '/def-map',
+      name: 'def-map',
+      component: () => import('@/views/EnemyDefMapView.vue'),
+    },
+    {
+      path: '/def-analytics',
+      name: 'def-analytics',
+      component: () => import('@/views/DefAnalyticsView.vue'),
+    },
   ],
 })
 

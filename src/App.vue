@@ -17,7 +17,10 @@
         <RouterLink to="/mass-configs">Пресеты масса</RouterLink>
         <RouterLink to="/attack-map">Карта атак</RouterLink>
         <RouterLink to="/world-map">Карта мира</RouterLink>
+        <RouterLink to="/def-map">Карта дефа</RouterLink>
+        <RouterLink to="/def-analytics">Аналитика</RouterLink>
       </nav>
+      <span class="app-version" :title="`Собрано: ${buildTime}`">v{{ appVersion }}</span>
     </header>
     <main class="app-main">
       <RouterView />
@@ -36,6 +39,9 @@ const villagesStore = useVillagesStore()
 
 const hasWorld = computed(() => Boolean(worldStore.settings.worldCode))
 const hasVillages = computed(() => villagesStore.villages.length > 0)
+
+const appVersion = __APP_VERSION__
+const buildTime = new Date(__BUILD_TIME__).toLocaleString('ru-RU')
 </script>
 
 <style lang="scss" scoped>
@@ -72,6 +78,16 @@ const hasVillages = computed(() => villagesStore.villages.length > 0)
       &.router-link-active { color: $accent; }
     }
   }
+}
+
+.app-version {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: $text-md;
+  opacity: 0.5;
+  font-family: monospace;
+  cursor: default;
 }
 
 .brand {
