@@ -219,7 +219,7 @@
               </div>
             </div>
             <div class="cu-right">
-              <template v-if="u.key !== 'snob' && u.key !== 'knight'">
+              <template v-if="u.key !== 'knight'">
                 <input
                   :value="getCustomUnitMin(u.key) || ''"
                   type="number" min="0"
