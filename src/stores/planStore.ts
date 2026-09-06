@@ -900,6 +900,13 @@ export const usePlanStore = defineStore('plan', () => {
       if (settings.sendExcludeEnabled) {
         if (isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return false
       }
+      // Earliest send: never generate an attack that would launch before the floor.
+      // (Belt-and-suspenders — most loops pre-check via nightExcludes(), but some
+      //  paths like spam-train fakes push directly.)
+      if (settings.earliestSendEnabled && settings.earliestSendTime) {
+        const floor = new Date(settings.earliestSendTime)
+        if (!isNaN(floor.getTime()) && sendTime < floor) return false
+      }
 
       const total       = totalUnits(composition)
       const pop         = totalPop(composition, settings.unitPop)
@@ -1969,6 +1976,10 @@ export const usePlanStore = defineStore('plan', () => {
       const sendTime    = calcSendTime(target.arrivalTime, travelSec)
 
       if (settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return false
+      if (settings.earliestSendEnabled && settings.earliestSendTime) {
+        const floor = new Date(settings.earliestSendTime)
+        if (!isNaN(floor.getTime()) && sendTime < floor) return false
+      }
 
       const total = totalUnits(composition)
       if (totalPop(composition, settings.unitPop) < settings.minAttackSize) return false
