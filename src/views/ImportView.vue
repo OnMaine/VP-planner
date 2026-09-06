@@ -25,9 +25,9 @@
           :class="{ 'btn-active': pasteOpen }"
           @click="pasteOpen = !pasteOpen"
         >{{ pasteOpen ? '▲' : '▼' }} Вставить текст</button>
-        <span class="toolbar-hint">или перетащите .csv сюда</span>
+        <span class="toolbar-hint">или перетащите .csv / .xlsx сюда</span>
         <span v-if="villagesStore.villages.length" class="toolbar-count">{{ villagesStore.villages.length }} деревень загружено</span>
-        <input ref="fileInput" type="file" accept=".csv,text/csv" class="hidden-input" @change="onFileChange" />
+        <input ref="fileInput" type="file" accept=".csv,text/csv,.xlsx,.xls" class="hidden-input" @change="onFileChange" />
       </div>
       <div v-if="pasteOpen" class="paste-expand">
         <p class="drop-format">Формат: <code>Игрок,Координаты,Очки,Копья,Мечи,Топоры,Лазы,ЛК,ТК,Тараны,Каты,Пал,Двор</code></p>
@@ -242,6 +242,7 @@ import { useVillagesStore } from '@/stores/villagesStore'
 import { usePlanStore } from '@/stores/planStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { calcDistance } from '@/utils/coords'
+import { readTabularFile } from '@/utils/importFile'
 import ImportStats from '@/components/ImportStats.vue'
 import type { VillageTroops, Village } from '@/stores/villagesStore'
 
@@ -480,12 +481,12 @@ function onDrop(event: DragEvent) {
 }
 
 function readFile(file: File) {
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    csvText.value = e.target?.result as string
-    parseCsv(csvText.value)
-  }
-  reader.readAsText(file, 'utf-8')
+  readTabularFile(file)
+    .then((text) => {
+      csvText.value = text
+      parseCsv(text)
+    })
+    .catch((err) => { error.value = err instanceof Error ? err.message : String(err) })
 }
 
 function doParseText() {

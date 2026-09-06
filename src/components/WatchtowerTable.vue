@@ -28,7 +28,7 @@
         </button>
         <label class="btn btn-secondary file-btn">
           Загрузить файл
-          <input ref="fileInput" type="file" accept=".txt,.csv" class="hidden-input" @change="onTowerFile" />
+          <input ref="fileInput" type="file" accept=".txt,.csv,.xlsx,.xls" class="hidden-input" @change="onTowerFile" />
         </label>
         <span class="fmt-tip">ⓘ<span class="fmt-tip-body">
           Одна строка = одна башня<br>
@@ -105,6 +105,7 @@ import { usePlanStore } from '@/stores/planStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useCoordInput } from '@/composables/useCoordInput'
 import { usePlayerResolution } from '@/composables/usePlayerResolution'
+import { readTabularFile } from '@/utils/importFile'
 import type { WatchtowerVillage } from '@/stores/planStore'
 import { watchtowerIcon } from '@/utils/unitIcons'
 
@@ -184,16 +185,13 @@ function doBulkAdd(): void {
 function onTowerFile(event: Event): void {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const text = e.target?.result as string
+  readTabularFile(file).then((text) => {
     const entries = parseTowersFromText(text)
     if (!entries.length) { bulkError.value = 'В файле не найдено строк формата 500|500'; return }
     planStore.importWatchtowerVillages(entries)
     bulkError.value = `Из файла добавлено ${entries.length} башен.`
     if (fileInput.value) fileInput.value.value = ''
-  }
-  reader.readAsText(file, 'utf-8')
+  }).catch((err) => { bulkError.value = err instanceof Error ? err.message : String(err) })
 }
 </script>
 

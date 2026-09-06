@@ -23,7 +23,7 @@
       </button>
       <label class="btn btn-secondary file-btn">
         Загрузить файл
-        <input ref="fileInput" type="file" accept=".txt,.csv" class="hidden-input" @change="onTargetFile" />
+        <input ref="fileInput" type="file" accept=".txt,.csv,.xlsx,.xls" class="hidden-input" @change="onTargetFile" />
       </label>
       <span class="fmt-tip">ⓘ<span class="fmt-tip-body">Одна строка = одна цель<br><code>500|500</code><br><code>501|501</code></span></span>
     </div>
@@ -130,6 +130,7 @@
 import { ref, computed } from 'vue'
 import { usePlanStore } from '@/stores/planStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
+import { readTabularFile } from '@/utils/importFile'
 import { useDateFormat } from '@/composables/useDateFormat'
 import { useCoordInput } from '@/composables/useCoordInput'
 import { usePlayerResolution } from '@/composables/usePlayerResolution'
@@ -254,17 +255,14 @@ function doBulkAdd(): void {
 function onTargetFile(event: Event): void {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const text = e.target?.result as string
+  readTabularFile(file).then((text) => {
     const entries = parseTargetsFromText(text)
     if (!entries.length) { bulkError.value = 'В файле не найдено координат формата 500|500'; return }
     const arrivalTime = new Date(Date.now() + 3600_000)
     const { added } = addTargetsFromParsed(entries, arrivalTime)
     bulkError.value = `Из файла добавлено ${added} целей. Отредактируй время прилёта в таблице.`
     if (fileInput.value) fileInput.value.value = ''
-  }
-  reader.readAsText(file, 'utf-8')
+  }).catch((err) => { bulkError.value = err instanceof Error ? err.message : String(err) })
 }
 </script>
 
