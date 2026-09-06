@@ -97,6 +97,7 @@ export interface VillageRole {
   customUnits?: Partial<Record<string, number>>
   customUnitPct?: Partial<Record<string, number>> // per-unit percentage (1–100); overrides customUnits when set
   customUnitMin?: Partial<Record<string, number>> // per-unit minimum in village troops required for eligibility
+  customUnitMax?: Partial<Record<string, number>> // per-unit maximum in village troops allowed for eligibility
   customIsSpam?: boolean // treat as spam in mass editor (enables window/range, groups under Спам)
   // half_off
   halfMin?: number         // мин. юнитов в атаке (def 1001)

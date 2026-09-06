@@ -168,7 +168,7 @@
         <div class="cu-table">
           <div class="cu-table-head">
             <span class="cu-th-left">Состав атаки</span>
-            <span class="cu-th-right">Мин. в деревне для подбора</span>
+            <span class="cu-th-right">Мин. / Макс. в деревне для подбора</span>
           </div>
           <div v-for="u in CUSTOM_UNITS" :key="u.key" class="cu-row">
             <div class="cu-left">
@@ -219,15 +219,24 @@
               </div>
             </div>
             <div class="cu-right">
-              <input
-                v-if="u.key !== 'snob' && u.key !== 'knight'"
-                :value="getCustomUnitMin(u.key) || ''"
-                type="number" min="0"
-                class="input cu-min-input"
-                placeholder="—"
-                title="Мин. количество юнита в деревне — деревни с меньшим кол-вом не попадут в этот пресет"
-                @change="setCustomUnitMin(u.key, +($event.target as HTMLInputElement).value, $event.target as HTMLInputElement)"
-              />
+              <template v-if="u.key !== 'snob' && u.key !== 'knight'">
+                <input
+                  :value="getCustomUnitMin(u.key) || ''"
+                  type="number" min="0"
+                  class="input cu-min-input"
+                  placeholder="мин"
+                  title="Мин. количество юнита в деревне — деревни с меньшим кол-вом не попадут в этот пресет"
+                  @change="setCustomUnitMin(u.key, +($event.target as HTMLInputElement).value, $event.target as HTMLInputElement)"
+                />
+                <input
+                  :value="getCustomUnitMax(u.key) || ''"
+                  type="number" min="0"
+                  class="input cu-min-input"
+                  placeholder="макс"
+                  title="Макс. количество юнита в деревне — деревни с бОльшим кол-вом не попадут в этот пресет"
+                  @change="setCustomUnitMax(u.key, +($event.target as HTMLInputElement).value)"
+                />
+              </template>
               <span v-else class="cu-min-na">—</span>
             </div>
           </div>
@@ -557,6 +566,17 @@ function setCustomUnitMin(key: string, val: number, el?: HTMLInputElement): void
   if (el) el.value = n > 0 ? String(n) : ''
 }
 
+function getCustomUnitMax(key: string): number {
+  return (form.role.customUnitMax?.[key] as number | undefined) ?? 0
+}
+
+function setCustomUnitMax(key: string, val: number): void {
+  if (!form.role.customUnitMax) form.role.customUnitMax = {}
+  const n = Math.max(0, val)
+  if (n === 0) delete form.role.customUnitMax[key]
+  else form.role.customUnitMax[key] = n
+}
+
 function activatePctMode(key: string): void {
   if (!form.role.customUnitPct) form.role.customUnitPct = {}
   if (!form.role.customUnitPct[key]) form.role.customUnitPct[key] = 100
@@ -615,6 +635,7 @@ function openEdit(id: string): void {
     customUnits:   { ...(preset.role.customUnits   ?? {}) },
     customUnitPct: { ...(preset.role.customUnitPct ?? {}) },
     customUnitMin: { ...(preset.role.customUnitMin ?? {}) },
+    customUnitMax: { ...(preset.role.customUnitMax ?? {}) },
   }
   syncCountModeKeys()
   editorMode.value = preset.role.type === 'custom_off' ? 'custom' : 'single'
@@ -973,6 +994,7 @@ function scrollToEditor(): void {
 .cu-right {
   display: flex;
   align-items: center;
+  gap: 0.35rem;
   padding: 0.3rem 0.75rem;
   border-left: 1px solid $border;
   min-height: 100%;
@@ -1060,7 +1082,7 @@ function scrollToEditor(): void {
 }
 
 .cu-min-input {
-  width: 90px !important;
+  width: 72px !important;
   padding: 0.22rem 0.4rem !important;
   font-size: 0.83rem !important;
   color: $text-dim !important;

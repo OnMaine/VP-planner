@@ -1542,18 +1542,24 @@ export const usePlanStore = defineStore('plan', () => {
         const units    = role.customUnits ?? {}
         const unitPct  = role.customUnitPct ?? {}
         const unitMinReq = role.customUnitMin ?? {}
+        const unitMaxReq = role.customUnitMax ?? {}
         const customCatTarget: CatTarget | undefined = (units.catapult ?? 0) !== 0
           ? (role.catTarget ?? presStore.catDefaultTarget)
           : undefined
         const unitKeys: Array<keyof AttackComposition> = ['spear','sword','axe','spy','light','heavy','ram','catapult','knight','snob']
-        // Check per-unit minimum requirements against village's original troops
+        // Check per-unit min/max requirements against village's original troops
+        const haveOf = (v: Village, k: string): number =>
+          k === 'snob'
+            ? (noblePollMode === 'real' ? v.troops[k as keyof VillageTroops] : (virtualNoblePool.get(v.player) ?? 0))
+            : v.troops[k as keyof VillageTroops]
         const meetsUnitMin = (v: Village): boolean => {
           for (const [k, minVal] of Object.entries(unitMinReq)) {
             if (!minVal) continue
-            const have = k === 'snob'
-              ? (noblePollMode === 'real' ? v.troops[k as keyof VillageTroops] : (virtualNoblePool.get(v.player) ?? 0))
-              : v.troops[k as keyof VillageTroops]
-            if (have < minVal) return false
+            if (haveOf(v, k) < minVal) return false
+          }
+          for (const [k, maxVal] of Object.entries(unitMaxReq)) {
+            if (!maxVal) continue
+            if (haveOf(v, k) > maxVal) return false
           }
           return true
         }
