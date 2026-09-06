@@ -5,6 +5,9 @@
     <div class="results-tabs">
       <button :class="['rtab', { active: tab === 'targets' }]" @click="tab = 'targets'">По деревням</button>
       <button :class="['rtab', { active: tab === 'visual' }]" @click="tab = 'visual'">По игрокам</button>
+      <button :class="['rtab', 'rtab-issues', { active: tab === 'issues' }]" @click="tab = 'issues'">
+        Проблемные<span v-if="problemTargets.length" class="rtab-badge">{{ problemTargets.length }}</span>
+      </button>
       <button :class="['rtab', { active: tab === 'bbcode' }]" @click="tab = 'bbcode'">Текст (BBCode)</button>
     </div>
 
@@ -301,6 +304,30 @@
       </section>
     </template>
 
+    <!-- ── Problem targets tab ─────────────────────────────────────────── -->
+    <template v-if="tab === 'issues'">
+      <section class="panel results-panel">
+        <div class="issues-head-row">
+          <h3 class="issues-title">Проблемные деревни ({{ problemTargets.length }})</h3>
+          <span class="issues-hint">Целям не хватило войск. «Заглушить» — убрать цель: её войска вернутся в пул на след. генерации, а сама цель больше не участвует.</span>
+        </div>
+
+        <div v-if="!problemTargets.length" class="issues-empty">Нет проблемных целей — всем хватило войск 🎉</div>
+
+        <div v-for="p in problemTargets" :key="p.coords" class="issue-block">
+          <div class="issue-head">
+            <span class="player-name-label">{{ p.coords }}</span>
+            <span v-if="p.enemyPlayer" class="target-player-label">{{ p.enemyPlayer }}</span>
+            <span class="player-attack-count">({{ p.assigned }} / {{ p.total }} атак)</span>
+            <button class="issue-mute-btn" title="Убрать цель из масса — войска вернутся в пул на след. генерации" @click="muteTarget(p.id)">✕ Заглушить</button>
+          </div>
+          <ul class="issue-list">
+            <li v-for="(msg, i) in p.issues" :key="i">{{ msg }}</li>
+          </ul>
+        </div>
+      </section>
+    </template>
+
     <!-- ── BBCode tab ──────────────────────────────────────────────────── -->
     <template v-if="tab === 'bbcode'">
       <section class="panel bbcode-panel">
@@ -373,7 +400,7 @@ function formatDur(send: Date, arrival: Date): string {
 
 // ── Tab state ──────────────────────────────────────────────────────────────
 
-const tab = ref<'visual' | 'targets' | 'bbcode'>('targets')
+const tab = ref<'visual' | 'targets' | 'issues' | 'bbcode'>('targets')
 
 // ── Attack row grouping ────────────────────────────────────────────────────
 
@@ -440,6 +467,32 @@ const issuesByCoords = computed(() => {
   }
   return m
 })
+
+// Problem targets: those with generation issues (something ran short).
+const problemTargets = computed(() => {
+  const coordsList = [...new Set(planStore.generationIssues.map(i => i.targetCoords))]
+  return coordsList
+    .map(coords => {
+      const target = planStore.targets.find(t => t.coords === coords)
+      const atks = attacksByTarget.value.get(coords) ?? []
+      return {
+        coords,
+        id: target?.id,
+        enemyPlayer: target?.enemyPlayer ?? atks[0]?.target.enemyPlayer,
+        assigned: atks.filter(a => !a.excluded).length,
+        total: atks.length,
+        issues: issuesByCoords.value.get(coords) ?? [],
+      }
+    })
+    .filter(p => p.id)   // only targets still present
+    .sort((a, b) => a.coords.localeCompare(b.coords))
+})
+
+// Remove a problem target: frees its reserved troops (they return to the pool
+// on the next generation) and drops it from the target list.
+function muteTarget(id?: string): void {
+  if (id) planStore.removeTarget(id)
+}
 
 interface GhostRow { label: string; arrivalTime: Date; missing: number; reason: string }
 
@@ -936,6 +989,29 @@ $yellow:       #f0c040;
   &:hover { border-color: $accent; color: $text; }
   &.active { border-color: $accent; color: $accent; background: a($accent, 0.08); }
 }
+.rtab-issues { display: inline-flex; align-items: center; gap: 0.4rem; }
+.rtab-badge {
+  background: #f38ba8; color: #1a1a2e; font-size: 0.72rem; font-weight: 700;
+  border-radius: 10px; padding: 0.02rem 0.4rem; line-height: 1.3;
+}
+
+// ── Problem targets tab ───────────────────────────────────────────────────
+.issues-head-row { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.issues-title { font-size: 1rem; margin: 0; color: $text; }
+.issues-hint { font-size: 0.78rem; color: $text-dim; }
+.issues-empty { color: $text-dim; padding: 1.2rem; text-align: center; }
+.issue-block {
+  border: 1px solid a(#f38ba8, 0.35); border-left: 3px solid #f38ba8; border-radius: 6px;
+  padding: 0.6rem 0.85rem; margin-bottom: 0.5rem; background: a(#f38ba8, 0.05);
+}
+.issue-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.issue-mute-btn {
+  margin-left: auto; background: transparent; border: 1px solid #f38ba8; color: #f38ba8;
+  border-radius: 5px; font-size: 0.8rem; font-weight: 600; padding: 0.2rem 0.6rem; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  &:hover { background: #f38ba8; color: #1a1a2e; }
+}
+.issue-list { margin: 0.4rem 0 0; padding-left: 1.1rem; color: $text-dim; font-size: 0.82rem; line-height: 1.5; }
 
 // ── Player blocks (visual tab) ────────────────────────────────────────────
 .player-block {
