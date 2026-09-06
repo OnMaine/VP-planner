@@ -65,7 +65,7 @@
       <button
         :class="['toggle-btn', { 'toggle-on': worldStore.settings.earliestSendEnabled }]"
         title="Ранний старт: не генерировать атаки, отправка которых раньше указанного времени"
-        @click="worldStore.updateSettings({ earliestSendEnabled: !worldStore.settings.earliestSendEnabled })"
+        @click="toggleEarliest"
       >⏰ Старт не ранее</button>
       <transition name="fade">
         <input
@@ -231,6 +231,20 @@ function applyArrivalTime(): void {
   const d = new Date(arrivalDatetime.value)
   if (isNaN(d.getTime())) return
   for (const t of planStore.targets) planStore.updateTarget(t.id, { arrivalTime: d })
+}
+
+// Toggle "старт не ранее"; when enabling with no time set, seed it with the
+// current local time so the filter is immediately active and visible.
+function nowLocalInput(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+function toggleEarliest(): void {
+  const enabled = !worldStore.settings.earliestSendEnabled
+  const patch: { earliestSendEnabled: boolean; earliestSendTime?: string } = { earliestSendEnabled: enabled }
+  if (enabled && !worldStore.settings.earliestSendTime) patch.earliestSendTime = nowLocalInput()
+  worldStore.updateSettings(patch)
 }
 
 // ── Front reserve ─────────────────────────────────────────────────────────
