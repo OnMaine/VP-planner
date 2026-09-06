@@ -1,23 +1,23 @@
 <template>
-  <div class="an-page">
-    <div class="an-head">
+  <div class="ap-page">
+    <div class="ap-head">
       <h2>Аналитика по врагам</h2>
-      <span class="an-sub" v-if="store.hasData">{{ rows.length }} игроков · обновляется с каждой выгрузкой на «Карте дефа»</span>
+      <span class="ap-sub" v-if="store.hasData">{{ rows.length }} игроков · обновляется с каждой выгрузкой на «Карте дефа»</span>
       <RouterLink to="/def-map" class="btn btn-sm btn-secondary">← Карта дефа</RouterLink>
     </div>
 
-    <div v-if="!store.hasData" class="an-empty">
+    <div v-if="!store.hasData" class="ap-empty">
       Нет данных. Загрузите .xlsx‑выгрузку на странице <RouterLink to="/def-map">Карта дефа</RouterLink>.
     </div>
 
     <template v-else>
-      <div class="an-note" v-if="!anyOwned">
+      <div class="ap-note" v-if="!anyOwned">
         ⚠ Нет листа «Войска» в текущих данных — «свой деф / отдал / хабы / раздетые / офф» считаются приблизительно.
         Перезалейте полную выгрузку на «Карте дефа».
       </div>
 
-      <div class="an-table-wrap">
-        <table class="an-table">
+      <div class="ap-table-wrap">
+        <table class="ap-table">
           <thead>
             <tr>
               <th v-for="c in COLS" :key="c.key"
@@ -49,15 +49,15 @@
       </div>
 
       <!-- ── Донор-деры (цели) ─────────────────────────────────────────── -->
-      <div class="an-donors">
-        <div class="ad-head">
+      <div class="ap-donors">
+        <div class="dl-head">
           <h3>Донор-деры (цели)</h3>
-          <span class="ad-count"><b>{{ effectiveCoords.length }}</b> / {{ totalDonorVil }} дер</span>
-          <div class="ad-presets">
+          <span class="dl-count"><b>{{ effectiveCoords.length }}</b> / {{ totalDonorVil }} дер</span>
+          <div class="dl-presets">
             <span>стоит</span>
             <button v-for="p in DONOR_PRESETS" :key="p.l" :class="{ active: donorMax === p.v }" @click="donorMax = p.v">{{ p.l }}</button>
           </div>
-          <label class="ad-sep">разделитель
+          <label class="dl-sep">разделитель
             <select v-model="sepMode">
               <option value="newline">строка</option>
               <option value="space">пробел</option>
@@ -67,43 +67,43 @@
           <button class="btn btn-sm btn-primary" @click="copyAll">{{ copiedKey === '__all__' ? 'Скопировано ✓' : 'Копировать все' }}</button>
         </div>
 
-        <div class="ad-conts" v-if="donorContinents.length">
-          <span class="ad-conts-label">Континенты:</span>
-          <button class="ad-mode" :class="{ on: contMode === 'only' }" @click="contMode = 'only'">только</button>
-          <button class="ad-mode" :class="{ on: contMode === 'except' }" @click="contMode = 'except'">кроме</button>
-          <button v-for="c in donorContinents" :key="c" class="ad-cont-chip"
+        <div class="dl-conts" v-if="donorContinents.length">
+          <span class="dl-conts-label">Континенты:</span>
+          <button class="dl-mode" :class="{ on: contMode === 'only' }" @click="contMode = 'only'">только</button>
+          <button class="dl-mode" :class="{ on: contMode === 'except' }" @click="contMode = 'except'">кроме</button>
+          <button v-for="c in donorContinents" :key="c" class="dl-cont-chip"
             :class="{ active: selectedConts.has(c) }" @click="toggleCont(c)">K{{ c }}</button>
-          <button v-if="selectedConts.size" class="ad-cont-clear" @click="selectedConts = new Set()">сброс</button>
+          <button v-if="selectedConts.size" class="dl-cont-clear" @click="selectedConts = new Set()">сброс</button>
         </div>
-        <div class="ad-hint">
+        <div class="dl-hint">
           Деревни, отдавшие деф в подкреп (свой деф ушёл). Внутри игрока — сначала где меньше всего стоит.
           Можно исключить игрока целиком или отдельную деру; «стоит» подсвечено (много дефа = красный → скорее убрать).
         </div>
 
-        <div class="ad-empty" v-if="!donorGroups.length">
+        <div class="dl-empty" v-if="!donorGroups.length">
           Нет донор-дер. Нужна свежая выгрузка с листом «Войска» на «Карте дефа».
         </div>
 
-        <div class="ad-groups">
-          <div class="ad-group" v-for="g in donorGroups" :key="g.name" :class="{ excluded: excludedPlayers.has(g.name) }">
-            <div class="ad-gh">
-              <button class="ad-exp" @click="toggleExpand(g.name)">{{ expanded.has(g.name) ? '▾' : '▸' }}</button>
+        <div class="dl-groups">
+          <div class="dl-group" v-for="g in donorGroups" :key="g.name" :class="{ excluded: excludedPlayers.has(g.name) }">
+            <div class="dl-gh">
+              <button class="dl-exp" @click="toggleExpand(g.name)">{{ expanded.has(g.name) ? '▾' : '▸' }}</button>
               <span class="dot" :style="{ background: g.color }" />
-              <b class="ad-gname">{{ g.name }}</b>
-              <span class="ad-gcount">{{ activeCoords(g).length }}/{{ g.villages.length }} дер · ушло {{ fmtK(g.totalAway) }}</span>
+              <b class="dl-gname">{{ g.name }}</b>
+              <span class="dl-gcount">{{ activeCoords(g).length }}/{{ g.villages.length }} дер · ушло {{ fmtK(g.totalAway) }}</span>
               <button class="btn btn-xs" @click="copyPlayer(g)">{{ copiedKey === g.name ? '✓' : 'копир.' }}</button>
-              <button class="ad-excl" :class="{ on: excludedPlayers.has(g.name) }" @click="togglePlayer(g.name)">
+              <button class="dl-excl" :class="{ on: excludedPlayers.has(g.name) }" @click="togglePlayer(g.name)">
                 {{ excludedPlayers.has(g.name) ? 'вернуть' : 'исключить' }}
               </button>
             </div>
-            <div class="ad-vils" v-if="expanded.has(g.name) && !excludedPlayers.has(g.name)">
-              <div class="ad-vil" v-for="v in g.villages" :key="v.coords" :class="{ off: excludedVillages.has(v.coords) }">
-                <span class="ad-coords">{{ v.coords }}</span>
-                <span class="ad-cont">K{{ v.cont }}</span>
-                <span class="ad-chip" :style="{ background: standColor(v.stand) }">стоит {{ fmtK(v.stand) }}</span>
-                <span class="ad-away">ушло {{ fmtK(v.away) }}</span>
-                <span class="ad-b">🧱{{ v.wall ?? '?' }} · 🗼{{ v.tower ?? '?' }}</span>
-                <button class="ad-vx" :title="excludedVillages.has(v.coords) ? 'Вернуть' : 'Исключить деру'" @click="toggleVillage(v.coords)">
+            <div class="dl-vils" v-if="expanded.has(g.name) && !excludedPlayers.has(g.name)">
+              <div class="dl-vil" v-for="v in g.villages" :key="v.coords" :class="{ off: excludedVillages.has(v.coords) }">
+                <span class="dl-coords">{{ v.coords }}</span>
+                <span class="dl-cont">K{{ v.cont }}</span>
+                <span class="dl-chip" :style="{ background: standColor(v.stand) }">стоит {{ fmtK(v.stand) }}</span>
+                <span class="dl-away">ушло {{ fmtK(v.away) }}</span>
+                <span class="dl-b">🧱{{ v.wall ?? '?' }} · 🗼{{ v.tower ?? '?' }}</span>
+                <button class="dl-vx" :title="excludedVillages.has(v.coords) ? 'Вернуть' : 'Исключить деру'" @click="toggleVillage(v.coords)">
                   {{ excludedVillages.has(v.coords) ? '↺' : '✕' }}
                 </button>
               </div>
@@ -267,21 +267,21 @@ function pctStyle(pct: number) {
 </script>
 
 <style lang="scss" scoped>
-.an-page { padding: 0.5rem 0; }
-.an-head {
+.ap-page { padding: 0.5rem 0; }
+.ap-head {
   display: flex; align-items: center; gap: 1rem; margin-bottom: 0.8rem;
   h2 { font-size: 1.1rem; margin: 0; color: $text; }
-  .an-sub { font-size: 0.8rem; color: $text-dim; }
+  .ap-sub { font-size: 0.8rem; color: $text-dim; }
   .btn { margin-left: auto; }
 }
-.an-empty { color: $text-dim; padding: 2rem; text-align: center; a { color: $accent; } }
-.an-note {
+.ap-empty { color: $text-dim; padding: 2rem; text-align: center; a { color: $accent; } }
+.ap-note {
   font-size: 0.8rem; color: #f5a623; background: rgba(245, 166, 35, 0.1);
   border: 1px solid rgba(245, 166, 35, 0.3); border-radius: 6px; padding: 0.5rem 0.7rem; margin-bottom: 0.7rem;
 }
 
-.an-table-wrap { overflow-x: auto; border: 1px solid $border; border-radius: 8px; }
-.an-table {
+.ap-table-wrap { overflow-x: auto; border: 1px solid $border; border-radius: 8px; }
+.ap-table {
   border-collapse: collapse; width: 100%; font-size: 0.82rem;
   th, td { padding: 0.4rem 0.6rem; text-align: left; white-space: nowrap; }
   th {
@@ -303,17 +303,17 @@ function pctStyle(pct: number) {
 }
 
 // ── Донор-деры ────────────────────────────────────────────────────────
-.an-donors { margin-top: 1.4rem; }
-.ad-head {
+.ap-donors { margin-top: 1.4rem; }
+.dl-head {
   display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.4rem;
   h3 { font-size: 0.98rem; margin: 0; color: $text; }
-  .ad-count { font-size: 0.82rem; color: $text-dim; b { color: $accent; } }
-  .ad-sep {
+  .dl-count { font-size: 0.82rem; color: $text-dim; b { color: $accent; } }
+  .dl-sep {
     margin-left: auto; font-size: 0.76rem; color: $text-dim; display: flex; align-items: center; gap: 0.3rem;
     select { background: $bg-deep; border: 1px solid $border; border-radius: 4px; color: $text; font-size: 0.76rem; padding: 0.15rem 0.3rem; }
   }
 }
-.ad-presets {
+.dl-presets {
   display: flex; align-items: center; gap: 0.25rem; font-size: 0.76rem; color: $text-dim;
   button {
     background: $bg-deep; border: 1px solid $border; border-radius: 4px; color: $text-dim;
@@ -321,57 +321,57 @@ function pctStyle(pct: number) {
     &.active { background: $accent; border-color: $accent; color: #fff; }
   }
 }
-.ad-conts {
+.dl-conts {
   display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 0.5rem;
-  .ad-conts-label { font-size: 0.76rem; color: $text-dim; margin-right: 0.2rem; }
-  .ad-mode {
+  .dl-conts-label { font-size: 0.76rem; color: $text-dim; margin-right: 0.2rem; }
+  .dl-mode {
     font-size: 0.72rem; padding: 0.12rem 0.45rem; border-radius: 4px; cursor: pointer;
     background: $bg-deep; border: 1px solid $border; color: $text-dim;
     &.on { background: $accent; border-color: $accent; color: #fff; }
   }
-  .ad-cont-chip {
+  .dl-cont-chip {
     font-size: 0.72rem; padding: 0.12rem 0.4rem; border-radius: 4px; cursor: pointer;
     background: $bg-deep; border: 1px solid $border; color: $text-dim; font-variant-numeric: tabular-nums;
     &.active { background: rgba(233, 69, 96, 0.18); border-color: $accent; color: $text; font-weight: 700; }
   }
-  .ad-cont-clear { font-size: 0.72rem; padding: 0.12rem 0.4rem; background: none; border: none; color: $accent; cursor: pointer; text-decoration: underline; }
+  .dl-cont-clear { font-size: 0.72rem; padding: 0.12rem 0.4rem; background: none; border: none; color: $accent; cursor: pointer; text-decoration: underline; }
 }
-.ad-hint { font-size: 0.76rem; color: $text-dim; margin-bottom: 0.6rem; line-height: 1.4; }
-.ad-empty { color: $text-dim; padding: 1rem; font-style: italic; }
+.dl-hint { font-size: 0.76rem; color: $text-dim; margin-bottom: 0.6rem; line-height: 1.4; }
+.dl-empty { color: $text-dim; padding: 1rem; font-style: italic; }
 
 .btn-xs {
   background: $bg-deep; border: 1px solid $border; border-radius: 4px; color: $text-dim;
   font-size: 0.72rem; padding: 0.1rem 0.4rem; cursor: pointer; &:hover { color: $text; }
 }
 
-.ad-groups { display: flex; flex-direction: column; gap: 0.3rem; }
-.ad-group {
+.dl-groups { display: flex; flex-direction: column; gap: 0.3rem; }
+.dl-group {
   border: 1px solid $border; border-radius: 6px; overflow: hidden;
   &.excluded { opacity: 0.5; }
 }
-.ad-gh {
+.dl-gh {
   display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; background: $bg-panel;
-  .ad-exp { background: none; border: none; color: $text-dim; cursor: pointer; font-size: 0.8rem; padding: 0; width: 14px; }
+  .dl-exp { background: none; border: none; color: $text-dim; cursor: pointer; font-size: 0.8rem; padding: 0; width: 14px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .ad-gname { color: $text; font-size: 0.86rem; }
-  .ad-gcount { font-size: 0.76rem; color: $text-dim; margin-right: auto; }
-  .ad-excl {
+  .dl-gname { color: $text; font-size: 0.86rem; }
+  .dl-gcount { font-size: 0.76rem; color: $text-dim; margin-right: auto; }
+  .dl-excl {
     background: none; border: 1px solid $border; border-radius: 4px; color: $text-dim;
     font-size: 0.72rem; padding: 0.1rem 0.45rem; cursor: pointer;
     &:hover { color: #f38ba8; border-color: #f38ba8; }
     &.on { color: #f38ba8; border-color: #f38ba8; background: rgba(243, 139, 168, 0.12); }
   }
 }
-.ad-vils { padding: 0.2rem 0.4rem 0.4rem; display: flex; flex-direction: column; gap: 0.1rem; }
-.ad-vil {
+.dl-vils { padding: 0.2rem 0.4rem 0.4rem; display: flex; flex-direction: column; gap: 0.1rem; }
+.dl-vil {
   display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; padding: 0.15rem 0.3rem; border-radius: 4px;
   &:hover { background: rgba(255, 255, 255, 0.03); }
   &.off { opacity: 0.4; text-decoration: line-through; }
-  .ad-coords { font-weight: 700; color: $text; font-variant-numeric: tabular-nums; min-width: 66px; }
-  .ad-cont { font-size: 0.7rem; color: $text-dim; background: rgba(255,255,255,0.05); border-radius: 3px; padding: 0.05rem 0.3rem; }
-  .ad-chip { color: #fff; font-weight: 600; font-size: 0.72rem; padding: 0.05rem 0.4rem; border-radius: 4px; }
-  .ad-away { color: $text-dim; }
-  .ad-b { color: $text-faint; margin-left: auto; }
-  .ad-vx { background: none; border: 1px solid $border; border-radius: 4px; color: $text-dim; cursor: pointer; font-size: 0.72rem; padding: 0.05rem 0.35rem; &:hover { color: $accent; } }
+  .dl-coords { font-weight: 700; color: $text; font-variant-numeric: tabular-nums; min-width: 66px; }
+  .dl-cont { font-size: 0.7rem; color: $text-dim; background: rgba(255,255,255,0.05); border-radius: 3px; padding: 0.05rem 0.3rem; }
+  .dl-chip { color: #fff; font-weight: 600; font-size: 0.72rem; padding: 0.05rem 0.4rem; border-radius: 4px; }
+  .dl-away { color: $text-dim; }
+  .dl-b { color: $text-faint; margin-left: auto; }
+  .dl-vx { background: none; border: 1px solid $border; border-radius: 4px; color: $text-dim; cursor: pointer; font-size: 0.72rem; padding: 0.05rem 0.35rem; &:hover { color: $accent; } }
 }
 </style>
