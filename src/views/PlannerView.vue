@@ -94,7 +94,10 @@
         </template>
         <template v-if="planStore.poolUsageStats.offsAvailable > 0">
           <span class="pool-sep">·</span>
-          <span class="pool-unused" :title="unusedOffTooltip">{{ planStore.poolUsageStats.offsAvailable }} офов не в плане</span>
+          <span class="pool-unused pool-copy" :title="unusedOffTooltip" @click="copyCoords(planStore.poolUsageStats.unusedOffCoords, 'off')">
+            {{ planStore.poolUsageStats.offsAvailable }} офов не в плане
+            <span class="pool-copy-icon">{{ copiedPool === 'off' ? '✓' : '⧉' }}</span>
+          </span>
         </template>
         <template v-if="planStore.poolUsageStats.reservedOffCount > 0">
           <span class="pool-sep">·</span>
@@ -107,7 +110,10 @@
           </span>
           <template v-if="planStore.poolUsageStats.catSquadsLeft > 0">
             <span class="pool-sep">·</span>
-            <span class="pool-unused" :title="unusedCatTooltip">{{ planStore.poolUsageStats.catSquadsLeft }} кат не в плане</span>
+            <span class="pool-unused pool-copy" :title="unusedCatTooltip" @click="copyCoords(planStore.poolUsageStats.unusedCatCoords, 'cat')">
+              {{ planStore.poolUsageStats.catSquadsLeft }} кат не в плане
+              <span class="pool-copy-icon">{{ copiedPool === 'cat' ? '✓' : '⧉' }}</span>
+            </span>
           </template>
         </template>
         <template v-if="shortageTargetCount > 0">
@@ -161,8 +167,19 @@ function buildUnusedTooltip(s: { noSlots: number; nightExcluded: number; earlies
   if (s.earliestExcluded > 0) parts.push(`${s.earliestExcluded} — ранний старт`)
   return parts.length ? parts.join('\n') : fallback
 }
-const unusedOffTooltip = computed(() => buildUnusedTooltip(planStore.unusedOffStats, 'Оффы не распределены по целям'))
-const unusedCatTooltip = computed(() => buildUnusedTooltip(planStore.unusedCatStats, 'Каты не распределены по кат-целям'))
+const unusedOffTooltip = computed(() => buildUnusedTooltip(planStore.unusedOffStats, 'Оффы не распределены по целям') + '\nКлик — скопировать координаты')
+const unusedCatTooltip = computed(() => buildUnusedTooltip(planStore.unusedCatStats, 'Каты не распределены по кат-целям') + '\nКлик — скопировать координаты')
+
+// Copy coords of villages left out of the plan.
+const copiedPool = ref('')
+async function copyCoords(list: string[], key: string): Promise<void> {
+  if (!list.length) return
+  try {
+    await navigator.clipboard.writeText(list.join(' '))
+    copiedPool.value = key
+    setTimeout(() => { if (copiedPool.value === key) copiedPool.value = '' }, 1500)
+  } catch { /* clipboard unavailable */ }
+}
 
 const palOffTotal    = computed(() => planStore.offPoolStats.breachPal + planStore.offPoolStats.palOnly)
 const breachOffTotal = computed(() => planStore.offPoolStats.breachPal + planStore.offPoolStats.breachOnly)
@@ -400,6 +417,11 @@ function onGenerate(): void {
 .pool-item--dim { font-size: 0.82rem; color: $text-faint; strong { color: $text-dim; } }
 .pool-sep   { color: $text-faint; }
 .pool-unused    { color: $orange; font-weight: 600; }
+.pool-copy      {
+  cursor: pointer; border-radius: 4px; padding: 0 0.15rem;
+  &:hover { background: rgba(245, 166, 35, 0.12); }
+  .pool-copy-icon { font-size: 0.85em; opacity: 0.7; margin-left: 0.15rem; }
+}
 .pool-reserved  { color: #c8a020; font-weight: 600; }
 .pool-shortage  { color: #e94560; font-weight: 700; cursor: default; }
 

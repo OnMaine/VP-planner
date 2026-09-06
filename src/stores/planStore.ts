@@ -2470,17 +2470,23 @@ export const usePlanStore = defineStore('plan', () => {
     const mainMassCoords = new Set(
       attacks.value.filter(a => !a.excluded && !a.catMass).map(a => a.fromVillage.coords)
     )
-    const catSquadsTotal = villages.filter(v =>
+    const catEligibleCoords = villages.filter(v =>
       !reservedVillages.value.has(v.coords) &&
       !mainMassCoords.has(v.coords) &&
       v.troops.catapult >= catMinSize
-    ).length
+    ).map(v => v.coords)
+    const catSquadsTotal = catEligibleCoords.length
+
+    // Coordinates of eligible villages that were NOT used in the plan — for copy.
+    const unusedOffCoords = [...offsTotalSet].filter(c => !usedOffCoords.has(c)).sort()
+    const unusedCatCoords = catEligibleCoords.filter(c => !usedCatCoords.has(c)).sort()
 
     return {
       offsTotal,
       offsUsed: usedOffCoords.size,
       offsAvailable: offsTotal - usedOffCoords.size,
       reservedOffCount,
+      unusedOffCoords,
 
       noblesTotal,
       noblesUsed,
@@ -2490,6 +2496,7 @@ export const usePlanStore = defineStore('plan', () => {
       catSquadsTotal,
       catSquadsUsed: usedCatCoords.size,
       catSquadsLeft: catSquadsTotal - usedCatCoords.size,
+      unusedCatCoords,
     }
   })
 
