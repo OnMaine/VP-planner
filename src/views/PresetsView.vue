@@ -190,17 +190,19 @@
                     :class="['cu-mode', { 'cu-mode-on': getCustomUnit(u.key) === -1 && !getCustomUnitPct(u.key) }]"
                     @click="setCustomUnit(u.key, -1)"
                   >Всё</button>
-                  <button
-                    :class="['cu-mode', { 'cu-mode-on': !!getCustomUnitPct(u.key) }]"
-                    @click="activatePctMode(u.key)"
-                  >%</button>
-                  <input
-                    v-if="getCustomUnitPct(u.key)"
-                    :value="getCustomUnitPct(u.key)"
-                    type="number" min="1" max="100"
-                    class="input cu-count"
-                    @change="setCustomUnitPct(u.key, +($event.target as HTMLInputElement).value)"
-                  /><span v-if="getCustomUnitPct(u.key)" class="cu-pct-sign">%</span>
+                  <template v-if="u.key !== 'snob'">
+                    <button
+                      :class="['cu-mode', { 'cu-mode-on': !!getCustomUnitPct(u.key) }]"
+                      @click="activatePctMode(u.key)"
+                    >%</button>
+                    <input
+                      v-if="getCustomUnitPct(u.key)"
+                      :value="getCustomUnitPct(u.key)"
+                      type="number" min="1" max="100"
+                      class="input cu-count"
+                      @change="setCustomUnitPct(u.key, +($event.target as HTMLInputElement).value)"
+                    /><span v-if="getCustomUnitPct(u.key)" class="cu-pct-sign">%</span>
+                  </template>
                   <button
                     :class="['cu-mode', { 'cu-mode-on': isCountMode(u.key) }]"
                     @click="activateCountMode(u.key)"

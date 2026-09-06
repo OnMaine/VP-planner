@@ -163,7 +163,7 @@ export function defaultColorForRole(type: VillageRoleType, role?: VillageRole): 
 export function defaultRoleForType(type: VillageRoleType): VillageRole {
   switch (type) {
     case 'half_off':   return { type, halfMin: 1001, halfMax: 5000, halfFixedComp: false }
-    case 'custom_off': return { type, customMin: 0, customMax: 99999, customColor: '#e07b39', customUnits: { spear: 0, sword: 0, axe: -1, spy: 0, light: -1, heavy: -1, ram: -1, catapult: 0, knight: 0, snob: 0 } }
+    case 'custom_off': return { type, customMin: 0, customMax: 99999, customColor: '#e07b39', customUnits: { spear: 0, sword: 0, axe: 0, spy: 0, light: 0, heavy: 0, ram: 0, catapult: 0, knight: 0, snob: 0 } }
     case 'cat_squad':  return { type, catMinCats: 50 }
     case 'spam':       return { type, spamCount: 10, spamStrength: 'weak', spamNobleCount: 0, spamTrainSize: 0 }
     default:           return { type }

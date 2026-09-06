@@ -87,6 +87,10 @@
             <th>
               Пал-Офф
               <span class="th-info-icon" @mouseenter="showThTooltip('pal-off', $event)" @mouseleave="hideThTooltip">ⓘ</span>
+              <div class="th-bulk">
+                <input type="number" min="0" v-model.number="bulkPalOff" class="th-bulk-input" title="Кол-во пал-оффа" />
+                <button class="th-bulk-btn" title="Проставить это кол-во всем игрокам" @click="applyPalOffAll">всем</button>
+              </div>
             </th>
             <th>
               Дворы
@@ -481,6 +485,14 @@ function prefillAll() {
   }
 }
 
+// Bulk-set offensive paladins for every player at once.
+const bulkPalOff = ref(0)
+function applyPalOffAll() {
+  for (const p of allPlayers.value) {
+    planStore.setPlayerData(p.player, { offPaladins: bulkPalOff.value })
+  }
+}
+
 onMounted(prefillMissing)
 defineExpose({ prefillAll })
 </script>
@@ -681,6 +693,21 @@ defineExpose({ prefillAll })
 .cat-squads     { color: $text-faint; font-size: 0.78em; font-weight: 400; margin-left: 2px; white-space: nowrap; }
 .cat-below-min  { color: #555570; font-size: 0.85em; }
 .th-unit-icon  { width: 16px; height: 16px; image-rendering: pixelated; display: block; margin: 0 auto; }
+
+// Bulk-set control in a column header
+.th-bulk {
+  display: flex; align-items: center; gap: 3px; margin-top: 4px; font-weight: 400;
+  .th-bulk-input {
+    width: 44px; background: $bg-page; border: 1px solid $border; border-radius: 3px;
+    color: $text; padding: 0.1rem 0.25rem; font-size: 0.72rem; text-align: center;
+    &:focus { outline: none; border-color: $accent; }
+  }
+  .th-bulk-btn {
+    background: $bg-page; border: 1px solid $border; border-radius: 3px; color: $text-dim;
+    font-size: 0.7rem; padding: 0.12rem 0.35rem; cursor: pointer; white-space: nowrap;
+    &:hover { color: $text; border-color: $accent; }
+  }
+}
 
 .players-wrap,
 .preview-wrap {
