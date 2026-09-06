@@ -485,7 +485,8 @@ const problemTargets = computed(() => {
       }
     })
     .filter(p => p.id)   // only targets still present
-    .sort((a, b) => a.coords.localeCompare(b.coords))
+    // Most problems first; tie-break by coords for stable order.
+    .sort((a, b) => b.issues.length - a.issues.length || a.coords.localeCompare(b.coords))
 })
 
 // Remove a problem target: frees its reserved troops (they return to the pool
