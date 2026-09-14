@@ -93,20 +93,6 @@
         </label>
       </div>
 
-      <!-- Role type selector — only for custom mode -->
-      <template v-if="editorMode === 'custom'">
-        <h3 class="sub-head">Тип роли деревни</h3>
-        <div class="role-type-grid">
-          <button
-            v-for="t in availableRoleTypes"
-            :key="t"
-            :class="['role-btn', { active: form.role.type === t }, roleChipClass(t)]"
-            @click="setRoleType(t)"
-          >Одиночная</button>
-          <button class="role-btn chip-noble" disabled title="В разработке">Комбинированная</button>
-        </div>
-      </template>
-
       <!-- Type-specific config -->
       <template v-if="form.role.type === 'half_off'">
         <h3 class="sub-head">Параметры</h3>
@@ -241,9 +227,6 @@
             </div>
           </div>
         </div>
-        <div v-if="customFixedPop !== null" class="cu-pop-summary">
-          Фиксированный состав: <strong>{{ customFixedPop.toLocaleString('ru') }}</strong> усадьбы
-        </div>
         <div v-if="(form.role.customUnits?.catapult ?? 0) !== 0" class="form-row cu-cat-target-row">
           <label class="f-label">
             Здание на снос (катапульты)
@@ -256,10 +239,6 @@
         <h3 class="sub-head">Отображение</h3>
         <div v-if="customPopWarning" class="custom-pop-warning">{{ customPopWarning }}</div>
         <div class="form-row">
-          <label class="f-label f-checkbox" title="Пресет попадёт в группу Спам в масс-редакторе и получит возможность задать диапазон разброса тайминга">
-            <input v-model="form.role.customIsSpam" type="checkbox" />
-            Считать спамом
-          </label>
           <label class="f-label">
             Цвет бейджа
             <div class="cu-color-row">

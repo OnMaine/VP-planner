@@ -17,6 +17,10 @@
           <span class="sg-label">Каты</span>
           <label class="sg-field">мин <input v-model.number="presetsStore.catMinSize" type="number" min="1" class="inline-input sg-input" /></label>
         </div>
+        <div class="settings-group">
+          <span class="sg-label" title="Сколько дворян в одном паровозе — от этого числа считается кол-во паровозов">Паровоз</span>
+          <label class="sg-field">двор. <input v-model.number="presetsStore.trainSize" type="number" min="1" class="inline-input sg-input" /></label>
+        </div>
       </div>
     </div>
 
@@ -179,7 +183,7 @@
               </div>
             </td>
             <td class="num num-trains">
-              {{ Math.floor(planStore.getPlayerData(p.player).totalNobles / 5) }}
+              {{ Math.floor(planStore.getPlayerData(p.player).totalNobles / presetsStore.trainSize) }}
             </td>
           </tr>
         </tbody>
@@ -460,7 +464,7 @@ const totals = computed(() => {
   }
   const catSquadsTotal = villagesStore.villages.reduce((sum, v) => sum + catSquads(v.troops.catapult), 0)
   const snobs = allPlayers.value.reduce((sum, p) => sum + planStore.getPlayerData(p.player).totalNobles, 0)
-  const trains = allPlayers.value.reduce((sum, p) => sum + Math.floor(planStore.getPlayerData(p.player).totalNobles / 5), 0)
+  const trains = allPlayers.value.reduce((sum, p) => sum + Math.floor(planStore.getPlayerData(p.player).totalNobles / presetsStore.trainSize), 0)
   return { breakOff, fullOff, halfOff, smallOff, snobs, trains, catapults, catSquadsTotal, reserveFull, reserveHalf, reserveSmall }
 })
 

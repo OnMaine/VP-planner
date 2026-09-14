@@ -98,7 +98,6 @@ export interface VillageRole {
   customUnitPct?: Partial<Record<string, number>> // per-unit percentage (1–100); overrides customUnits when set
   customUnitMin?: Partial<Record<string, number>> // per-unit minimum in village troops required for eligibility
   customUnitMax?: Partial<Record<string, number>> // per-unit maximum in village troops allowed for eligibility
-  customIsSpam?: boolean // treat as spam in mass editor (enables window/range, groups under Спам)
   // half_off
   halfMin?: number         // мин. юнитов в атаке (def 1001)
   halfMax?: number         // макс. юнитов в атаке (def 5000)
@@ -256,6 +255,7 @@ export const usePresetsStore = defineStore('presets', () => {
   const halfOffMinOffFarm = _lsRef('vp_half_off_min_off_farm', 8175)
   const smallOffMinOffFarm= _lsRef('vp_small_off_min_off_farm',3100)
   const catMinSize     = _lsRef('vp_cat_min',            50)
+  const trainSize      = _lsRef('vp_train_size',          4)
   const _rawCatTarget  = localStorage.getItem('vp_cat_target') as CatTarget | null
   const catDefaultTarget = ref<CatTarget | undefined>(_rawCatTarget ?? undefined)
   watch(catDefaultTarget, (v) => {
@@ -294,5 +294,5 @@ export const usePresetsStore = defineStore('presets', () => {
     })
   }
 
-  return { all, custom, breachMinRams, fullOffMinOffFarm, halfOffMinOffFarm, smallOffMinOffFarm, catMinSize, catDefaultTarget, add, update, remove, clone }
+  return { all, custom, breachMinRams, fullOffMinOffFarm, halfOffMinOffFarm, smallOffMinOffFarm, catMinSize, trainSize, catDefaultTarget, add, update, remove, clone }
 })

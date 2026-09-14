@@ -231,7 +231,7 @@ function slotChipStyle(presetId: string): Record<string, string> {
 
 function isSpamPreset(presetId: string): boolean {
   const p = presetsStore.all.find(pr => pr.id === presetId)
-  return p?.role.type === 'spam' || !!p?.role.customIsSpam
+  return p?.role.type === 'spam'
 }
 
 function hasSpamWindow(slot: FormSlot): boolean {
@@ -284,7 +284,7 @@ const GROUP_ORDER = ['Оффы', 'Каты', 'Спам', 'Кастом']
 const presetGroups = computed<Array<{ label: string; presets: AttackPreset[] }>>(() => {
   const map = new Map<string, AttackPreset[]>()
   for (const p of presetsStore.all) {
-    const grp = p.role.customIsSpam ? 'Спам' : (ROLE_GROUP[p.role.type] ?? 'Прочее')
+    const grp = ROLE_GROUP[p.role.type] ?? 'Прочее'
     if (!map.has(grp)) map.set(grp, [])
     map.get(grp)!.push(p)
   }
