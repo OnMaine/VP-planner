@@ -235,14 +235,71 @@ export function parseWorkbook(buf: ArrayBuffer): WorkbookResult {
   }
 }
 
+/**
+ * Parse per-village troops («Защита / в деревне») from a workbook — used as the
+ * baseline snapshot for the "compare exports" diff (keeps full unit breakdown).
+ */
+export function parseBaselineUnits(buf: ArrayBuffer): { unitsByCoords: Map<string, Record<UnitKey, number>>; count: number; error: string } {
+  let wb: XLSX.WorkBook
+  try { wb = XLSX.read(buf, { type: 'array' }) }
+  catch (e) { return { unitsByCoords: new Map(), count: 0, error: `Не удалось прочитать файл: ${String(e)}` } }
+
+  const sheet = (name: string): Row[] | null => {
+    const ws = wb.Sheets[name]
+    return ws ? (XLSX.utils.sheet_to_json(ws, { defval: '' }) as Row[]) : null
+  }
+  const zah = sheet('Защита'), voi = sheet('Войска')
+  let rows: Row[] = []
+  if (zah && zah.length) {
+    rows = zah.filter(r => String(r['Статус'] ?? '').trim() === 'в деревне')
+    if (!rows.length) rows = zah.filter(r => String(r['Статус'] ?? '').trim() === 'всего')
+  }
+  if (!rows.length && voi && voi.length) rows = voi
+  if (!rows.length) return { unitsByCoords: new Map(), count: 0, error: 'В книге нет листов «Защита»/«Войска».' }
+
+  const m = new Map<string, Record<UnitKey, number>>()
+  for (const r of rows) {
+    const c = parseCoords(r['Координаты'])
+    if (!c) continue
+    m.set(`${c.x}|${c.y}`, unitsFromRow(r))
+  }
+  return { unitsByCoords: m, count: m.size, error: '' }
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
 const STORAGE_KEY = 'vp_def_map'
+const BASELINE_KEY = 'vp_def_map_baseline'
 
 export const useDefMapStore = defineStore('defMap', () => {
   const players = ref<DefPlayer[]>([])
+
+  // Baseline snapshot (older export) for the "compare exports" diff — full units.
+  const baselineUnits = ref<Map<string, Record<UnitKey, number>>>(new Map())
+
+  function persistBaseline() {
+    try {
+      localStorage.setItem(BASELINE_KEY, JSON.stringify([...baselineUnits.value]))
+    } catch { /* ignore quota */ }
+  }
+  function loadBaseline() {
+    try {
+      const raw = localStorage.getItem(BASELINE_KEY)
+      if (raw) baselineUnits.value = new Map(JSON.parse(raw) as [string, Record<UnitKey, number>][])
+    } catch { /* ignore */ }
+  }
+  function importBaseline(buf: ArrayBuffer) {
+    const res = parseBaselineUnits(buf)
+    if (!res.error) { baselineUnits.value = res.unitsByCoords; persistBaseline() }
+    return res
+  }
+  function clearBaseline() {
+    baselineUnits.value = new Map()
+    try { localStorage.removeItem(BASELINE_KEY) } catch { /* ignore */ }
+  }
+  const hasBaseline = computed(() => baselineUnits.value.size > 0)
 
   function persist() {
     try {
@@ -264,6 +321,7 @@ export const useDefMapStore = defineStore('defMap', () => {
         villages: p.villages ?? [],
       }))
     } catch { /* ignore */ }
+    loadBaseline()
   }
 
   /**
@@ -372,6 +430,7 @@ export const useDefMapStore = defineStore('defMap', () => {
   return {
     players,
     load, persist,
+    baselineUnits, hasBaseline, importBaseline, clearBaseline,
     importWorkbook, removePlayer, toggleHidden, setColor, clearAll,
     colorByPlayer, visibleVillages, stats, hasData, analytics,
   }

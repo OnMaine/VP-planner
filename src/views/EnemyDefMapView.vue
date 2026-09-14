@@ -52,6 +52,11 @@
       <span class="vsep" />
       <label class="tog"><input type="checkbox" v-model="showLabels" /> Подписи</label>
       <span class="vsep" />
+      <label class="tog" :class="{ 'tog-disabled': !store.hasBaseline }"
+        :title="store.hasBaseline ? 'Красить деры по изменению дефа vs базовая выгрузка' : 'Сначала загрузите базовую (старую) выгрузку в панели данных'">
+        <input type="checkbox" v-model="diffMode" :disabled="!store.hasBaseline" /> Δ Сравнение
+      </label>
+      <span class="vsep" />
       <span class="toolbar-info" v-if="store.hasData">
         {{ shownVillages.length }} дер · деф {{ fmtK(totalDef) }}
       </span>
@@ -97,38 +102,52 @@
                 :stroke-dasharray="`${2 / scale} ${1.5 / scale}`" opacity="0.8" />
             </template>
 
-            <!-- Layer 1: def heat -->
-            <circle
-              v-for="v in defVillagesShown" :key="v.coords"
-              :cx="v.x" :cy="v.y" :r="radiusOf(v)"
-              :fill="fillOf(v)" fill-opacity="0.85"
-              :stroke="strokeOf(v)" :stroke-width="strokeWidthOf(v)"
-              style="cursor:pointer"
-              @mouseenter="onHover(v, $event)" @mouseleave="clearHover"
-              @click="onCircleClick(v)" />
-
-            <!-- Layer 2: offs — purple halo + core, above def -->
-            <template v-for="v in offVillages" :key="`o-${v.coords}`">
-              <circle :cx="v.x" :cy="v.y" :r="radiusOf(v) + 2.6 / scale" :fill="C_OFF" opacity="0.28" />
+            <!-- Diff mode: colour every village by def change vs baseline -->
+            <template v-if="diffMode">
               <circle
-                :cx="v.x" :cy="v.y" :r="radiusOf(v)"
-                :fill="C_OFF" fill-opacity="0.95"
-                stroke="rgba(0,0,0,0.55)" :stroke-width="0.6 / scale"
+                v-for="v in diffVillages" :key="`df-${v.coords}`"
+                :cx="v.x" :cy="v.y" :r="diffRadius(v)"
+                :fill="diffColor(v)" :fill-opacity="Math.abs(deltaOf(v) ?? 0) < 1200 ? 0.4 : 0.9"
+                stroke="rgba(0,0,0,0.4)" :stroke-width="0.5 / scale"
                 style="cursor:pointer"
                 @mouseenter="onHover(v, $event)" @mouseleave="clearHover"
                 @click="onCircleClick(v)" />
             </template>
 
-            <!-- Layer 3: targets (empty / undefended) — on very top, pulsing halo -->
-            <template v-for="v in targetVillages" :key="`t-${v.coords}`">
-              <circle class="tgt-halo" :cx="v.x" :cy="v.y" :r="7 / scale" :fill="C_TARGET" />
+            <template v-else>
+              <!-- Layer 1: def heat -->
               <circle
-                :cx="v.x" :cy="v.y" :r="3.4 / scale"
-                :fill="C_TARGET" fill-opacity="0.98"
-                stroke="#ffffff" :stroke-width="1 / scale"
+                v-for="v in defVillagesShown" :key="v.coords"
+                :cx="v.x" :cy="v.y" :r="radiusOf(v)"
+                :fill="fillOf(v)" fill-opacity="0.85"
+                :stroke="strokeOf(v)" :stroke-width="strokeWidthOf(v)"
                 style="cursor:pointer"
                 @mouseenter="onHover(v, $event)" @mouseleave="clearHover"
                 @click="onCircleClick(v)" />
+
+              <!-- Layer 2: offs — purple halo + core, above def -->
+              <template v-for="v in offVillages" :key="`o-${v.coords}`">
+                <circle :cx="v.x" :cy="v.y" :r="radiusOf(v) + 2.6 / scale" :fill="C_OFF" opacity="0.28" />
+                <circle
+                  :cx="v.x" :cy="v.y" :r="radiusOf(v)"
+                  :fill="C_OFF" fill-opacity="0.95"
+                  stroke="rgba(0,0,0,0.55)" :stroke-width="0.6 / scale"
+                  style="cursor:pointer"
+                  @mouseenter="onHover(v, $event)" @mouseleave="clearHover"
+                  @click="onCircleClick(v)" />
+              </template>
+
+              <!-- Layer 3: targets (empty / undefended) — on very top, pulsing halo -->
+              <template v-for="v in targetVillages" :key="`t-${v.coords}`">
+                <circle class="tgt-halo" :cx="v.x" :cy="v.y" :r="7 / scale" :fill="C_TARGET" />
+                <circle
+                  :cx="v.x" :cy="v.y" :r="3.4 / scale"
+                  :fill="C_TARGET" fill-opacity="0.98"
+                  stroke="#ffffff" :stroke-width="1 / scale"
+                  style="cursor:pointer"
+                  @mouseenter="onHover(v, $event)" @mouseleave="clearHover"
+                  @click="onCircleClick(v)" />
+              </template>
             </template>
 
             <!-- Highlighted player's villages (from world dump, no troops) -->
@@ -227,6 +246,19 @@
                 : fmtK(-supportInfo(selectedVillage)!.delta) + ' своего дефа в отходе' }}
             </div>
           </div>
+          <div v-if="deltaOf(selectedVillage) != null" class="vc-diff">
+            <div class="vcd-head">
+              Δ vs старой:
+              <b :class="deltaOf(selectedVillage)! >= 0 ? 'plus' : 'minus'">{{ deltaOf(selectedVillage)! >= 0 ? '+' : '−' }}{{ fmtK(Math.abs(deltaOf(selectedVillage)!)) }}</b>
+              деф
+            </div>
+            <div class="vcd-units">
+              <span v-for="u in unitDeltas(selectedVillage)" :key="u.key" class="vcd-chip" :class="u.d >= 0 ? 'plus' : 'minus'">
+                {{ u.label }} {{ u.d >= 0 ? '+' : '−' }}{{ fmtK(Math.abs(u.d)) }}
+              </span>
+              <span v-if="!unitDeltas(selectedVillage).length" class="vc-empty">без изменений</span>
+            </div>
+          </div>
           <div class="vc-units">
             <div v-for="u in unitRows(selectedVillage)" :key="u.key" class="vc-unit" :class="u.role">
               <span class="vc-uname">{{ u.label }}</span>
@@ -247,12 +279,21 @@
 
         <!-- Legend -->
         <div class="map-legend">
+          <template v-if="diffMode">
+            <span class="leg-label">Δ деф:</span>
+            <span class="leg-item"><span class="leg-sw" :style="{ background: C_GAIN }" />прибыл</span>
+            <span class="leg-item"><span class="leg-sw" :style="{ background: C_LOSS }" />ушёл</span>
+            <span class="leg-item"><span class="leg-sw" style="background:#3a3f52" />без изм.</span>
+            <span class="leg-item leg-note">размер = величина</span>
+          </template>
+          <template v-else>
           <span class="leg-label">Деф:</span>
           <span class="leg-item"><span class="leg-sw" :style="{ background: defColor(0.05) }" />мало</span>
           <span class="leg-item"><span class="leg-sw" :style="{ background: defColor(0.5) }" />средне</span>
           <span class="leg-item"><span class="leg-sw" :style="{ background: defColor(1) }" />стек</span>
           <span class="leg-item"><span class="leg-sw" :style="{ background: C_OFF }" />офф</span>
           <span class="leg-item"><span class="leg-sw tgt" :style="{ background: C_TARGET }" />пусто</span>
+          </template>
           <template v-if="showWorld && topTribes.length">
             <span class="leg-sep" />
             <span class="leg-label">Племена:</span>
@@ -306,13 +347,25 @@
       <!-- ── Input / players panel ───────────────────────────────────────── -->
       <div class="def-panel" v-if="showPanel">
         <div class="dp-section">
-          <div class="dp-title">Загрузить выгрузку</div>
+          <div class="dp-title">1. Основная выгрузка <span class="dp-tag">на карте</span></div>
           <label class="dp-drop" :class="{ busy: loading }">
             <input type="file" accept=".xlsx,.xls" @change="onFile" hidden />
-            {{ loading ? 'Читаю файл…' : '📄 Выбрать .xlsx (Защита / Войска / Здания)' }}
+            {{ loading ? 'Читаю файл…' : '📄 Выбрать СВЕЖУЮ .xlsx' }}
           </label>
           <div v-if="feedback" class="dp-feedback" :class="feedbackErr ? 'err' : 'ok'">{{ feedback }}</div>
-          <div class="dp-hint">Деф берётся из листа <b>«Защита»</b> (статус «в деревне» — что реально стоит). Стена и башни — из листа <b>«Здания»</b>. Загрузка заменяет текущие данные.</div>
+          <div class="dp-hint">Сюда — <b>самую свежую</b> выгрузку. Именно она показывается на карте (деф из листа «Защита», стена/башни из «Здания»). Заменяет текущие данные. Если сравнивать не надо — на этом всё.</div>
+
+          <div class="dp-title" style="margin-top:1rem">2. Сравнить со старой <span class="dp-tag dp-tag-opt">Δ, необязательно</span></div>
+          <label class="dp-drop dp-drop-sm" :class="{ busy: baseLoading }">
+            <input type="file" accept=".xlsx,.xls" @change="onBaselineFile" hidden />
+            {{ baseLoading ? 'Читаю…' : (store.hasBaseline ? '↺ Заменить старую выгрузку' : '⧉ Выбрать СТАРУЮ .xlsx') }}
+          </label>
+          <div v-if="baseFeedback" class="dp-feedback" :class="baseErr ? 'err' : 'ok'">{{ baseFeedback }}</div>
+          <div v-if="store.hasBaseline" class="dp-hint">
+            Старая загружена ({{ store.baselineUnits.size }} дер). В тулбаре включён <b>Δ Сравнение</b>: зелёный — деф прибыл, красный — ушёл (свежая минус старая).
+            <a class="dp-baseline-clear" @click="store.clearBaseline(); diffMode = false">убрать сравнение</a>
+          </div>
+          <div v-else class="dp-hint">Сюда — <b>старую</b> (предыдущую) выгрузку. Тогда карта покажет, <b>что изменилось</b>: где деф прибыл (зелёный) / ушёл (красный) относительно свежей.</div>
         </div>
 
         <div class="dp-section" v-if="store.stats.length">
@@ -338,7 +391,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, watchEffect } from 'vue'
-import { useDefMapStore, type DefVillage, UNIT_KEYS, type UnitKey } from '@/stores/defMapStore'
+import { useDefMapStore, type DefVillage, UNIT_KEYS, type UnitKey, calcDefScore } from '@/stores/defMapStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { useWorldStore } from '@/stores/worldStore'
@@ -359,6 +412,7 @@ const showTowers  = ref(false)
 const showPalas   = ref(false)
 const showHubs     = ref(false)
 const showStripped = ref(false)
+const diffMode     = ref(false)   // colour villages by def change vs baseline
 const showHeat    = ref(false)
 const showLabels  = ref(false)
 const showPanel   = ref(true)
@@ -397,6 +451,28 @@ async function onFile(e: Event) {
   } finally {
     loading.value = false
     input.value = '' // allow re-upload of same file
+  }
+}
+
+// Baseline (older snapshot) for the diff.
+const baseLoading  = ref(false)
+const baseFeedback = ref('')
+const baseErr      = ref(false)
+async function onBaselineFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  baseLoading.value = true
+  baseFeedback.value = ''
+  try {
+    const res = store.importBaseline(await file.arrayBuffer())
+    if (res.error) { baseFeedback.value = res.error; baseErr.value = true }
+    else { baseErr.value = false; baseFeedback.value = `Базовая: ${res.count} дер. Включи «Δ Сравнение».`; diffMode.value = true }
+  } catch (err) {
+    baseFeedback.value = `Ошибка: ${String(err)}`; baseErr.value = true
+  } finally {
+    baseLoading.value = false
+    input.value = ''
   }
 }
 
@@ -472,6 +548,41 @@ const shownVillages = computed(() => {
 })
 
 // Render layers (bottom → top): def heat, offs, targets.
+// ── Diff vs baseline snapshot ─────────────────────────────────────────
+const C_GAIN = '#2fbf87'  // def arrived
+const C_LOSS = '#f0553d'  // def left
+function deltaOf(v: DefVillage): number | null {
+  const base = store.baselineUnits.get(v.coords)
+  return base == null ? null : v.defScore - calcDefScore(base)
+}
+// Per-unit change vs baseline (non-zero only, biggest first).
+function unitDeltas(v: DefVillage): { key: UnitKey; label: string; d: number }[] {
+  const base = store.baselineUnits.get(v.coords)
+  if (!base) return []
+  return UNIT_KEYS
+    .map(k => ({ key: k, label: UNIT_LABEL[k], d: (v.units[k] ?? 0) - (base[k] ?? 0) }))
+    .filter(u => u.d !== 0)
+    .sort((a, b) => Math.abs(b.d) - Math.abs(a.d))
+}
+const diffMax = computed(() => {
+  let m = 1
+  for (const v of scopedVillages.value) { const d = deltaOf(v); if (d != null) m = Math.max(m, Math.abs(d)) }
+  return m
+})
+const diffVillages = computed(() =>
+  [...scopedVillages.value].sort((a, b) => Math.abs(deltaOf(a) ?? 0) - Math.abs(deltaOf(b) ?? 0)),
+)
+function diffColor(v: DefVillage): string {
+  const d = deltaOf(v)
+  if (d == null || Math.abs(d) < 1200) return '#3a3f52'
+  return d > 0 ? C_GAIN : C_LOSS
+}
+function diffRadius(v: DefVillage): number {
+  const d = deltaOf(v) ?? 0
+  const base = Math.abs(d) < 1200 ? 1.4 : 2.2
+  return (base + 8 * Math.sqrt(Math.abs(d) / diffMax.value)) / scale.value
+}
+
 const defVillagesShown = computed(() => shownVillages.value.filter(v => v.kind === 'def'))
 const offVillages      = computed(() => shownVillages.value.filter(v => v.kind === 'off'))
 const targetVillages   = computed(() => shownVillages.value.filter(v => v.kind === 'empty'))
@@ -651,6 +762,12 @@ function onHover(v: DefVillage, e: MouseEvent) {
   ]
   if (v.wall != null || v.watchtower != null)
     lines.push(`Стена ${v.wall ?? '?'} · Башня ${v.watchtower ?? '?'}`)
+  const d = deltaOf(v)
+  if (d != null) {
+    lines.push(`Δ vs старой: ${d >= 0 ? '+' : '−'}${fmtK(Math.abs(d))} деф`)
+    const ud = unitDeltas(v).slice(0, 4).map(u => `${u.label} ${u.d >= 0 ? '+' : '−'}${fmtK(Math.abs(u.d))}`)
+    if (ud.length) lines.push(ud.join(' · '))
+  }
   tooltip.value = { head: v.coords, lines, x: e.clientX - rect.left + 14, y: e.clientY - rect.top - 14 }
 }
 function clearHover() { tooltip.value = null }
@@ -865,7 +982,7 @@ function redrawCanvas() {
     if (!batch) { batch = []; batches.set(color, batch) }
     batch.push([v.x * s + px, v.y * s + py])
   }
-  ctx.globalAlpha = 0.7
+  ctx.globalAlpha = diffMode.value ? 0.14 : 0.7   // fade tribe dots in diff mode
   for (const [color, pts] of batches) {
     ctx.fillStyle = color
     ctx.beginPath()
@@ -993,6 +1110,15 @@ onMounted(() => {
   .vcs-tag { margin-left: auto; font-weight: 700; color: $text; }
   .vcs-delta { margin-top: 0.15rem; font-weight: 600; &.plus { color: #89b4fa; } &.minus { color: #f38ba8; } }
 }
+.vc-diff {
+  border-radius: 5px; padding: 0.35rem 0.4rem; margin-bottom: 0.45rem;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.06);
+  .vcd-head { font-size: 0.74rem; color: $text-dim; b.plus { color: #2fbf87; } b.minus { color: #f0553d; } }
+  .vcd-units { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.3rem; }
+  .vcd-chip { font-size: 0.7rem; padding: 0.05rem 0.35rem; border-radius: 4px; font-weight: 600;
+    &.plus { background: rgba(47, 191, 135, 0.14); color: #4dd6a0; }
+    &.minus { background: rgba(240, 85, 61, 0.14); color: #f0553d; } }
+}
 .vc-units {
   display: grid; grid-template-columns: 1fr 1fr; gap: 0.1rem 0.5rem;
   max-height: 150px; overflow-y: auto; margin-bottom: 0.5rem;
@@ -1083,6 +1209,13 @@ onMounted(() => {
 }
 .dp-section { margin-bottom: 1.2rem; }
 .dp-title { font-size: 0.85rem; font-weight: 700; color: $text; margin-bottom: 0.5rem; }
+.tog-disabled { opacity: 0.45; cursor: not-allowed; }
+.dp-drop-sm { padding: 0.55rem 0.6rem; font-size: 0.78rem; margin-top: 0.35rem; }
+.dp-tag { font-size: 0.64rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  background: rgba(78, 204, 163, 0.16); color: #4ecca3; border-radius: 4px; padding: 0.05rem 0.35rem; margin-left: 0.35rem; vertical-align: middle;
+  &.dp-tag-opt { background: rgba(160, 160, 176, 0.16); color: $text-dim; } }
+.dp-baseline-clear { color: $accent; cursor: pointer; margin-left: 0.3rem; &:hover { text-decoration: underline; } }
+.map-legend .leg-note { color: $text-faint; }
 .dp-drop {
   display: block; width: 100%; text-align: center; cursor: pointer;
   background: $bg-deep; border: 1px dashed $border; border-radius: 6px;

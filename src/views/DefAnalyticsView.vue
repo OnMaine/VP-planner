@@ -111,6 +111,36 @@
           </div>
         </div>
       </div>
+
+      <!-- ── Сравнение выгрузок ────────────────────────────────────────── -->
+      <div class="ap-diff" v-if="store.hasBaseline">
+        <div class="dl-head">
+          <h3>Сравнение выгрузок — {{ diffDir === 'loss' ? 'где сняли деф' : 'где набрали деф' }}</h3>
+          <span class="dl-count"><b>{{ diffShown.length }}</b> дер</span>
+          <div class="dl-presets">
+            <button :class="{ active: diffDir === 'loss' }" @click="diffDir = 'loss'">оголились ↓</button>
+            <button :class="{ active: diffDir === 'gain' }" @click="diffDir = 'gain'">набрали ↑</button>
+          </div>
+          <button class="btn btn-sm btn-primary" @click="copyDiff">{{ copiedKey === 'diff' ? 'Скопировано ✓' : 'Копировать все' }}</button>
+        </div>
+        <div class="dl-hint">Изменение дефа «в деревне» относительно базовой (старой) выгрузки. Сначала — где сильнее всего {{ diffDir === 'loss' ? 'сняли' : 'набрали' }}.</div>
+        <div class="dl-empty" v-if="!diffShown.length">Нет изменений в эту сторону.</div>
+        <div class="ap-diff-list">
+          <div class="ap-diff-row" v-for="r in diffShown" :key="r.coords" :class="r.d >= 0 ? 'up' : 'dn'">
+            <div class="apd-id">
+              <span class="dl-coords">{{ r.coords }}</span>
+              <span class="dl-cont">K{{ r.cont }}</span>
+            </div>
+            <span class="apd-player">{{ r.player }}</span>
+            <span class="apd-was">{{ fmtK(r.was) }} → {{ fmtK(r.now) }}</span>
+            <span class="apd-d">{{ r.d >= 0 ? '+' : '−' }}{{ fmtK(Math.abs(r.d)) }}</span>
+            <div class="apd-bar"><div class="apd-bar-fill" :style="{ width: (Math.abs(r.d) / diffMaxAbs * 100) + '%' }"></div></div>
+            <div class="apd-units">
+              <span v-for="(u, i) in r.parts" :key="i" class="apd-chip" :class="u.d >= 0 ? 'plus' : 'minus'">{{ u.label }} {{ u.d >= 0 ? '+' : '−' }}{{ fmtK(Math.abs(u.d)) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -118,7 +148,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import { useDefMapStore } from '@/stores/defMapStore'
+import { useDefMapStore, calcDefScore, UNIT_KEYS, type UnitKey } from '@/stores/defMapStore'
 
 const store = useDefMapStore()
 onMounted(() => { if (!store.hasData) store.load() })
@@ -264,6 +294,43 @@ function pctStyle(pct: number) {
   const t = Math.min(1, (pct - 20) / 60)
   return { color: `hsl(${Math.round(40 - 40 * t)}, 85%, 62%)`, fontWeight: 700 }
 }
+
+// ── Сравнение выгрузок: изменение дефа по деревням ────────────────────
+const UNIT_LABEL: Record<UnitKey, string> = {
+  spear: 'копьё', sword: 'меч', axe: 'топор', spy: 'развед', light: 'ЛК', heavy: 'ТК',
+  ram: 'таран', catapult: 'кат', knight: 'пал', snob: 'двор', militia: 'опол',
+}
+const diffDir = ref<'loss' | 'gain'>('loss')
+
+interface DiffPart { label: string; d: number }
+interface DiffVil { coords: string; cont: string; player: string; was: number; now: number; d: number; parts: DiffPart[] }
+const diffRows = computed<DiffVil[]>(() => {
+  if (!store.hasBaseline) return []
+  const out: DiffVil[] = []
+  for (const p of store.players) {
+    for (const v of p.villages) {
+      const base = store.baselineUnits.get(v.coords)
+      if (!base) continue
+      const was = calcDefScore(base)
+      const d = v.defScore - was
+      if (d === 0) continue
+      const parts = UNIT_KEYS
+        .map(k => ({ label: UNIT_LABEL[k], d: (v.units[k] ?? 0) - (base[k] ?? 0) }))
+        .filter(u => u.d !== 0)
+        .sort((a, b) => Math.abs(b.d) - Math.abs(a.d))
+        .slice(0, 4)
+      out.push({ coords: v.coords, cont: contOf(v.x, v.y), player: p.name, was, now: v.defScore, d, parts })
+    }
+  }
+  return out
+})
+const diffShown = computed(() =>
+  diffRows.value
+    .filter(r => (diffDir.value === 'loss' ? r.d < 0 : r.d > 0))
+    .sort((a, b) => (diffDir.value === 'loss' ? a.d - b.d : b.d - a.d)),
+)
+const diffMaxAbs = computed(() => Math.max(1, ...diffShown.value.map(r => Math.abs(r.d))))
+function copyDiff() { copyText(diffShown.value.map(r => r.coords).join(SEP[sepMode.value]), 'diff') }
 </script>
 
 <style lang="scss" scoped>
@@ -301,6 +368,41 @@ function pctStyle(pct: number) {
   .strip { color: #ff9e3d; font-weight: 700; }
   .z { color: $text-faint; font-weight: 400; }
 }
+
+// ── Сравнение выгрузок ────────────────────────────────────────────────
+.ap-diff { margin-top: 1.6rem; }
+.ap-diff-list {
+  display: flex; flex-direction: column; gap: 3px; margin-top: 0.5rem; max-height: 520px; overflow-y: auto;
+  border: 1px solid $border; border-radius: 10px; padding: 6px;
+}
+.ap-diff-row {
+  display: grid; align-items: center; gap: 0.7rem;
+  grid-template-columns: 118px 150px 118px 60px 90px 1fr;
+  font-size: 0.8rem; padding: 0.32rem 0.55rem; border-radius: 7px;
+  background: $bg-deep; border-left: 3px solid transparent;
+  &.up { border-left-color: rgba(47, 191, 135, 0.65); }
+  &.dn { border-left-color: rgba(240, 85, 61, 0.65); }
+  &:hover { background: rgba(255, 255, 255, 0.04); }
+
+  .apd-id { display: flex; align-items: center; gap: 0.35rem; }
+  .dl-coords { font-weight: 700; color: $text; font-variant-numeric: tabular-nums; }
+  .dl-cont { font-size: 0.68rem; color: $text-dim; background: rgba(255,255,255,0.06); border-radius: 3px; padding: 0.05rem 0.3rem; }
+  .apd-player { color: $text-dim; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .apd-was { color: $text-faint; font-variant-numeric: tabular-nums; font-size: 0.76rem; text-align: right; }
+  .apd-d { font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; font-size: 0.9rem; }
+  &.up .apd-d { color: #2fbf87; } &.dn .apd-d { color: #f0553d; }
+  .apd-bar { height: 7px; border-radius: 4px; background: rgba(255,255,255,0.06); overflow: hidden; }
+  .apd-bar-fill { height: 100%; border-radius: 4px; }
+  &.up .apd-bar-fill { background: linear-gradient(90deg, #2fbf87aa, #2fbf87); }
+  &.dn .apd-bar-fill { background: linear-gradient(90deg, #f0553daa, #f0553d); }
+  .apd-units { display: flex; flex-wrap: wrap; gap: 0.25rem; overflow: hidden; }
+  .apd-chip {
+    font-size: 0.7rem; padding: 0.05rem 0.4rem; border-radius: 4px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums;
+    &.plus { background: rgba(47, 191, 135, 0.14); color: #4dd6a0; }
+    &.minus { background: rgba(240, 85, 61, 0.14); color: #f0553d; }
+  }
+}
+@media(max-width: 820px){ .ap-diff-row{ grid-template-columns: 100px 1fr 70px; .apd-was,.apd-bar,.apd-units{ display:none; } } }
 
 // ── Донор-деры ────────────────────────────────────────────────────────
 .ap-donors { margin-top: 1.4rem; }
