@@ -59,10 +59,6 @@
           Описание (необяз.)
           <input v-model="form.description" type="text" class="input" />
         </label>
-        <label class="f-label f-checkbox">
-          <input type="checkbox" v-model="form.catMassEnabled" />
-          Кат волна
-        </label>
       </div>
 
 

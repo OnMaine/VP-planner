@@ -95,15 +95,6 @@
         @click="worldStore.updateSettings({ watchtowerAvoidEnabled: !(worldStore.settings.watchtowerAvoidEnabled ?? true) })"
       >🗼 Башни</button>
 
-      <div class="v-sep" v-if="store.active" />
-
-      <button
-        v-if="store.active"
-        :class="['toggle-btn', { 'toggle-on': store.active.catMassEnabled }]"
-        title="Кат волна: вторичная волна из свободных офов и кат отрядов по отдельным целям"
-        @click="store.update(store.active!.id, { catMassEnabled: store.active.catMassEnabled ? undefined : true })"
-      >🐱 Кат волна</button>
-
       <template v-if="planStore.targets.length > 0">
         <div class="v-sep" />
         <button
