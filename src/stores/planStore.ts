@@ -4,7 +4,7 @@ import { useWorldStore } from './worldStore'
 import { useVillagesStore } from './villagesStore'
 import type { Village, VillageTroops } from './villagesStore'
 import type { UnitPop } from './worldStore'
-import { useMassConfigStore } from './massConfigStore'
+import { useMassConfigStore, type MassConfig } from './massConfigStore'
 import { usePresetsStore } from './presetsStore'
 import type { VillageRole, CatTarget } from './presetsStore'
 import { defaultColorForRole, BUILDING_MAX_LEVEL, CATS_TO_DESTROY_LEVEL, catsToDestroyBuilding, catsToReachLevel } from './presetsStore'
@@ -122,6 +122,7 @@ export interface Target {
   breachOffCount?: number   // how many breach-offs (breach_off) to assign separately
   bpOffCount?: number       // how many breach+pal (both) to assign explicitly
   nobleVillageCoords?: string  // manual noble village assignment
+  massConfigId?: string  // which mass-config (wave) generates this target; undefined = active
 }
 
 export interface Attack {
@@ -907,6 +908,9 @@ export const usePlanStore = defineStore('plan', () => {
         const floor = new Date(settings.earliestSendTime)
         if (!isNaN(floor.getTime()) && sendTime < floor) return false
       }
+      // Hard safety net: a noble can never travel beyond the world's snob max
+      // distance — strip it if the loop didn't already filter it out.
+      if (composition.snob > 0 && dist > settings.snobMaxDist) composition.snob = 0
 
       const total       = totalUnits(composition)
       const pop         = totalPop(composition, settings.unitPop)
@@ -963,6 +967,11 @@ export const usePlanStore = defineStore('plan', () => {
         if (!isNaN(floor.getTime()) && sendTime < floor) return true
       }
       return false
+    }
+
+    // A noble may only be sent within the world's snob max-distance.
+    function nobleReaches(v: Village, t: Target): boolean {
+      return calcDistance({ x: v.x, y: v.y }, { x: t.x, y: t.y }, settings.mapSize) <= settings.snobMaxDist
     }
 
     // ── trackNoble ───────────────────────────────────────────────────────
@@ -1115,6 +1124,28 @@ export const usePlanStore = defineStore('plan', () => {
       return (td.wtMap.get(vCoords) ?? 0) + (td.distMap.get(vCoords) ?? 0)
     }
 
+    // ── Waves: group targets by their mass-config ─────────────────────────
+    // Each group is a "wave" run against the SHARED village pool, in mass-config
+    // order (active config first). A target with no massConfigId uses the active
+    // one, so a single-config plan behaves exactly as before.
+    const waves: { cfg: MassConfig; tgts: Target[] }[] = (() => {
+      const byId = new Map<string, Target[]>()
+      for (const t of validTargets) {
+        const id = t.massConfigId && mcStore.all.some(c => c.id === t.massConfigId) ? t.massConfigId : cfg.id
+        const arr = byId.get(id) ?? []
+        arr.push(t)
+        byId.set(id, arr)
+      }
+      const order = [cfg.id, ...mcStore.all.map(c => c.id).filter(id => id !== cfg.id)]
+      return order
+        .filter(id => byId.has(id))
+        .map(id => ({ cfg: mcStore.all.find(c => c.id === id) ?? cfg, tgts: byId.get(id)! }))
+    })()
+
+    for (const __wave of waves) {
+    const cfg = __wave.cfg
+    const validTargets = __wave.tgts
+
     // ── Global sorted slots ───────────────────────────────────────────────
     const globalOrderedSlots = [...cfg.slots]
       .filter(s => s.enabled)
@@ -1250,7 +1281,7 @@ export const usePlanStore = defineStore('plan', () => {
                 const c = emptyComposition()
                 c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
                 if (isPal) { c.knight = 1; a.knight = Math.max(0, a.knight - 1) }
-                if (role.nobleIncluded && a.snob > 0) { c.snob = 1; a.snob -= 1 }
+                if (role.nobleIncluded && a.snob > 0 && nobleReaches(v, target)) { c.snob = 1; a.snob -= 1 }
                 a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
                 if (!pushAtk(atkType, v, target, c, slotArrT, label, presetColor)) {
                   a.axe = c.axe; a.light = c.light; a.heavy = c.heavy; a.ram = c.ram
@@ -1297,7 +1328,7 @@ export const usePlanStore = defineStore('plan', () => {
             const c = emptyComposition()
             c.axe = a.axe; c.light = a.light; c.heavy = a.heavy; c.ram = a.ram
             if (isPal) { c.knight = 1; a.knight = Math.max(0, a.knight - 1) }
-            if (role.nobleIncluded && a.snob > 0) { c.snob = 1; a.snob -= 1 }
+            if (role.nobleIncluded && a.snob > 0 && nobleReaches(v, target)) { c.snob = 1; a.snob -= 1 }
             a.axe = 0; a.light = 0; a.heavy = 0; a.ram = 0
             if (!pushAtk(atkType, v, target, c, slotArrT, label, presetColor)) {
               a.axe = c.axe; a.light = c.light; a.heavy = c.heavy; a.ram = c.ram
@@ -1627,6 +1658,8 @@ export const usePlanStore = defineStore('plan', () => {
                   c.snob = a.snob
                   snobBuildNeeded = a.snob
                 }
+                // Noble can't reach beyond snob max distance → skip this village.
+                if (c.snob > 0 && !nobleReaches(v, target)) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
                 const total = totalUnits(c)
                 const escortSpecified = isNobleSlot && unitKeys.some(k => {
                   if (k === 'snob') return false
@@ -1705,6 +1738,8 @@ export const usePlanStore = defineStore('plan', () => {
             } else if (snobSpec === -1) {
               c.snob = a.snob
             }
+            // Noble can't reach beyond snob max distance → skip this village.
+            if (c.snob > 0 && !nobleReaches(v, target)) { targetSkippedD.set(target.id, (targetSkippedD.get(target.id) ?? 0) + 1); continue }
             const total = totalUnits(c)
             const escortSpecified2 = isNobleSlot && unitKeys.some(k => {
               if (k === 'snob') return false
@@ -1840,6 +1875,8 @@ export const usePlanStore = defineStore('plan', () => {
         globalAssignSlot(slot, role, preset, validTargets, slotArrTMap)
       }
     }
+
+    } // ── end wave loop ──────────────────────────────────────────────────
 
     result.sort((a, b) => a.sendTime.getTime() - b.sendTime.getTime())
     attacks.value = result

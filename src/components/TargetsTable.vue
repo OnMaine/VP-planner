@@ -52,6 +52,13 @@
             Дата и время прилёта
             <input v-model="bulkDatetime" type="datetime-local" class="input" step="0.001" />
           </label>
+          <label v-if="showConfigCol">
+            Волна (масс-конфиг)
+            <select v-model="bulkConfigId" class="input">
+              <option value="">Основной{{ massConfigStore.active ? ` (${massConfigStore.active.name})` : '' }}</option>
+              <option v-for="c in massConfigStore.all" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+          </label>
           <button class="btn btn-primary" @click="doBulkAdd">Добавить</button>
         </div>
       </div>
@@ -64,13 +71,14 @@
           <th>Координаты</th>
           <th>Игрок (цель)</th>
           <th>Племя</th>
+          <th v-if="showConfigCol" title="Каким масс-конфигом (волной) генерится эта цель">Волна</th>
           <th>Тайминг</th>
           <th></th>
         </tr></thead>
         <tbody>
           <template v-for="block in targetBlocks" :key="block.key">
             <tr v-if="groupBy !== 'none'" class="group-sep-row">
-              <td :colspan="4">
+              <td :colspan="showConfigCol ? 5 : 4">
                 <span class="target-group-player">{{ block.label }}</span>
                 <span v-if="block.sublabel" class="target-group-ally">{{ block.sublabel }}</span>
                 <span class="target-group-count">{{ block.targets.length }} целей</span>
@@ -107,6 +115,14 @@
                 />
               </td>
               <td class="muted-small">{{ enemyStore.lookupCoords(t.coords)?.ally?.tag ?? t.enemyAllyTag ?? '—' }}</td>
+              <td v-if="showConfigCol">
+                <select class="input" style="width:150px"
+                  :value="t.massConfigId ?? ''"
+                  @change="planStore.updateTarget(t.id, { massConfigId: ($event.target as HTMLSelectElement).value || undefined })">
+                  <option value="">Основной{{ massConfigStore.active ? ` (${massConfigStore.active.name})` : '' }}</option>
+                  <option v-for="c in massConfigStore.all" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+              </td>
               <td>
                 <input
                   type="datetime-local" class="input" style="width:185px" step="0.001"
@@ -130,6 +146,7 @@
 import { ref, computed } from 'vue'
 import { usePlanStore } from '@/stores/planStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
+import { useMassConfigStore } from '@/stores/massConfigStore'
 import { readTabularFile } from '@/utils/importFile'
 import { useDateFormat } from '@/composables/useDateFormat'
 import { useCoordInput } from '@/composables/useCoordInput'
@@ -149,9 +166,15 @@ const { filterCoordsInput } = useCoordInput()
 const { resolveTargetPlayer } = usePlayerResolution()
 
 // UI state
-const open = ref(true)
+// Collapsed by default when targets already exist (e.g. loaded from a plan).
+const massConfigStore = useMassConfigStore()
+// Show the wave (mass-config) column only when there is more than one config.
+const showConfigCol = computed(() => massConfigStore.all.length > 1)
+
+const open = ref(planStore.targets.length === 0)
 const bulkOpen = ref(false)
 const bulkText = ref('')
+const bulkConfigId = ref('')   // mass-config to tag pasted/imported targets with
 const bulkDatetime = ref(toDatetimeLocal(new Date(Math.floor((Date.now() + 3600_000) / 1000) * 1000)))
 const bulkError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -223,13 +246,14 @@ function parseTargetsFromText(text: string): ParsedTarget[] {
   return results
 }
 
-function addTargetsFromParsed(entries: ParsedTarget[], arrivalTime: Date): { added: number; skipped: number } {
+function addTargetsFromParsed(entries: ParsedTarget[], arrivalTime: Date, configId?: string): { added: number; skipped: number } {
   let added = 0; let skipped = 0
   const existing = new Set(planStore.targets.map(t => t.coords).filter(Boolean))
   for (const e of entries) {
     if (existing.has(e.coords)) { skipped++; continue }
     const info = enemyStore.lookupCoords(e.coords)
     const opts: Record<string, unknown> = {}
+    if (configId) opts.massConfigId = configId
     if (info) {
       opts.villageId = info.village.id
       if (info.player) { opts.enemyPlayer = info.player.name; opts.enemyAllyTag = info.ally?.tag ?? '' }
@@ -246,9 +270,10 @@ function doBulkAdd(): void {
   if (!entries.length) { bulkError.value = 'Не найдено координат. Формат: 500|500 или 500|500,15 (уровень башни)'; return }
   const arrivalTime = new Date(bulkDatetime.value)
   if (isNaN(arrivalTime.getTime())) { bulkError.value = 'Некорректная дата'; return }
-  const { added, skipped } = addTargetsFromParsed(entries, arrivalTime)
+  const { added, skipped } = addTargetsFromParsed(entries, arrivalTime, bulkConfigId.value || undefined)
   bulkText.value = ''
   bulkOpen.value = false
+  if (added) open.value = false   // auto-collapse the filled list
   if (skipped) bulkError.value = `Добавлено ${added}, пропущено ${skipped} некорректных`
 }
 
@@ -259,7 +284,8 @@ function onTargetFile(event: Event): void {
     const entries = parseTargetsFromText(text)
     if (!entries.length) { bulkError.value = 'В файле не найдено координат формата 500|500'; return }
     const arrivalTime = new Date(Date.now() + 3600_000)
-    const { added } = addTargetsFromParsed(entries, arrivalTime)
+    const { added } = addTargetsFromParsed(entries, arrivalTime, bulkConfigId.value || undefined)
+    if (added) open.value = false   // auto-collapse the filled list
     bulkError.value = `Из файла добавлено ${added} целей. Отредактируй время прилёта в таблице.`
     if (fileInput.value) fileInput.value.value = ''
   }).catch((err) => { bulkError.value = err instanceof Error ? err.message : String(err) })

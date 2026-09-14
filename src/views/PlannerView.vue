@@ -11,6 +11,8 @@
 
     <h1>Планер атак</h1>
 
+    <div class="planner-layout">
+    <aside class="planner-sidebar">
     <section class="panel mode-bar">
       <button :class="['mode-btn', { active: aiStore.mode === 'manual' }]" @click="aiStore.setMode('manual')">Ручной</button>
       <button :class="['mode-btn', { active: aiStore.mode === 'ai' }]" @click="aiStore.setMode('ai')">AI</button>
@@ -125,10 +127,15 @@
 
     <PalOffPanel v-if="worldStore.settings.paladinMode === 'manual'" ref="palOffPanel" />
     <CatMassPanel v-if="massConfigStore.active?.catMassEnabled" />
+    </aside>
+
+    <main class="planner-main">
     <TargetsTable />
-    <WatchtowerTable />
+    <WatchtowerTable v-if="worldStore.settings.watchtowerEnabled && (worldStore.settings.watchtowerAvoidEnabled ?? true)" />
 
     <AttackResultsPanel ref="resultsPanel" />
+    </main>
+    </div>
   </div>
 </template>
 
@@ -305,8 +312,71 @@ function onGenerate(): void {
 
 <style lang="scss" scoped>
 .planner-view {
-  max-width: 1300px;
+  max-width: 1600px;
   margin: 0 auto;
+}
+
+.planner-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+}
+
+.planner-sidebar {
+  width: 400px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0.75rem;
+  align-self: flex-start;
+  max-height: calc(100vh - 66px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.35rem;
+
+  // panels stack tightly in the rail
+  :deep(.panel) { margin-bottom: 0.9rem; padding: 1rem; }
+  .generate-section { gap: 0.9rem; }
+
+  // Compact the mass-active panel for the narrow rail
+  :deep(.active-mass-panel) {
+    display: flex; flex-direction: column; gap: 0.7rem;
+
+    .panel-row { margin: 0; }
+    .row-spacer, .v-sep, .v-sep-tall { display: none !important; }
+
+    .panel-row-main {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.45rem;
+      .section-label { width: 100%; margin: 0; }
+      .active-chips { width: 100%; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+      .time-label { width: 100%; margin-top: 0.15rem; }
+      .arrival-input { flex: 1 1 150px; min-width: 0; }
+      .btn-sm { margin-left: auto; }
+    }
+
+    .panel-row-opts {
+      display: flex; flex-wrap: wrap; gap: 0.35rem;
+      .toggle-btn { flex: 0 0 auto; }
+      .earliest-input, .front-dist-input { flex: 1 1 100%; }
+    }
+
+    .panel-row-selects {
+      display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0.45rem 0.6rem;
+      .opts-label { margin: 0; }
+      .dist-select { width: 100%; }
+    }
+  }
+}
+
+.planner-main {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .planner-layout { flex-direction: column; }
+  .planner-sidebar {
+    width: 100%; position: static; max-height: none; overflow: visible; padding-right: 0;
+  }
 }
 
 .generate-section {
