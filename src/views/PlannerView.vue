@@ -15,7 +15,7 @@
     <aside class="planner-sidebar">
     <section class="panel mode-bar">
       <button :class="['mode-btn', { active: aiStore.mode === 'manual' }]" @click="aiStore.setMode('manual')">Ручной</button>
-      <button :class="['mode-btn', { active: aiStore.mode === 'ai' }]" @click="aiStore.setMode('ai')">AI</button>
+      <button :class="['mode-btn', { active: aiStore.mode === 'ai' }]" disabled title="AI-режим в разработке" @click="aiStore.setMode('ai')">AI</button>
       <span class="mode-bar-spacer" />
       <span class="plan-file-group">
         <button v-if="planStore.attacks.length > 0" class="btn btn-secondary btn-sm" title="Сохранить план в файл" @click="planStore.exportPlan()">↓ Сохранить план</button>
@@ -30,6 +30,17 @@
     <AIPlanPanel v-if="aiStore.mode === 'ai'" @generate="onGenerate" />
 
     <MassActivePanel />
+
+    <!-- Waves summary (only when the plan spans more than one mass-config) -->
+    <section v-if="wavesSummary.length > 1" class="panel waves-summary">
+      <span class="section-label">Волны плана</span>
+      <div v-for="(w, i) in wavesSummary" :key="w.id" class="wave-row">
+        <span class="wave-idx">{{ i + 1 }}</span>
+        <span class="wave-name" :title="w.name">{{ w.name }}</span>
+        <span class="wave-count">{{ w.count }} цел.</span>
+      </div>
+      <RouterLink to="/mass-configs" class="wave-edit-link">Настроить конфиги →</RouterLink>
+    </section>
 
     <!-- Generate -->
     <section class="panel generate-section">
@@ -158,6 +169,21 @@ const aiStore = useAIPlanStore()
 const worldStore = useWorldStore()
 const enemyStore = useEnemyDataStore()
 const massConfigStore = useMassConfigStore()
+
+// Waves = mass-configs actually used by targets (active first), with counts.
+const wavesSummary = computed(() => {
+  const active = massConfigStore.active
+  const byId = new Map<string, number>()
+  for (const t of planStore.targets) {
+    const id = t.massConfigId && massConfigStore.all.some(c => c.id === t.massConfigId) ? t.massConfigId : active?.id
+    if (!id) continue
+    byId.set(id, (byId.get(id) ?? 0) + 1)
+  }
+  const order = active ? [active.id, ...massConfigStore.all.map(c => c.id).filter(id => id !== active.id)] : massConfigStore.all.map(c => c.id)
+  return order.filter(id => byId.has(id)).map(id => ({
+    id, name: massConfigStore.all.find(c => c.id === id)?.name ?? '—', count: byId.get(id)!,
+  }))
+})
 const resultsPanel   = ref<InstanceType<typeof AttackResultsPanel> | null>(null)
 const palOffPanel    = ref<InstanceType<typeof PalOffPanel> | null>(null)
 const isGenerating   = ref(false)
@@ -377,6 +403,21 @@ function onGenerate(): void {
   }
 }
 
+.waves-summary {
+  .section-label { display: block; margin-bottom: 0.5rem; }
+  .wave-row {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.85rem;
+  }
+  .wave-idx {
+    width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(233, 69, 96, 0.15); color: $accent; border-radius: 4px; font-size: 0.72rem; font-weight: 700;
+  }
+  .wave-name { flex: 1; color: $text; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wave-count { color: $text-dim; font-variant-numeric: tabular-nums; }
+  .wave-edit-link { display: inline-block; margin-top: 0.5rem; font-size: 0.8rem; color: $accent; text-decoration: none; &:hover { text-decoration: underline; } }
+}
+
 .generate-section {
   display: flex;
   align-items: center;
@@ -562,6 +603,7 @@ function onGenerate(): void {
 
   &:hover { border-color: $accent; color: $text; }
   &.active { border-color: $accent; color: $accent; background: rgba(100, 80, 200, 0.08); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; &:hover { border-color: $border; color: $text-dim; } }
 }
 
 // ── Generation overlay ─────────────────────────────────────────────────────
