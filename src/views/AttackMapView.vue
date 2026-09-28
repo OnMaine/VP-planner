@@ -75,6 +75,10 @@
           <template v-if="detectedCount > 0"> · <span class="warn-count">{{ detectedCount }} засвечено</span></template>
         </span>
         <span class="toolbar-info dim" v-else>нет — сгенерируйте в Планере</span>
+        <button v-if="planStore.attacks.length" class="btn btn-sm btn-secondary"
+          :title="`Скопировать координаты источников (${sourceCoords.length} дер)`" @click="copySourceCoords">
+          {{ copiedSources ? '✓ скопировано' : `⧉ коры источников (${sourceCoords.length})` }}
+        </button>
       </div>
 
       <span class="vsep" v-if="planStore.attacks.length" />
@@ -646,6 +650,21 @@ const pairsWithCount = computed(() => visiblePairs.value.filter(p => p.count > 1
 const detectedCount  = computed(() => uniquePairs.value.filter(p =>
   p.attacks.some(a => a.warnings.includes('WATCHTOWER_HIT') || a.warnings.includes('MORALE_HIGH_RISK'))
 ).length)
+
+// Distinct source (attacking) village coords in the current plan — for copy.
+const sourceCoords = computed(() => {
+  const set = new Set<string>()
+  for (const a of planStore.attacks) if (!a.excluded) set.add(a.fromVillage.coords)
+  return [...set]
+})
+const copiedSources = ref(false)
+async function copySourceCoords() {
+  try {
+    await navigator.clipboard.writeText(sourceCoords.value.join(' '))
+    copiedSources.value = true
+    setTimeout(() => (copiedSources.value = false), 1500)
+  } catch { /* clipboard unavailable */ }
+}
 
 // ── Villages ──────────────────────────────────────────────────────────
 const attackingCoords = computed(() => {

@@ -181,6 +181,27 @@
       </div>
     </section>
 
+    <!-- Keep only selected villages -->
+    <section v-if="villagesStore.villages.length > 0" class="panel">
+      <button class="collapse-toggle" @click="keepOnlyOpen = !keepOnlyOpen">
+        <span>Оставить только выбранные деры</span>
+        <span class="collapse-icon">{{ keepOnlyOpen ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="keepOnlyOpen" class="reserve-body">
+        <p class="reserve-hint">Вставь координаты деревень, которые хочешь <b>оставить</b> — все остальные удалятся из импорта. Формат: по одной / через пробел / запятую / с новой строки.</p>
+        <textarea
+          v-model="keepOnlyRaw"
+          class="csv-textarea reserve-textarea"
+          rows="4"
+          placeholder="483|524 485|526 486|527&#10;479|518&#10;..."
+        ></textarea>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" :disabled="!keepOnlyRaw.trim()" @click="applyKeepOnly">Оставить только эти</button>
+          <span v-if="keepOnlyMsg" class="reserve-active-hint" :class="{ 'status-err': keepOnlyErr }">{{ keepOnlyMsg }}</span>
+        </div>
+      </div>
+    </section>
+
     <!-- Reserve import -->
     <section v-if="villagesStore.villages.length > 0" class="panel">
       <button class="collapse-toggle" @click="reserveOpen = !reserveOpen">
@@ -262,6 +283,22 @@ const pasteOpen = ref(false)
 // ── Reserve section ──────────────────────────────────────────────────────
 const reserveOpen = ref(false)
 const reservedRaw = ref('')
+
+// "Keep only" — trim the import down to a pasted coord list.
+const keepOnlyOpen = ref(false)
+const keepOnlyRaw = ref('')
+const keepOnlyMsg = ref('')
+const keepOnlyErr = ref(false)
+function applyKeepOnly() {
+  const coords = [...keepOnlyRaw.value.matchAll(/\d+\|\d+/g)].map(m => m[0])
+  const set = new Set(coords)
+  if (!set.size) { keepOnlyErr.value = true; keepOnlyMsg.value = 'Не найдено координат'; return }
+  const removed = villagesStore.keepOnly(set)
+  const missing = [...set].filter(c => !villagesStore.villages.some(v => v.coords === c)).length
+  keepOnlyErr.value = false
+  keepOnlyMsg.value = `Оставлено ${villagesStore.villages.length}, удалено ${removed}` +
+    (missing ? ` · ${missing} из списка не было в импорте` : '')
+}
 
 function parseReservedCoords(text: string): string[] {
   const coords = new Set<string>()

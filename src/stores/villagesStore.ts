@@ -140,6 +140,15 @@ export const useVillagesStore = defineStore('villages', () => {
     save()
   }
 
+  /** Keep only villages whose coords are in the set; drop the rest. Returns how many were removed. */
+  function keepOnly(coords: Iterable<string>): number {
+    const keep = new Set(coords)
+    const before = villages.value.length
+    villages.value = villages.value.filter(v => keep.has(v.coords))
+    save()
+    return before - villages.value.length
+  }
+
   return {
     villages,
     playerCount,
@@ -147,6 +156,7 @@ export const useVillagesStore = defineStore('villages', () => {
     upsertVillage,
     removeVillage,
     clear,
+    keepOnly,
     save,
   }
 })
