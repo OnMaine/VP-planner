@@ -25,6 +25,14 @@ export interface ScoutPoint {
   targets?: Set<string>                          // для origin — по каким целям бьёт
 }
 
+export type VillageKind = 'off' | 'def' | 'def?'
+
+/** Деревня врага из листа «Заметки» (реестр всех дер из слитой инфы). */
+export interface EnemyVillage {
+  coords: string; x: number; y: number
+  kind: VillageKind
+}
+
 const LS_KEY = 'vp_scout'
 
 function parseCoord(s: unknown): [number, number] | null {
@@ -42,24 +50,26 @@ function parseShow(v: unknown): number {
 // Версия схемы парсинга. Бампается при добавлении новых полей в ScoutAttack —
 // старый кеш в localStorage тогда сбрасывается, чтобы не показывать данные без
 // новых полей (пользователь переимпортирует файл).
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 
-function loadLS(): ScoutAttack[] {
+function loadJSON<T>(key: string): T | null {
   try {
-    if (parseInt(localStorage.getItem(LS_KEY + '_ver') || '0', 10) !== SCHEMA_VERSION) return []
-    const raw = localStorage.getItem(LS_KEY)
-    if (raw) return JSON.parse(raw) as ScoutAttack[]
+    if (parseInt(localStorage.getItem(LS_KEY + '_ver') || '0', 10) !== SCHEMA_VERSION) return null
+    const raw = localStorage.getItem(key)
+    if (raw) return JSON.parse(raw) as T
   } catch { /* ignore */ }
-  return []
+  return null
 }
 
 export const useScoutStore = defineStore('scout', () => {
-  const stored = loadLS()
+  const stored = loadJSON<ScoutAttack[]>(LS_KEY) ?? []
   const attacks = ref<ScoutAttack[]>(stored)
+  const enemyVillages = ref<EnemyVillage[]>(loadJSON<EnemyVillage[]>(LS_KEY + '_enemy') ?? [])
   const lastFile = ref<string>(stored.length ? localStorage.getItem(LS_KEY + '_file') || '' : '')
 
   function save() {
     localStorage.setItem(LS_KEY, JSON.stringify(attacks.value))
+    localStorage.setItem(LS_KEY + '_enemy', JSON.stringify(enemyVillages.value))
     localStorage.setItem(LS_KEY + '_file', lastFile.value)
     localStorage.setItem(LS_KEY + '_ver', String(SCHEMA_VERSION))
   }
@@ -129,25 +139,52 @@ export const useScoutStore = defineStore('scout', () => {
     }
 
     attacks.value = parsed
+    enemyVillages.value = parseNotes(wb)
     save()
     const targets = new Set(parsed.map((a) => a.tCoords)).size
     const origins = new Set(parsed.map((a) => a.oCoords)).size
     return { attacks: parsed.length, targets, origins }
   }
 
-  async function importFile(file: File): Promise<{ attacks: number; targets: number; origins: number }> {
+  /**
+   * Парсит лист «Заметки» — реестр всех деревень врага (из слитой инфы):
+   * col0 = координаты "x|y", col1 = тип деревни (офф / деф / деф??).
+   */
+  function parseNotes(wb: XLSX.WorkBook): EnemyVillage[] {
+    const ws = wb.Sheets['Заметки']
+    if (!ws) return []
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' })
+    const out: EnemyVillage[] = []
+    const seen = new Set<string>()
+    for (const r of rows) {
+      const c = parseCoord(r[0])
+      if (!c) continue
+      const coords = `${c[0]}|${c[1]}`
+      if (seen.has(coords)) continue
+      seen.add(coords)
+      const raw = String(r[1] ?? '').trim().toLowerCase()
+      const kind: VillageKind = raw.startsWith('офф') ? 'off' : raw.startsWith('деф?') ? 'def?' : 'def'
+      out.push({ coords, x: c[0], y: c[1], kind })
+    }
+    return out
+  }
+
+  async function importFile(file: File): Promise<{ attacks: number; targets: number; origins: number; enemies: number }> {
     const buf = await file.arrayBuffer()
     const wb = XLSX.read(buf, { type: 'array' })
     lastFile.value = file.name
-    return parseWorkbook(wb)
+    const res = parseWorkbook(wb)
+    return { ...res, enemies: enemyVillages.value.length }
   }
 
   function clear() {
     attacks.value = []
+    enemyVillages.value = []
     lastFile.value = ''
     filterVictim.value = ''
     filterAttacker.value = ''
     localStorage.removeItem(LS_KEY)
+    localStorage.removeItem(LS_KEY + '_enemy')
     localStorage.removeItem(LS_KEY + '_file')
   }
 
@@ -214,10 +251,38 @@ export const useScoutStore = defineStore('scout', () => {
 
   const maxTargetCount = computed(() => targets.value.reduce((m, t) => Math.max(m, t.count), 1))
 
+  // ── Деревни врага из «Заметок» ─────────────────────────────────────────
+  const enemyByCoords = computed(() => {
+    const m = new Map<string, EnemyVillage>()
+    for (const v of enemyVillages.value) m.set(v.coords, v)
+    return m
+  })
+
+  /** Тип деревни по «Заметкам» (офф/деф/деф?) или null, если нет в реестре. */
+  function kindOf(coords: string): VillageKind | null {
+    return enemyByCoords.value.get(coords)?.kind ?? null
+  }
+
+  // Все засвеченные точки выхода (по ВСЕМ атакам, без учёта фильтров).
+  const allOriginCoords = computed(() => new Set(attacks.value.map((a) => a.oCoords)))
+
+  /** Офф-деревни врага, из которых НЕ было засвеченных атак — потенциальные резервы. */
+  const offReserves = computed<EnemyVillage[]>(() =>
+    enemyVillages.value.filter((v) => v.kind === 'off' && !allOriginCoords.value.has(v.coords)),
+  )
+
+  /** Деф-деревни врага, из которых ВСЁ ЖЕ была засвеченная атака (отвлечение / скрытый офф). */
+  const defDecoys = computed<EnemyVillage[]>(() =>
+    enemyVillages.value.filter((v) => v.kind !== 'off' && allOriginCoords.value.has(v.coords)),
+  )
+
+  const hasNotes = computed(() => enemyVillages.value.length > 0)
+
   return {
-    attacks, lastFile,
+    attacks, enemyVillages, lastFile,
     importFile, parseWorkbook, clear,
     filterVictim, victims, filterAttacker, attackers, filteredAttacks,
     targets, origins, maxTargetCount,
+    enemyByCoords, kindOf, offReserves, defDecoys, hasNotes,
   }
 })

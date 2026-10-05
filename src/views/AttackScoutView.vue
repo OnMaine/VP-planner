@@ -19,6 +19,8 @@
           <span class="tb-stat"><b>{{ store.filteredAttacks.length }}</b> засвеченных офф-атак</span>
           <span class="tb-stat"><b>{{ store.targets.length }}</b> целей</span>
           <span class="tb-stat"><b>{{ store.origins.length }}</b> точек выхода</span>
+          <span v-if="store.hasNotes" class="tb-stat reserve"><b>{{ store.offReserves.length }}</b> резервов оффа</span>
+          <span v-else class="tb-stat hint">⚠ лист «Заметки» не загружен — переимпортируйте файл для резервов</span>
         </div>
         <span class="vsep" />
         <div class="tb-group">
@@ -46,6 +48,22 @@
           <button class="btn btn-sm btn-secondary" @click="fitToData">⊹ Центрировать</button>
           <button class="btn btn-sm btn-secondary" @click="store.clear()">Очистить</button>
         </div>
+        <template v-if="store.hasNotes">
+          <span class="vsep" />
+          <div class="tb-group">
+            <span class="tb-label">Заметки</span>
+            <label class="tog" title="Офф-деревни врага, из которых ещё НЕ было засвеченных атак — потенциальные резервы">
+              <input type="checkbox" v-model="showReserves" /> Резервы оффа
+              <span class="tb-badge reserve">{{ store.offReserves.length }}</span>
+            </label>
+            <label class="tog" title="Все деф-деревни врага (фон)">
+              <input type="checkbox" v-model="showEnemyDef" /> Деф-деры
+            </label>
+            <span v-if="store.defDecoys.length" class="tb-badge decoy" title="Деф-деры, из которых всё же была засвеченная атака (отвлечение / скрытый офф)">
+              ⚠ {{ store.defDecoys.length }} отвлечений
+            </span>
+          </div>
+        </template>
         <span v-if="autoLoadError" class="tb-error">{{ autoLoadError }}</span>
       </template>
       <span v-if="parseError" class="tb-error">{{ parseError }}</span>
@@ -102,6 +120,10 @@
           <div class="sd-stats">
             <span v-if="selectedDetail.type === 'target' && selectedDetail.victim">🎯 Терпила: <b>{{ selectedDetail.victim }}</b></span>
             <span v-if="selectedDetail.type === 'origin' && selectedDetail.attacker">⚔ Атакующий: <b>{{ selectedDetail.attacker }}</b></span>
+            <span v-if="store.kindOf(selectedDetail.coords)">
+              По заметкам: <b :class="store.kindOf(selectedDetail.coords) === 'off' ? '' : 'decoy'">{{ kindLabel(store.kindOf(selectedDetail.coords)!) }}</b>
+              <template v-if="selectedDetail.type === 'origin' && store.kindOf(selectedDetail.coords) !== 'off'"> ⚠ вышло с деф-деры</template>
+            </span>
             <span>Атак: <b>{{ selectedDetail.count }}</b></span>
             <span>Засветы: <b class="red">{{ selectedDetail.reds }}</b> крас. / <b class="brown">{{ selectedDetail.brown }}</b> корич.</span>
           </div>
@@ -157,6 +179,15 @@
     <!-- ── Legend ───────────────────────────────────────────────────────── -->
     <div v-if="store.attacks.length" class="scout-legend">
       <span class="leg-item"><span class="leg-dot" :style="{ background: C_ORIGIN }" /> Точка выхода (откуда)</span>
+      <template v-if="store.hasNotes && showReserves">
+        <span class="leg-item"><span class="leg-diamond" :style="{ background: C_RESERVE }" /> Резерв оффа ({{ store.offReserves.length }})</span>
+      </template>
+      <template v-if="store.hasNotes && showEnemyDef">
+        <span class="leg-item"><span class="leg-dot" :style="{ background: C_ENEMYDEF }" /> Деф-дера врага</span>
+      </template>
+      <template v-if="store.defDecoys.length">
+        <span class="leg-item"><span class="leg-dot" :style="{ background: C_DECOY }" /> Вышло с деф-деры (отвлечение)</span>
+      </template>
       <span class="vsep" />
       <span class="leg-item">Цель — число атак:</span>
       <span class="leg-grad">
@@ -165,9 +196,13 @@
       <template v-if="showWorld && enemyStore.hasPlayerData && topTribes.length">
         <span class="vsep" />
         <span class="leg-item">Племена:</span>
-        <span v-for="t in topTribes" :key="t.tag" class="leg-tribe" :class="{ own: t.own }">
-          <span class="leg-dot" :style="{ background: t.color }" /> {{ t.tag }}
-        </span>
+        <label v-for="t in topTribes" :key="t.id" class="leg-tribe" :class="{ own: t.own }" :title="`Выбрать цвет для ${t.tag}`">
+          <span class="leg-swatch" :style="{ background: t.color }">
+            <input type="color" :value="t.color" @input="setTribeColor(t.id, $event)" />
+          </span>
+          {{ t.tag }}
+          <button v-if="t.custom" class="leg-reset" title="Сбросить цвет" @click.prevent="resetTribeColor(t.id)">↺</button>
+        </label>
       </template>
     </div>
   </div>
@@ -186,20 +221,26 @@ const worldStore    = useWorldStore()
 const villagesStore = useVillagesStore()
 
 const C_ORIGIN = '#38bdf8'          // синий — точка выхода
-const C_BARB   = '#1c2230'          // фон — деревни без племени (варвары)
-const C_OWN    = '#c8a840'          // своё племя — золотой
+const C_BARB    = '#1c2230'         // фон — деревни без племени (варвары)
+const C_OWN     = '#c8a840'         // своё племя — золотой
+const C_RESERVE = '#ff3131'         // офф-резерв врага (не засвечен) — красный (зарезервирован, из пула племён исключён)
+const C_ENEMYDEF = '#44474f'        // деф-дера врага — нейтральный серый (фон)
+const C_DECOY   = '#f59e0b'         // деф-дера с засвеченной атакой — янтарный (аномалия)
 
-// Палитра для окраски племён по размеру
+// Палитра для окраски племён по размеру.
+// Красные оттенки исключены намеренно — красный зарезервирован под резервы оффа.
 const TRIBE_PALETTE = [
-  '#e06666', '#6fa8dc', '#93c47d', '#c27ba0', '#ffd966',
-  '#76a5af', '#8e7cc3', '#f6b26b', '#a2c4c9', '#d5a6bd',
-  '#6e48a4', '#8a2244', '#4a6e3e', '#7a4e2a', '#2e6878',
+  '#6fa8dc', '#93c47d', '#ffd966', '#8e7cc3', '#76a5af',
+  '#f6b26b', '#a2c4c9', '#6e48a4', '#4a6e3e', '#2e6878',
+  '#c27ba0', '#7a4e2a', '#4a90a4', '#5a7d3e', '#b08968',
 ]
 
 // ── Display toggles ───────────────────────────────────────────────────
-const showWorld  = ref(true)
-const showLines  = ref(true)
-const showLabels = ref(true)
+const showWorld    = ref(true)
+const showLines    = ref(true)
+const showLabels   = ref(true)
+const showReserves = ref(true)
+const showEnemyDef = ref(false)
 const parseError = ref('')
 const importing  = ref(false)
 const copied     = ref(false)
@@ -295,6 +336,24 @@ const ownAllyId = computed(() => {
   return enemyStore.playerByName.get(myName)?.allyId ?? 0
 })
 
+// Ручной выбор цвета племени (по allyId), сохраняется в localStorage.
+const TRIBE_COLOR_LS = 'vp_scout_tribe_colors'
+const tribeColorOverrides = ref<Record<number, string>>((() => {
+  try { return JSON.parse(localStorage.getItem(TRIBE_COLOR_LS) || '{}') } catch { return {} }
+})())
+
+function setTribeColor(allyId: number, e: Event) {
+  tribeColorOverrides.value = { ...tribeColorOverrides.value, [allyId]: (e.target as HTMLInputElement).value }
+  localStorage.setItem(TRIBE_COLOR_LS, JSON.stringify(tribeColorOverrides.value))
+  scheduleFrame()
+}
+function resetTribeColor(allyId: number) {
+  const { [allyId]: _drop, ...rest } = tribeColorOverrides.value
+  tribeColorOverrides.value = rest
+  localStorage.setItem(TRIBE_COLOR_LS, JSON.stringify(rest))
+  scheduleFrame()
+}
+
 const allyColorMap = computed((): Map<number, string> => {
   const allyCount = new Map<number, number>()
   for (const p of enemyStore.players) if (p.allyId) allyCount.set(p.allyId, (allyCount.get(p.allyId) ?? 0) + p.villages)
@@ -302,7 +361,9 @@ const allyColorMap = computed((): Map<number, string> => {
   const map = new Map<number, string>()
   let idx = 0
   for (const [allyId] of sorted) {
-    if (allyId === ownAllyId.value) map.set(allyId, C_OWN)
+    const override = tribeColorOverrides.value[allyId]
+    if (override) map.set(allyId, override)
+    else if (allyId === ownAllyId.value) map.set(allyId, C_OWN)
     else { map.set(allyId, TRIBE_PALETTE[idx % TRIBE_PALETTE.length]); idx++ }
   }
   return map
@@ -320,9 +381,11 @@ const topTribes = computed(() => {
   const allyCount = new Map<number, number>()
   for (const p of enemyStore.players) if (p.allyId) allyCount.set(p.allyId, (allyCount.get(p.allyId) ?? 0) + p.villages)
   return [...allyCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id]) => ({
+    id,
     tag: enemyStore.allyById.get(id)?.tag ?? `#${id}`,
     color: allyColorMap.value.get(id) ?? C_BARB,
     own: id === ownAllyId.value,
+    custom: !!tribeColorOverrides.value[id],
   }))
 })
 
@@ -387,11 +450,55 @@ function drawFrame() {
 
   if (showWorld.value && enemyStore.hasVillageData) drawWorld(ctx)
   drawGrid(ctx)
+  if (showEnemyDef.value) drawEnemyDef(ctx)
   if (showLines.value) drawLines(ctx)
+  if (showReserves.value) drawReserves(ctx)
   drawOrigins(ctx)
   drawTargets(ctx)
 
   ctx.restore()
+}
+
+// Деф-деры врага из «Заметок» — приглушённый фон (их много).
+function drawEnemyDef(ctx: CanvasRenderingContext2D) {
+  const c = canvasEl.value!
+  const gx0 = (0 - _panX) / _scale - 1, gy0 = (0 - _panY) / _scale - 1
+  const gx1 = (c.clientWidth - _panX) / _scale + 1, gy1 = (c.clientHeight - _panY) / _scale + 1
+  const r = Math.max(0.4, Math.min(1.5, 0.8 / _scale))
+  ctx.fillStyle = C_ENEMYDEF
+  ctx.globalAlpha = 0.35
+  ctx.beginPath()
+  for (const v of store.enemyVillages) {
+    if (v.kind === 'off') continue
+    if (v.x < gx0 || v.x > gx1 || v.y < gy0 || v.y > gy1) continue
+    ctx.moveTo(v.x + r, v.y)
+    ctx.arc(v.x, v.y, r, 0, Math.PI * 2)
+  }
+  ctx.fill()
+  ctx.globalAlpha = 1
+}
+
+// Офф-резервы врага (не засвеченные) — фиолетовые ромбы.
+function drawReserves(ctx: CanvasRenderingContext2D) {
+  const c = canvasEl.value!
+  const gx0 = (0 - _panX) / _scale - 1, gy0 = (0 - _panY) / _scale - 1
+  const gx1 = (c.clientWidth - _panX) / _scale + 1, gy1 = (c.clientHeight - _panY) / _scale + 1
+  const r = Math.max(0.7, Math.min(2.2, 1.2 / _scale))
+  for (const v of store.offReserves) {
+    if (v.x < gx0 || v.x > gx1 || v.y < gy0 || v.y > gy1) continue
+    const isHL = hoverCoords.value === v.coords
+    ctx.save()
+    ctx.translate(v.x, v.y)
+    ctx.rotate(Math.PI / 4)
+    ctx.fillStyle = C_RESERVE
+    ctx.globalAlpha = isHL ? 1 : 0.72
+    ctx.fillRect(-r, -r, r * 2, r * 2)
+    ctx.strokeStyle = isHL ? '#ffffff' : '#1a0510'
+    ctx.lineWidth = (isHL ? 1 : 0.5) / _scale
+    ctx.strokeRect(-r, -r, r * 2, r * 2)
+    ctx.restore()
+  }
+  ctx.globalAlpha = 1
 }
 
 function drawWorld(ctx: CanvasRenderingContext2D) {
@@ -412,11 +519,11 @@ function drawWorld(ctx: CanvasRenderingContext2D) {
     if (!b) { b = []; batches.set(color, b) }
     b.push([v.x, v.y])
   }
-  // варвары — снизу и тусклее, племена — ярче сверху
+  // варвары — снизу и тусклее, племена — ярче сверху (но фон не должен кричать)
   const order = [...batches.keys()].sort((a) => (a === C_BARB ? -1 : 1))
   for (const color of order) {
     ctx.fillStyle = color
-    ctx.globalAlpha = color === C_BARB ? 0.6 : 0.9
+    ctx.globalAlpha = color === C_BARB ? 0.4 : 0.62
     ctx.beginPath()
     for (const [x, y] of batches.get(color)!) {
       ctx.moveTo(x + r, y)
@@ -464,15 +571,24 @@ function drawOrigins(ctx: CanvasRenderingContext2D) {
   for (const o of store.origins) {
     const isHL = hoverCoords.value === o.coords
     const isSel = sel?.type === 'origin' && sel.coords === o.coords
+    // сверка с «Заметками»: вышла ли атака с деф-деры (отвлечение / скрытый офф)
+    const k = store.kindOf(o.coords)
+    const isDecoy = k !== null && k !== 'off'
     ctx.beginPath()
     ctx.arc(o.x, o.y, isHL || isSel ? r * 1.5 : r, 0, Math.PI * 2)
-    ctx.fillStyle = C_ORIGIN
+    ctx.fillStyle = isDecoy ? C_DECOY : C_ORIGIN
     ctx.globalAlpha = 0.95
     ctx.fill()
     ctx.strokeStyle = isSel ? '#ffffff' : '#0b1220'
     ctx.lineWidth = (isSel ? 1.6 : 0.6) / _scale
     ctx.stroke()
     ctx.globalAlpha = 1
+    if (isDecoy) {
+      ctx.beginPath()
+      ctx.arc(o.x, o.y, r * 2, 0, Math.PI * 2)
+      ctx.strokeStyle = C_DECOY; ctx.lineWidth = 1 / _scale
+      ctx.globalAlpha = 0.8; ctx.stroke(); ctx.globalAlpha = 1
+    }
     if (isSel) {
       ctx.beginPath()
       ctx.arc(o.x, o.y, r * 2.4, 0, Math.PI * 2)
@@ -584,6 +700,10 @@ function villageInfo(coords: string): { player: string; tribe: string; points: n
   }
 }
 
+function kindLabel(k: 'off' | 'def' | 'def?'): string {
+  return k === 'off' ? 'офф' : k === 'def?' ? 'деф?' : 'деф'
+}
+
 /** Ссылка на деревню в игре. */
 function villageLink(coords: string): string {
   const code = worldStore.settings.worldCode || 'ru100'
@@ -666,11 +786,29 @@ function onMouseMove(e: MouseEvent) {
       const dx = wx - o.x, dy = wy - o.y
       if (dx * dx + dy * dy <= hr2) {
         const wi = villageInfo(o.coords)
+        const k = store.kindOf(o.coords)
         hit = { coords: o.coords, head: `🏹 Выход ${o.coords}`, lines: [
           o.attacker ? `Атакующий: ${o.attacker}` : (wi?.player ? `Игрок: ${wi.player}` : ''),
           wi?.tribe ? `Племя: ${wi.tribe}` : '',
+          k ? `По заметкам: ${kindLabel(k)}${k !== 'off' ? ' ⚠ вышло с деф-деры!' : ''}` : '',
           `Атак отсюда: ${o.count}`,
           `Целей: ${o.targets?.size ?? 0}`,
+        ].filter(Boolean) }
+        break
+      }
+    }
+  }
+  // резервы врага (офф-деры без засветов)
+  if (!hit && showReserves.value) {
+    for (const v of store.offReserves) {
+      const dx = wx - v.x, dy = wy - v.y
+      if (dx * dx + dy * dy <= hr2) {
+        const wi = villageInfo(v.coords)
+        hit = { coords: v.coords, head: `💠 Резерв оффа ${v.coords}`, lines: [
+          'Офф-дера без засвеченных атак',
+          wi?.player ? `Игрок: ${wi.player}` : '',
+          wi?.tribe ? `Племя: ${wi.tribe}` : '',
+          wi?.points ? `Очки: ${wi.points.toLocaleString()}` : '',
         ].filter(Boolean) }
         break
       }
@@ -700,7 +838,7 @@ function onMouseUp(e: MouseEvent) {
 function onMouseLeave() { _dragging = false; tooltip.value = null; hoverCoords.value = null; scheduleFrame() }
 
 watch(hoverCoords, scheduleFrame)
-watch([showLines, showLabels, showWorld], scheduleFrame)
+watch([showLines, showLabels, showWorld, showReserves, showEnemyDef], scheduleFrame)
 watch(() => enemyStore.villages.length, scheduleFrame)
 watch(() => enemyStore.players.length, scheduleFrame)
 watch(() => [store.filterVictim, store.filterAttacker], () => { selected.value = null; requestAnimationFrame(fitToData) })
@@ -726,9 +864,17 @@ onUnmounted(() => { _ro?.disconnect() })
 .tb-group { display: flex; align-items: center; gap: 8px; }
 .tb-label { font-size: 12px; color: $text-dim; text-transform: uppercase; letter-spacing: .04em; }
 .tb-file { font-size: 12px; color: $text-dim; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tb-stat { font-size: 13px; color: $text-dim; b { color: $text; } }
+.tb-stat { font-size: 13px; color: $text-dim; b { color: $text; }
+  &.reserve { color: #ff3131; b { color: #ff3131; } }
+  &.hint { color: #f59e0b; font-size: 12px; }
+}
 .scout-select { background: $bg-deep; color: $text; border: 1px solid $border; border-radius: 5px; padding: 3px 7px; font-size: 13px; max-width: 220px; }
 .tb-error { font-size: 12px; color: #f87171; }
+.tb-badge { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 8px; margin-left: 4px;
+  &.reserve { background: rgba(255,49,49,.18); color: #ff3131; }
+  &.decoy { background: rgba(245,158,11,.18); color: #f59e0b; }
+}
+.leg-diamond { width: 9px; height: 9px; transform: rotate(45deg); display: inline-block; }
 .file-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; &.is-loading { opacity: .85; pointer-events: none; } }
 .btn-spinner {
   width: 12px; height: 12px; border-radius: 50%;
@@ -791,7 +937,7 @@ onUnmounted(() => { _ro?.disconnect() })
   .sd-stats {
     display: flex; flex-direction: column; gap: 3px; padding: 8px 11px; font-size: 12px; color: $text-dim;
     border-bottom: 1px solid rgba(255,255,255,.05);
-    b { color: $text; } .red { color: #f87171; } .brown { color: #c08457; }
+    b { color: $text; } .red { color: #f87171; } .brown { color: #c08457; } b.decoy { color: #f59e0b; }
   }
   .sd-rows-head { padding: 7px 11px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: $text-dim; }
   .sd-rows { overflow-y: auto; }
@@ -828,6 +974,11 @@ onUnmounted(() => { _ro?.disconnect() })
   .leg-dot { width: 11px; height: 11px; border-radius: 50%; }
   .leg-grad { display: flex; gap: 3px; }
   .leg-chip { min-width: 20px; text-align: center; padding: 1px 5px; border-radius: 4px; color: #1a0a00; font-weight: 700; font-size: 11px; }
-  .leg-tribe { display: flex; align-items: center; gap: 4px; font-size: 11px; &.own { color: #e9c75a; font-weight: 600; } }
+  .leg-tribe { display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; &.own { color: #e9c75a; font-weight: 600; }
+    .leg-swatch { position: relative; width: 11px; height: 11px; border-radius: 50%; display: inline-block; overflow: hidden; border: 1px solid rgba(255,255,255,.2);
+      input[type=color] { position: absolute; inset: -4px; width: 20px; height: 20px; padding: 0; border: none; opacity: 0; cursor: pointer; }
+    }
+    .leg-reset { background: none; border: none; color: $text-dim; cursor: pointer; font-size: 11px; padding: 0 2px; &:hover { color: $text; } }
+  }
 }
 </style>
