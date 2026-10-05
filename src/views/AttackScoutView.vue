@@ -5,9 +5,10 @@
     <div class="scout-toolbar">
       <div class="tb-group">
         <span class="tb-label">Анализатор атак</span>
-        <label class="btn btn-primary btn-sm file-btn">
-          {{ store.attacks.length ? 'Загрузить другой' : 'Импорт .xlsx' }}
-          <input type="file" accept=".xlsx,.xls" @change="onFile" hidden />
+        <label class="btn btn-primary btn-sm file-btn" :class="{ 'is-loading': importing }">
+          <span v-if="importing" class="btn-spinner" />
+          {{ importing ? 'Обработка…' : (store.attacks.length ? 'Загрузить другой' : 'Импорт .xlsx') }}
+          <input type="file" accept=".xlsx,.xls" @change="onFile" :disabled="importing" hidden />
         </label>
         <span v-if="store.lastFile" class="tb-file" :title="store.lastFile">{{ store.lastFile }}</span>
       </div>
@@ -62,7 +63,11 @@
           @mouseup="onMouseUp"
           @mouseleave="onMouseLeave"
         />
-        <div v-if="!store.attacks.length" class="scout-empty">
+        <div v-if="importing" class="scout-loading">
+          <span class="scout-spinner" />
+          <span>Парсим анализатор…</span>
+        </div>
+        <div v-if="!store.attacks.length && !importing" class="scout-empty">
           <div class="se-title">Карта засветов атак</div>
           <div class="se-text">
             Импортируй <b>«шаблон анализатора атак»</b> (.xlsx).<br />
@@ -196,7 +201,10 @@ const showWorld  = ref(true)
 const showLines  = ref(true)
 const showLabels = ref(true)
 const parseError = ref('')
+const importing  = ref(false)
 const copied     = ref(false)
+
+const nextPaint = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
 const hoverCoords = ref<string | null>(null)
 
 // ── Карта мира (village.txt) — подложка для контекста ─────────────────
@@ -233,12 +241,16 @@ async function onFile(e: Event) {
   const file = input.files?.[0]
   if (!file) return
   parseError.value = ''
+  importing.value = true
+  await nextPaint()                 // дать лоадеру отрисоваться до синхронного парсинга
   try {
     const res = await store.importFile(file)
     if (res.attacks === 0) parseError.value = 'Не найдено офф-атак с красным/коричневым засветом'
     else requestAnimationFrame(fitToData)
   } catch (err) {
     parseError.value = (err as Error).message
+  } finally {
+    importing.value = false
   }
   input.value = ''
 }
@@ -717,7 +729,25 @@ onUnmounted(() => { _ro?.disconnect() })
 .tb-stat { font-size: 13px; color: $text-dim; b { color: $text; } }
 .scout-select { background: $bg-deep; color: $text; border: 1px solid $border; border-radius: 5px; padding: 3px 7px; font-size: 13px; max-width: 220px; }
 .tb-error { font-size: 12px; color: #f87171; }
-.file-btn { cursor: pointer; }
+.file-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; &.is-loading { opacity: .85; pointer-events: none; } }
+.btn-spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+  animation: scout-spin .7s linear infinite;
+}
+
+.scout-loading {
+  position: absolute; inset: 0; z-index: 15; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px;
+  background: rgba(7,11,18,.7); backdrop-filter: blur(1px);
+  color: $text; font-size: 14px;
+}
+.scout-spinner {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 3px solid rgba(56,189,248,.25); border-top-color: #38bdf8;
+  animation: scout-spin .7s linear infinite;
+}
+@keyframes scout-spin { to { transform: rotate(360deg); } }
 .vsep { width: 1px; align-self: stretch; background: $border; margin: 0 2px; }
 .tog { display: flex; align-items: center; gap: 4px; font-size: 13px; color: $text-dim; cursor: pointer; }
 

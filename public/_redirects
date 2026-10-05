@@ -1,1 +1,4 @@
 /game-proxy/:world/*  https://:world.voynaplemyon.com/:splat  200
+
+# SPA fallback — все остальные пути отдаём index.html (иначе 404 на прямых ссылках)
+/*  /index.html  200
