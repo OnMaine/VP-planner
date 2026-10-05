@@ -1,0 +1,223 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import * as XLSX from 'xlsx'
+
+// ──────────────────────────────────────────────────────────────────────────
+// Scout store — парсит «анализатор атак» (xlsx, лист "Data") и выделяет
+// офф-атаки с красным/коричневым засветом. Точка выхода (origin) и точка
+// цели (target) материализованы в листе "Data" (в отличие от листа "Цели",
+// где координаты — разлитые array-формулы и в xlsx-экспорте отсутствуют).
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface ScoutAttack {
+  oCoords: string; ox: number; oy: number       // откуда (точка выхода)
+  tCoords: string; tx: number; ty: number       // куда (цель)
+  reds: number; brown: number
+  victim: string; attacker: string; unit: string
+}
+
+export interface ScoutPoint {
+  coords: string; x: number; y: number
+  count: number                                  // число реальных атак
+  reds: number; brown: number
+  victim?: string                                // для цели — терпила
+  attacker?: string                              // для origin — атакующий игрок
+  targets?: Set<string>                          // для origin — по каким целям бьёт
+}
+
+const LS_KEY = 'vp_scout'
+
+function parseCoord(s: unknown): [number, number] | null {
+  const m = /^(\d{1,3})\|(\d{1,3})$/.exec(String(s).trim())
+  if (!m) return null
+  return [parseInt(m[1], 10), parseInt(m[2], 10)]
+}
+
+/** Достаёт число N из строки вида "красных (N)" / "коричневых (N)". */
+function parseShow(v: unknown): number {
+  const m = /\((\d+)\)/.exec(String(v))
+  return m ? parseInt(m[1], 10) : 0
+}
+
+// Версия схемы парсинга. Бампается при добавлении новых полей в ScoutAttack —
+// старый кеш в localStorage тогда сбрасывается, чтобы не показывать данные без
+// новых полей (пользователь переимпортирует файл).
+const SCHEMA_VERSION = 2
+
+function loadLS(): ScoutAttack[] {
+  try {
+    if (parseInt(localStorage.getItem(LS_KEY + '_ver') || '0', 10) !== SCHEMA_VERSION) return []
+    const raw = localStorage.getItem(LS_KEY)
+    if (raw) return JSON.parse(raw) as ScoutAttack[]
+  } catch { /* ignore */ }
+  return []
+}
+
+export const useScoutStore = defineStore('scout', () => {
+  const stored = loadLS()
+  const attacks = ref<ScoutAttack[]>(stored)
+  const lastFile = ref<string>(stored.length ? localStorage.getItem(LS_KEY + '_file') || '' : '')
+
+  function save() {
+    localStorage.setItem(LS_KEY, JSON.stringify(attacks.value))
+    localStorage.setItem(LS_KEY + '_file', lastFile.value)
+    localStorage.setItem(LS_KEY + '_ver', String(SCHEMA_VERSION))
+  }
+
+  /**
+   * Парсит xlsx-книгу анализатора. Берёт лист "Data" (или первый, где есть
+   * нужные колонки), фильтрует: Метка == "офф" И (reds > 0 ИЛИ brown > 0),
+   * дедуплицирует до уровня атаки по origin|dest|id|arrival.
+   */
+  function parseWorkbook(wb: XLSX.WorkBook): { attacks: number; targets: number; origins: number } {
+    const sheet = wb.Sheets['Data'] ?? wb.Sheets[wb.SheetNames[0]]
+    if (!sheet) throw new Error('Лист "Data" не найден в книге')
+
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' })
+    if (!rows.length) throw new Error('Лист "Data" пуст')
+
+    const H = (rows[0] as unknown[]).map((h) => String(h).trim())
+    const col = (name: string) => H.indexOf(name)
+    const cOrig = col('start xxx|yyy')
+    const cDest = col('final xxx|yyy')
+    const cMark = col('Метка')
+    // засветы по конкретной атаке (абсолютные, по всем терпилам):
+    // "shows red"/"shows brown" = "красных (N)"/"коричневых (N)".
+    // ВАЖНО: числовые колонки reds/brown привязаны к выбранному на листе
+    // терпиле и дают только его — поэтому берём именно shows red/brown.
+    const cRed = col('shows red')
+    const cBrown = col('shows brown')
+    const cId = col('id')
+    const cArr = col('arrival')
+    const cVic = col('Терпила')
+    const cAtk = col('Игрок')
+    const cUnit = col('unit')
+
+    if (cOrig < 0 || cDest < 0 || cMark < 0) {
+      throw new Error('Лист "Data" не содержит колонок start/final xxx|yyy или Метка — это не анализатор атак')
+    }
+
+    const seen = new Set<string>()
+    const parsed: ScoutAttack[] = []
+
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i] as unknown[]
+      if (String(r[cMark]).trim() !== 'офф') continue
+
+      const o = parseCoord(r[cOrig])
+      const t = parseCoord(r[cDest])
+      if (!o || !t) continue
+
+      const reds = cRed >= 0 ? parseShow(r[cRed]) : 0
+      const brown = cBrown >= 0 ? parseShow(r[cBrown]) : 0
+      if (reds <= 0 && brown <= 0) continue      // только красные/коричневые засветы
+
+      const oCoords = `${o[0]}|${o[1]}`
+      const tCoords = `${t[0]}|${t[1]}`
+      const key = `${oCoords}>${tCoords}@${cId >= 0 ? r[cId] : ''}|${cArr >= 0 ? r[cArr] : ''}`
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      parsed.push({
+        oCoords, ox: o[0], oy: o[1],
+        tCoords, tx: t[0], ty: t[1],
+        reds, brown,
+        victim: cVic >= 0 ? String(r[cVic]).trim() : '',
+        attacker: cAtk >= 0 ? String(r[cAtk]).trim() : '',
+        unit: cUnit >= 0 ? String(r[cUnit]).trim() : '',
+      })
+    }
+
+    attacks.value = parsed
+    save()
+    const targets = new Set(parsed.map((a) => a.tCoords)).size
+    const origins = new Set(parsed.map((a) => a.oCoords)).size
+    return { attacks: parsed.length, targets, origins }
+  }
+
+  async function importFile(file: File): Promise<{ attacks: number; targets: number; origins: number }> {
+    const buf = await file.arrayBuffer()
+    const wb = XLSX.read(buf, { type: 'array' })
+    lastFile.value = file.name
+    return parseWorkbook(wb)
+  }
+
+  function clear() {
+    attacks.value = []
+    lastFile.value = ''
+    filterVictim.value = ''
+    filterAttacker.value = ''
+    localStorage.removeItem(LS_KEY)
+    localStorage.removeItem(LS_KEY + '_file')
+  }
+
+  // ── Фильтры по терпиле и по атакующему ─────────────────────────────────
+  const filterVictim = ref<string>('')
+  const filterAttacker = ref<string>('')
+
+  function countBy(pick: (a: ScoutAttack) => string): Array<{ name: string; count: number }> {
+    const m = new Map<string, number>()
+    for (const a of attacks.value) {
+      const v = pick(a) || '—'
+      m.set(v, (m.get(v) ?? 0) + 1)
+    }
+    return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
+  }
+
+  /** Список терпил с числом атак (для селектора). */
+  const victims = computed(() => countBy((a) => a.victim))
+  /** Список атакующих с числом атак (для селектора). */
+  const attackers = computed(() => countBy((a) => a.attacker))
+
+  const filteredAttacks = computed<ScoutAttack[]>(() =>
+    attacks.value.filter(
+      (a) =>
+        (!filterVictim.value || (a.victim || '—') === filterVictim.value) &&
+        (!filterAttacker.value || (a.attacker || '—') === filterAttacker.value),
+    ),
+  )
+
+  // ── Агрегация по целям (куда) ──────────────────────────────────────────
+  const targets = computed<ScoutPoint[]>(() => {
+    const m = new Map<string, ScoutPoint>()
+    for (const a of filteredAttacks.value) {
+      let p = m.get(a.tCoords)
+      if (!p) {
+        p = { coords: a.tCoords, x: a.tx, y: a.ty, count: 0, reds: 0, brown: 0, victim: a.victim }
+        m.set(a.tCoords, p)
+      }
+      p.count++
+      p.reds += a.reds
+      p.brown += a.brown
+      if (!p.victim && a.victim) p.victim = a.victim
+    }
+    return [...m.values()].sort((x, y) => y.count - x.count)
+  })
+
+  // ── Агрегация по точкам выхода (откуда) ────────────────────────────────
+  const origins = computed<ScoutPoint[]>(() => {
+    const m = new Map<string, ScoutPoint>()
+    for (const a of filteredAttacks.value) {
+      let p = m.get(a.oCoords)
+      if (!p) {
+        p = { coords: a.oCoords, x: a.ox, y: a.oy, count: 0, reds: 0, brown: 0, attacker: a.attacker, targets: new Set() }
+        m.set(a.oCoords, p)
+      }
+      if (!p.attacker && a.attacker) p.attacker = a.attacker
+      p.count++
+      p.reds += a.reds
+      p.brown += a.brown
+      p.targets!.add(a.tCoords)
+    }
+    return [...m.values()].sort((x, y) => y.count - x.count)
+  })
+
+  const maxTargetCount = computed(() => targets.value.reduce((m, t) => Math.max(m, t.count), 1))
+
+  return {
+    attacks, lastFile,
+    importFile, parseWorkbook, clear,
+    filterVictim, victims, filterAttacker, attackers, filteredAttacks,
+    targets, origins, maxTargetCount,
+  }
+})

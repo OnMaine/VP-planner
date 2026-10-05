@@ -19,6 +19,7 @@
         <RouterLink to="/world-map">Карта мира</RouterLink>
         <RouterLink to="/def-map">Карта дефа</RouterLink>
         <RouterLink to="/def-analytics">Аналитика</RouterLink>
+        <RouterLink to="/attack-scout">Засветы</RouterLink>
       </nav>
       <span class="app-version" :title="`Собрано: ${buildTime}`">v{{ appVersion }}</span>
     </header>

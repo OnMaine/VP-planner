@@ -54,6 +54,11 @@ const router = createRouter({
       name: 'def-analytics',
       component: () => import('@/views/DefAnalyticsView.vue'),
     },
+    {
+      path: '/attack-scout',
+      name: 'attack-scout',
+      component: () => import('@/views/AttackScoutView.vue'),
+    },
   ],
 })
 
