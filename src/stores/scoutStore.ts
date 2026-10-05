@@ -12,8 +12,16 @@ import * as XLSX from 'xlsx'
 export interface ScoutAttack {
   oCoords: string; ox: number; oy: number       // откуда (точка выхода)
   tCoords: string; tx: number; ty: number       // куда (цель)
-  reds: number; brown: number
+  reds: number; brown: number                    // засвет деры-источника (shows red/brown) — для фильтра/агрегата
+  aRed: boolean; aBrown: boolean                 // пометка КОНКРЕТНОЙ атаки из листов засветов
   victim: string; attacker: string; unit: string
+  arrival: string                                // время прихода "ЧЧ:ММ:СС:мс" — различает нобли в цепочке
+}
+
+/** Цвет пометки конкретной атаки. */
+export type AtkFlag = 'red' | 'brown' | 'none'
+export function atkFlag(a: ScoutAttack): AtkFlag {
+  return a.aRed ? 'red' : a.aBrown ? 'brown' : 'none'
 }
 
 export interface ScoutPoint {
@@ -47,10 +55,49 @@ function parseShow(v: unknown): number {
   return m ? parseInt(m[1], 10) : 0
 }
 
+/** Нормализует время прихода до "ЧЧ:ММ:СС:мс" (мс различают нобли в цепочке). */
+function arrivalKey(s: unknown): string {
+  const m = /(\d{1,2}:\d{2}:\d{2}:\d{1,3})/.exec(String(s))
+  return m ? m[1] : ''
+}
+
+/** Нормализует расстояние до одного знака (форматы в Data и засветах совпадают). */
+function distKey(v: unknown): string {
+  const n = Number(String(v).replace(',', '.'))
+  return isNaN(n) ? '' : n.toFixed(1)
+}
+
+/** Ключ конкретной атаки: откуда>куда@времяПрихода#расстояние. */
+function attackKey(oCoords: string, tCoords: string, arrival: unknown, dist: unknown): string {
+  return `${oCoords}>${tCoords}@${arrivalKey(arrival)}#${distKey(dist)}`
+}
+
+/**
+ * Парсит лист засветов («Красные засветы!» / «коричневые засветы»).
+ * Каждая строка = засвеченная атака: col1 «Пункт назначения», col2 «Происхождение»
+ * (формат «Название (x|y) K44»), col4 «Расстояние», col5 «Прибытие». Матчим
+ * ПОШТУЧНО по откуда+куда+время прихода+расстояние (id из «search ids» —
+ * ненадёжная формула, часто #N/A).
+ */
+function parseFlagSheet(ws: XLSX.WorkSheet | undefined): Set<string> {
+  const keys = new Set<string>()
+  if (!ws) return keys
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' })
+  const re = /\((\d{1,3})\|(\d{1,3})\)/
+  for (const r of rows) {
+    const t = re.exec(String(r[1]))
+    const o = re.exec(String(r[2]))
+    const at = arrivalKey(r[5])
+    if (!t || !o || !at) continue
+    keys.add(attackKey(`${o[1]}|${o[2]}`, `${t[1]}|${t[2]}`, r[5], r[4]))
+  }
+  return keys
+}
+
 // Версия схемы парсинга. Бампается при добавлении новых полей в ScoutAttack —
 // старый кеш в localStorage тогда сбрасывается, чтобы не показывать данные без
 // новых полей (пользователь переимпортирует файл).
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 7
 
 function loadJSON<T>(key: string): T | null {
   try {
@@ -99,6 +146,8 @@ export const useScoutStore = defineStore('scout', () => {
     const cBrown = col('shows brown')
     const cId = col('id')
     const cArr = col('arrival')
+    const cArrStr = col('Прибытие')
+    const cDist = col('Удалённость')
     const cVic = col('Терпила')
     const cAtk = col('Игрок')
     const cUnit = col('unit')
@@ -106,6 +155,12 @@ export const useScoutStore = defineStore('scout', () => {
     if (cOrig < 0 || cDest < 0 || cMark < 0) {
       throw new Error('Лист "Data" не содержит колонок start/final xxx|yyy или Метка — это не анализатор атак')
     }
+
+    // Точная пометка атак берётся из отдельных листов «Красные засветы!» /
+    // «коричневые засветы» (по всем терпилам), матчинг поштучно по
+    // откуда+куда+время прихода+расстояние.
+    const redKeys = parseFlagSheet(wb.Sheets['Красные засветы!'])
+    const brownKeys = parseFlagSheet(wb.Sheets['коричневые засветы'])
 
     const seen = new Set<string>()
     const parsed: ScoutAttack[] = []
@@ -132,9 +187,12 @@ export const useScoutStore = defineStore('scout', () => {
         oCoords, ox: o[0], oy: o[1],
         tCoords, tx: t[0], ty: t[1],
         reds, brown,
+        aRed: redKeys.has(attackKey(oCoords, tCoords, r[cArrStr], r[cDist])),
+        aBrown: !redKeys.has(attackKey(oCoords, tCoords, r[cArrStr], r[cDist])) && brownKeys.has(attackKey(oCoords, tCoords, r[cArrStr], r[cDist])),
         victim: cVic >= 0 ? String(r[cVic]).trim() : '',
         attacker: cAtk >= 0 ? String(r[cAtk]).trim() : '',
         unit: cUnit >= 0 ? String(r[cUnit]).trim() : '',
+        arrival: cArrStr >= 0 ? arrivalKey(r[cArrStr]) : '',
       })
     }
 
@@ -215,17 +273,26 @@ export const useScoutStore = defineStore('scout', () => {
   )
 
   // ── Агрегация по целям (куда) ──────────────────────────────────────────
+  // Засвет (красный/коричневый) — свойство деревни-ИСТОЧНИКА, одинаковое для
+  // всех её атак. Поэтому для цели считаем засветы по УНИКАЛЬНЫМ источникам,
+  // а не по атакам (иначе 4 атаки с одной красной деры дают 4 вместо 1).
   const targets = computed<ScoutPoint[]>(() => {
     const m = new Map<string, ScoutPoint>()
+    const seenOrigin = new Map<string, Set<string>>() // target → учтённые источники
     for (const a of filteredAttacks.value) {
       let p = m.get(a.tCoords)
       if (!p) {
         p = { coords: a.tCoords, x: a.tx, y: a.ty, count: 0, reds: 0, brown: 0, victim: a.victim }
         m.set(a.tCoords, p)
+        seenOrigin.set(a.tCoords, new Set())
       }
       p.count++
-      p.reds += a.reds
-      p.brown += a.brown
+      const origins = seenOrigin.get(a.tCoords)!
+      if (!origins.has(a.oCoords)) {
+        origins.add(a.oCoords)
+        p.reds += a.reds > 0 ? 1 : 0
+        p.brown += a.brown > 0 ? 1 : 0
+      }
       if (!p.victim && a.victim) p.victim = a.victim
     }
     return [...m.values()].sort((x, y) => y.count - x.count)
@@ -242,8 +309,9 @@ export const useScoutStore = defineStore('scout', () => {
       }
       if (!p.attacker && a.attacker) p.attacker = a.attacker
       p.count++
-      p.reds += a.reds
-      p.brown += a.brown
+      // засвет один на деревню — берём максимум, а не сумму по атакам
+      p.reds = Math.max(p.reds, a.reds)
+      p.brown = Math.max(p.brown, a.brown)
       p.targets!.add(a.tCoords)
     }
     return [...m.values()].sort((x, y) => y.count - x.count)

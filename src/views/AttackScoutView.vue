@@ -11,6 +11,7 @@
           <input type="file" accept=".xlsx,.xls" @change="onFile" :disabled="importing" hidden />
         </label>
         <span v-if="store.lastFile" class="tb-file" :title="store.lastFile">{{ store.lastFile }}</span>
+        <button class="help-btn" :class="{ active: showHelp }" title="Как пользоваться" @click="showHelp = !showHelp">?</button>
       </div>
 
       <template v-if="store.attacks.length">
@@ -85,6 +86,39 @@
           <span class="scout-spinner" />
           <span>Парсим анализатор…</span>
         </div>
+
+        <!-- ── Инструкция ──────────────────────────────────────────────── -->
+        <transition name="help-fade">
+          <div v-if="showHelp" class="scout-help" @click.self="showHelp = false">
+            <div class="help-card">
+              <div class="help-head">
+                <span>Как пользоваться</span>
+                <button class="sd-close" @click="showHelp = false">✕</button>
+              </div>
+              <div class="help-body">
+                <p><b>Что это.</b> Карта засветов из «анализатора атак». Показывает офф-атаки врага, за которыми засветился источник (красный/коричневый засвет), и где враг держит незасвеченные офф-резервы.</p>
+                <ol>
+                  <li><b>Импорт.</b> Нажми «Импорт .xlsx» и выбери файл анализатора. Беру лист <b>Data</b> (атаки) и лист <b>Заметки</b> (реестр дер врага).</li>
+                  <li><b>Карта мира.</b> Если не подтянулась — кнопка «↓ Загрузить мир». Деревни красятся по племенам (цвет можно менять в легенде снизу — клик по кружку).</li>
+                </ol>
+                <div class="help-legend">
+                  <div><span class="hl-dot" :style="{ background: C_ORIGIN }" /> <b>Синие точки</b> — откуда вышли засвеченные офф-атаки (точки выхода).</div>
+                  <div><span class="hl-circle" /> <b>Жёлто-красные круги</b> с цифрой — цели; чем краснее/больше, тем больше атак пришло.</div>
+                  <div><span class="hl-diamond" :style="{ background: C_RESERVE }" /> <b>Красные ромбы</b> — офф-резервы: офф-деры врага, откуда ещё НЕ было засвеченных атак (где стоят войска).</div>
+                  <div><span class="hl-dot" :style="{ background: C_DECOY }" /> <b>Янтарные</b> точки выхода — атака вышла с деф-деры (отвлечение / скрытый офф).</div>
+                  <div><span class="hl-dot" :style="{ background: C_ENEMYDEF }" /> <b>Серые</b> (тумблер «Деф-деры») — вся оборона врага, фон.</div>
+                </div>
+                <ul>
+                  <li><b>Фильтры</b> «Атакующий» и «Терпила» — сузить до конкретного игрока (работают вместе).</li>
+                  <li><b>Клик по точке</b> — детальная панель: игрок/племя/очки из выгрузки, тип по «Заметкам», список атак. Строки кликабельны.</li>
+                  <li><b>Наведение</b> — тултип; <b>список справа</b> — цели по числу атак, клик центрирует.</li>
+                  <li><b>Мышь:</b> колесо — зум, перетаскивание — двигать, «⊹ Центрировать» — вписать засветы.</li>
+                </ul>
+                <p class="help-note">Засвет (красный/коричневый) — свойство деревни-источника, одно на деру. Для цели «засвеч. источников» = сколько разных засвеченных дер по ней било.</p>
+              </div>
+            </div>
+          </div>
+        </transition>
         <div v-if="!store.attacks.length && !importing" class="scout-empty">
           <div class="se-title">Карта засветов атак</div>
           <div class="se-text">
@@ -125,10 +159,13 @@
               <template v-if="selectedDetail.type === 'origin' && store.kindOf(selectedDetail.coords) !== 'off'"> ⚠ вышло с деф-деры</template>
             </span>
             <span>Атак: <b>{{ selectedDetail.count }}</b></span>
-            <span>Засветы: <b class="red">{{ selectedDetail.reds }}</b> крас. / <b class="brown">{{ selectedDetail.brown }}</b> корич.</span>
+            <span v-if="selectedDetail.type === 'origin' && 'breakdown' in selectedDetail">
+              Пометки: <b class="red">{{ selectedDetail.breakdown.red }}</b> крас. / <b class="brown">{{ selectedDetail.breakdown.brown }}</b> корич. / <b>{{ selectedDetail.breakdown.none }}</b> без пометки
+            </span>
+            <span v-else>Засвеченных источников: <b class="red">{{ selectedDetail.reds }}</b> крас. / <b class="brown">{{ selectedDetail.brown }}</b> корич.</span>
           </div>
 
-          <div class="sd-rows-head">{{ selectedDetail.type === 'target' ? 'Атаки на эту деревню' : 'Цели этой деревни' }}</div>
+          <div class="sd-rows-head">{{ selectedDetail.type === 'target' ? 'Атаки на эту деревню' : 'Атаки из этой деревни' }}</div>
           <div class="sd-rows">
             <div
               v-for="(row, i) in selectedDetail.rows" :key="i"
@@ -137,15 +174,13 @@
               @mouseleave="hoverCoords = null"
               @click="selectCoords(selectedDetail.type === 'target' ? 'origin' : 'target', row.coords)"
             >
+              <span class="sd-flag" :class="row.flag" :title="flagTitle(row.flag)" />
               <span class="sd-row-coords">{{ row.coords }}</span>
               <span v-if="'attacker' in row && row.attacker" class="sd-row-player">⚔ {{ row.attacker }}</span>
               <span v-else-if="villageInfo(row.coords)?.player" class="sd-row-player">{{ villageInfo(row.coords)!.player }}</span>
               <span v-if="'victim' in row && row.victim" class="sd-row-player">🎯 {{ row.victim }}</span>
               <span v-if="row.unit" class="sd-row-unit">{{ row.unit }}</span>
-              <span class="sd-row-flags">
-                <span v-if="row.reds" class="red">●{{ row.reds }}</span>
-                <span v-if="row.brown" class="brown">●{{ row.brown }}</span>
-              </span>
+              <span v-if="row.arrival" class="sd-row-time">{{ row.arrival }}</span>
             </div>
           </div>
         </div>
@@ -210,7 +245,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useScoutStore } from '@/stores/scoutStore'
+import { useScoutStore, atkFlag } from '@/stores/scoutStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { useVillagesStore } from '@/stores/villagesStore'
@@ -241,6 +276,7 @@ const showLines    = ref(true)
 const showLabels   = ref(true)
 const showReserves = ref(true)
 const showEnemyDef = ref(false)
+const showHelp     = ref(false)
 const parseError = ref('')
 const importing  = ref(false)
 const copied     = ref(false)
@@ -675,17 +711,20 @@ const selectedDetail = computed(() => {
       type: 'target' as const,
       coords: t.coords, x: t.x, y: t.y, victim: t.victim ?? '', attacker: '',
       count: t.count, reds: t.reds, brown: t.brown,
-      rows: atks.map((a) => ({ coords: a.oCoords, unit: a.unit, attacker: a.attacker, reds: a.reds, brown: a.brown })),
+      rows: atks.map((a) => ({ coords: a.oCoords, unit: a.unit, attacker: a.attacker, flag: atkFlag(a), arrival: a.arrival })),
     }
   }
   const o = store.origins.find((p) => p.coords === sel.coords)
   if (!o) return null
   const atks = store.filteredAttacks.filter((a) => a.oCoords === sel.coords)
+  // разбивка атак деры по пометке (красная/коричневая/не помечена)
+  const breakdown = { red: 0, brown: 0, none: 0 }
+  for (const a of atks) breakdown[atkFlag(a)]++
   return {
     type: 'origin' as const,
     coords: o.coords, x: o.x, y: o.y, victim: '', attacker: o.attacker ?? '',
-    count: o.count, reds: o.reds, brown: o.brown,
-    rows: atks.map((a) => ({ coords: a.tCoords, unit: a.unit, victim: a.victim, reds: a.reds, brown: a.brown })),
+    count: o.count, reds: o.reds, brown: o.brown, breakdown,
+    rows: atks.map((a) => ({ coords: a.tCoords, unit: a.unit, victim: a.victim, flag: atkFlag(a), arrival: a.arrival })),
   }
 })
 
@@ -702,6 +741,10 @@ function villageInfo(coords: string): { player: string; tribe: string; points: n
 
 function kindLabel(k: 'off' | 'def' | 'def?'): string {
   return k === 'off' ? 'офф' : k === 'def?' ? 'деф?' : 'деф'
+}
+
+function flagTitle(f: 'red' | 'brown' | 'none'): string {
+  return f === 'red' ? 'красная атака' : f === 'brown' ? 'коричневая атака' : 'не помечена (засвет на уровне деры)'
 }
 
 /** Ссылка на деревню в игре. */
@@ -776,7 +819,7 @@ function onMouseMove(e: MouseEvent) {
         wi?.tribe ? `Племя: ${wi.tribe}` : '',
         wi?.points ? `Очки: ${wi.points.toLocaleString()}` : '',
         `Атак: ${t.count}`,
-        `Засветы: ${t.reds} крас. / ${t.brown} корич.`,
+        `Засвеч. источников: ${t.reds} крас. / ${t.brown} корич.`,
       ].filter(Boolean) }
       break
     }
@@ -876,6 +919,35 @@ onUnmounted(() => { _ro?.disconnect() })
 }
 .leg-diamond { width: 9px; height: 9px; transform: rotate(45deg); display: inline-block; }
 .file-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; &.is-loading { opacity: .85; pointer-events: none; } }
+.help-btn {
+  width: 22px; height: 22px; border-radius: 50%; border: 1px solid $border; background: $bg-deep;
+  color: $text-dim; cursor: pointer; font-weight: 700; font-size: 13px; line-height: 1;
+  &:hover, &.active { color: $accent; border-color: $accent; }
+}
+
+.scout-help {
+  position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+  background: rgba(5,8,14,.55); backdrop-filter: blur(2px); padding: 24px;
+}
+.help-card {
+  width: min(640px, 100%); max-height: 86%; display: flex; flex-direction: column;
+  background: #0d1420; border: 1px solid $border; border-radius: 12px; box-shadow: 0 16px 50px rgba(0,0,0,.6);
+  .help-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid $border; font-size: 16px; font-weight: 700; color: $text; }
+  .help-body { overflow-y: auto; padding: 16px 18px; font-size: 13px; line-height: 1.6; color: $text-dim;
+    b { color: $text; }
+    p { margin: 0 0 12px; }
+    ol, ul { margin: 0 0 14px; padding-left: 20px; li { margin-bottom: 6px; } }
+    .help-note { font-size: 12px; font-style: italic; opacity: .85; border-top: 1px solid rgba(255,255,255,.06); padding-top: 10px; }
+  }
+  .help-legend { display: flex; flex-direction: column; gap: 7px; margin: 0 0 14px; padding: 12px; background: rgba(255,255,255,.03); border-radius: 8px;
+    div { display: flex; align-items: center; gap: 8px; }
+    .hl-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+    .hl-diamond { width: 11px; height: 11px; transform: rotate(45deg); flex-shrink: 0; }
+    .hl-circle { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; background: radial-gradient(circle, #fde047, #ef4444); }
+  }
+}
+.help-fade-enter-active, .help-fade-leave-active { transition: opacity .15s ease; }
+.help-fade-enter-from, .help-fade-leave-to { opacity: 0; }
 .btn-spinner {
   width: 12px; height: 12px; border-radius: 50%;
   border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
@@ -945,9 +1017,15 @@ onUnmounted(() => { _ro?.disconnect() })
     display: flex; align-items: center; gap: 7px; padding: 5px 11px; cursor: pointer; font-size: 12px;
     border-top: 1px solid rgba(255,255,255,.03);
     &:hover { background: rgba(56,189,248,.08); }
+    .sd-flag { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      &.red { background: #f87171; }
+      &.brown { background: #c08457; }
+      &.none { background: transparent; border: 1px solid #4a4f5a; }
+    }
     .sd-row-coords { font-weight: 600; color: $text; }
     .sd-row-player { color: $text-dim; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
     .sd-row-unit { color: #94a3b8; }
+    .sd-row-time { margin-left: auto; color: #64748b; font-size: 11px; font-variant-numeric: tabular-nums; }
     .sd-row-flags { margin-left: auto; display: flex; gap: 5px; .red { color: #f87171; } .brown { color: #c08457; } }
   }
 }
