@@ -32,7 +32,7 @@
           <li><b>⚖ Мораль</b> — предупреждать, если очки атакующего сильно выше защитника (риск морали).</li>
           <li><b>🗼 Башни</b> — учитывать сторожевые башни врага (засветы маршрутов).</li>
           <li><b>🛡 Резерв фронта</b> — не задействовать деры у линии фронта.</li>
-          <li><b>Распределение</b>: <i>Дальние вперёд</i> (дальним целям — первый выбор дер), <i>Справедливо</i> (равномерно), <i>Жадно</i> (по лучшему совпадению).</li>
+          <li><b>Распределение</b>: <i>Максимальное покрытие</i> (по умолчанию — самые «зажатые» цели обслуживаются первыми, чтобы закрыть как можно больше целей), <i>Дальние вперёд</i> (дальним целям — первый выбор дер), <i>Справедливо</i> (равномерно), <i>Жадно</i> (по лучшему совпадению).</li>
           <li><b>Дворяне</b>: <i>Реальные</i> (по войскам из импорта) или <i>Виртуальные</i> (по счётчику дворов на игрока).</li>
           <li><b>Паладины</b>: <i>Не распределять</i> / <i>Вручную</i> / <i>Автоматически</i> (раздать пал-оффам).</li>
         </ul>
@@ -41,14 +41,15 @@
         <ul>
           <li><b>Сгенерировать план</b> — рассчитать атаки. Если кнопка заблокирована — под ней причина и ссылки (нет целей / войск / конфига).</li>
           <li><b>Волны плана</b> — если целям назначены разные масс-конфиги, показывается сводка по волнам (каждая со своим набором).</li>
-          <li><b>↓ Сохранить план / ↑ Загрузить план</b> — экспорт/импорт плана в файл.</li>
-          <li>Счётчики пула: офы / дворы / пробои / каты — сколько задействовано из доступного; «N не в плане» — неиспользованные коры можно скопировать.</li>
+          <li><b>↓ Сохр. / ↑ Загр.</b> (вверху панели) — экспорт/импорт плана в файл.</li>
+          <li>Счётчики пула: офы / дворы / пробои / каты — сколько задействовано из доступного.</li>
+          <li><b>«Не задействованы в плане»</b> — отдельный блок внизу: клик по строке («N офов / N кат не в плане») копирует коры этих деревень в буфер.</li>
         </ul>
 
         <h4>Справа — цели и результаты</h4>
         <ul>
           <li><b>Цели</b> — список координат с временем прихода. Можно вставить списком, задать волну (масс-конфиг) каждой цели, импортировать.</li>
-          <li><b>Результаты</b> (после генерации): вкладки <b>По деревням</b> / <b>По игрокам</b> (кому что слать), <b>Проблемные</b> (цели, которым не хватило — с причиной: нет оффов / тайминг / дворы не достают / пул исчерпан; «Заглушить» — убрать цель), <b>Текст (BBCode)</b> — готовый код для вставки в игру/форум.</li>
+          <li><b>Результаты</b> (после генерации): вкладки <b>По деревням</b> / <b>По игрокам</b> (кому что слать), <b>Проблемные</b> (цели, которым не хватило — с причиной: нет оффов / тайминг / дворы не достают / пул исчерпан; «Заглушить» — убрать цель), <b>Текст (BBCode)</b> — готовый код для вставки в игру/форум. Метка <b>«Далеко»</b> на атаке — двор был дальше лимита хода (<code>snobMaxDist</code>) и снят, атака ушла без двора.</li>
           <li><b>Башни врага</b> — таблица сторожевых башен (когда учёт башен включён).</li>
         </ul>
 
@@ -63,9 +64,9 @@
       <button :class="['mode-btn', { active: aiStore.mode === 'ai' }]" disabled title="AI-режим в разработке" @click="aiStore.setMode('ai')">AI</button>
       <span class="mode-bar-spacer" />
       <span class="plan-file-group">
-        <button v-if="planStore.attacks.length > 0" class="btn btn-secondary btn-sm" title="Сохранить план в файл" @click="planStore.exportPlan()">↓ Сохранить план</button>
-        <label class="btn btn-secondary btn-sm plan-import-label" title="Загрузить план из файла">
-          ↑ Загрузить план
+        <button v-if="planStore.attacks.length > 0" class="btn btn-secondary btn-io" title="Сохранить план в файл" @click="planStore.exportPlan()">↓ Сохр.</button>
+        <label class="btn btn-secondary btn-io plan-import-label" title="Загрузить план из файла">
+          ↑ Загр.
           <input type="file" accept=".json" class="plan-import-input" @change="onImportPlan" />
         </label>
         <span v-if="importError" class="import-error">{{ importError }}</span>
@@ -150,13 +151,6 @@
             </span>
           </template>
         </template>
-        <template v-if="planStore.poolUsageStats.offsAvailable > 0">
-          <span class="pool-sep">·</span>
-          <span class="pool-unused pool-copy" :title="unusedOffTooltip" @click="copyCoords(planStore.poolUsageStats.unusedOffCoords, 'off')">
-            {{ planStore.poolUsageStats.offsAvailable }} офов не в плане
-            <span class="pool-copy-icon">{{ copiedPool === 'off' ? '✓' : '⧉' }}</span>
-          </span>
-        </template>
         <template v-if="planStore.poolUsageStats.reservedOffCount > 0">
           <span class="pool-sep">·</span>
           <span class="pool-reserved">Резерв: {{ planStore.poolUsageStats.reservedOffCount }}</span>
@@ -166,18 +160,44 @@
           <span class="pool-item">
             Каты: <strong>{{ planStore.poolUsageStats.catSquadsUsed }}</strong>/{{ planStore.poolUsageStats.catSquadsTotal }}
           </span>
-          <template v-if="planStore.poolUsageStats.catSquadsLeft > 0">
-            <span class="pool-sep">·</span>
-            <span class="pool-unused pool-copy" :title="unusedCatTooltip" @click="copyCoords(planStore.poolUsageStats.unusedCatCoords, 'cat')">
-              {{ planStore.poolUsageStats.catSquadsLeft }} кат не в плане
-              <span class="pool-copy-icon">{{ copiedPool === 'cat' ? '✓' : '⧉' }}</span>
-            </span>
-          </template>
         </template>
         <template v-if="shortageTargetCount > 0">
           <span class="pool-sep">·</span>
           <span class="pool-shortage" :title="'Основной масс: цели, для которых не хватило войск. Подробности — в результатах по деревням.'">⚠ {{ shortageTargetCount }} цел. не покрыто (осн.)</span>
         </template>
+      </div>
+
+      <!-- Неиспользованные коры — отдельный блок с копированием координат -->
+      <div
+        v-if="planStore.attacks.length > 0 && (planStore.poolUsageStats.offsAvailable > 0 || planStore.poolUsageStats.catSquadsLeft > 0)"
+        class="pool-unused-block"
+      >
+        <div class="pool-unused-head">
+          <span class="pool-unused-title">Не задействованы в плане</span>
+          <span class="pool-unused-hint">нажми на строку — скопируются коры этих деревень</span>
+        </div>
+        <div class="pool-unused-rows">
+          <button
+            v-if="planStore.poolUsageStats.offsAvailable > 0"
+            type="button"
+            class="pool-unused pool-copy"
+            :title="unusedOffTooltip"
+            @click="copyCoords(planStore.poolUsageStats.unusedOffCoords, 'off')"
+          >
+            {{ planStore.poolUsageStats.offsAvailable }} офов не в плане
+            <span class="pool-copy-icon">{{ copiedPool === 'off' ? '✓ скопировано' : '⧉ коры' }}</span>
+          </button>
+          <button
+            v-if="planStore.poolUsageStats.catSquadsLeft > 0"
+            type="button"
+            class="pool-unused pool-copy"
+            :title="unusedCatTooltip"
+            @click="copyCoords(planStore.poolUsageStats.unusedCatCoords, 'cat')"
+          >
+            {{ planStore.poolUsageStats.catSquadsLeft }} кат не в плане
+            <span class="pool-copy-icon">{{ copiedPool === 'cat' ? '✓ скопировано' : '⧉ коры' }}</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -606,6 +626,37 @@ function onGenerate(): void {
   .pool-copy-icon { font-size: 0.85em; opacity: 0.7; margin-left: 0.15rem; }
 }
 .pool-reserved  { color: #c8a020; font-weight: 600; }
+
+/* Отдельный блок неиспользованных кор */
+.pool-unused-block {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid rgba(245, 166, 35, 0.35);
+  border-radius: 8px;
+  background: rgba(245, 166, 35, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.pool-unused-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.pool-unused-title { font-size: 0.82rem; font-weight: 700; color: $orange; }
+.pool-unused-hint  { font-size: 0.74rem; color: $text-faint; line-height: 1.25; }
+.pool-unused-rows  { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.pool-unused-rows .pool-copy {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font: inherit; color: $orange; font-weight: 600;
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.3);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  &:hover { background: rgba(245, 166, 35, 0.2); }
+  .pool-copy-icon { opacity: 0.85; font-weight: 500; }
+}
 .pool-shortage  { color: #e94560; font-weight: 700; cursor: default; }
 
 .stat-ok   { color: $green !important; }
@@ -656,8 +707,16 @@ function onGenerate(): void {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.5rem;
+  padding: 0.35rem 0.5rem;
   margin-bottom: 0;
+}
+
+.btn-io {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .mode-bar-spacer {
