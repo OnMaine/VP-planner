@@ -2,6 +2,78 @@
   <div class="settings-view">
     <h1>Настройки мира</h1>
 
+    <!-- ── Инструкция (сворачиваемая) ────────────────────────────────────── -->
+    <section class="help-box">
+      <button class="help-toggle" @click="showHelp = !showHelp">
+        <span>📖 Инструкция</span>
+        <span class="help-caret">{{ showHelp ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="showHelp" class="help-content">
+        <p>
+          Это <b>база всех расчётов</b>: по этим параметрам считаются время полёта, тайминги отправки и ограничения атак.
+          Задай их <b>первым шагом</b> — лучше всего ввести <b>код мира</b> (напр. <code>ru100</code>) и нажать «Загрузить настройки»: подтянутся готовые значения.
+        </p>
+
+        <h4>Параметры мира</h4>
+        <ul>
+          <li><b>Мир</b> — код сервера (<code>ru100</code> и т.п.). Используется для ссылок в игру и загрузки данных карты.</li>
+          <li><b>Скорость мира</b> / <b>Скорость юнитов</b> — множители скорости из настроек сервера. Прямо влияют на время полёта атак.</li>
+          <li><b>Размер карты</b> — сторона мира (обычно 1000). Нужен для расчёта расстояний.</li>
+          <li><b>Ночной бонус</b> — окно ночного бонуса (напр. 1:00–8:00). Используется опциями «Без ночных» в Планере.</li>
+          <li><b>Макс. дальность двора</b> — на сколько клеток летит дворянин. Дальше этого паравоз/дворы не отправить — частая причина недобора на дальних целях.</li>
+          <li><b>Разрыв паравоза</b> — минимальный интервал между дворянами в цепочке (мс).</li>
+          <li><b>Мин. войск в атаке</b> — нижний порог размера атаки (фильтрует слишком мелкие).</li>
+          <li><b>Сторожевая башня</b> — есть ли в мире башни наблюдения (включает учёт засветов в Планере и на Карте атак).</li>
+        </ul>
+
+        <h4>Время юнитов и усадьба</h4>
+        <p>Плитки (копья, мечи, …, двор) — <b>базовое время хода</b> юнита (мин/клетка) и его <b>вес в усадьбе</b> (число внизу). Скорость атаки = по самому медленному юниту в составе. Эти значения подставляются из пресета мира, но их можно поправить вручную.</p>
+
+        <h4>Игровые данные</h4>
+        <p><b>village.txt / player.txt / ally.txt</b> — выгрузки мира (деревни, игроки, племена). Нужны для привязки координат к игрокам/племенам, ссылок в игру и раскраски карт. Кнопка «↓ Скачать с сервера» тянет их по коду мира. Хранятся только в памяти сессии (сбрасываются при перезагрузке).</p>
+
+        <h4>Сохранение / загрузка</h4>
+        <p><b>«Загрузить настройки»</b> — подставить готовый пресет по коду мира. Изменения сохраняются автоматически; статус отображается под формой.</p>
+      </div>
+    </section>
+
+    <!-- Load settings + game data by world code — entry point, kept on top -->
+    <section class="panel panel-load">
+      <h2>Загрузить мир</h2>
+      <p class="load-hint">
+        Введи код мира и выбери источник:
+      </p>
+      <ul class="load-opts">
+        <li><b>Из API</b> — тянет <b>актуальные</b> данные прямо с сервера мира: настройки (тайминги, скорости) <b>и</b> игровые данные (деревни, игроки, племена) одним кликом. Рекомендуется.</li>
+        <li><b>Из пресета</b> — подставляет <b>заготовленные</b> значения мира в форму ручного ввода (разворачивает её ниже). Игровые данные не грузит. Нужно проверить и нажать «Сохранить». Используй, если API недоступен.</li>
+        <li><b>Сбросить всё</b> — вернуть настройки к значениям по умолчанию и очистить игровые данные (чистый лист).</li>
+      </ul>
+      <div class="row">
+        <input
+          v-model="worldCodeInput"
+          type="text"
+          placeholder="Код мира, напр. ru100"
+          class="input"
+          @keydown.enter="doFetch"
+        />
+        <button class="btn btn-primary" :disabled="fetching" @click="doFetch">
+          {{ fetching ? 'Загрузка…' : 'Из API' }}
+        </button>
+        <button class="btn btn-secondary" :disabled="!hasPreset" @click="doPreset" :title="hasPreset ? '' : 'Пресет для этого мира не найден'">
+          Из пресета
+        </button>
+        <button class="btn btn-danger" title="Сбросить настройки мира к значениям по умолчанию и очистить игровые данные" @click="resetAll">
+          Сбросить всё
+        </button>
+      </div>
+      <div v-if="statusMsg" :class="['status-msg', statusClass]">{{ statusMsg }}</div>
+
+      <div class="load-div" />
+
+      <!-- Игровые данные (деревни/игроки/племена) — часть этого же блока -->
+      <WorldMapPanel ref="mapPanel" class="nested-panel" />
+    </section>
+
     <!-- Current settings summary (priority display) -->
     <section class="panel panel-summary">
       <h2>Текущие настройки</h2>
@@ -74,34 +146,13 @@
       </div>
     </section>
 
-    <!-- World map -->
-    <WorldMapPanel />
-
-    <!-- Fetch from API / Preset -->
-    <section class="panel">
-      <h2>Загрузить настройки</h2>
-      <div class="row">
-        <input
-          v-model="worldCodeInput"
-          type="text"
-          placeholder="Код мира, напр. ru100"
-          class="input"
-          @keydown.enter="doFetch"
-        />
-        <button class="btn btn-primary" :disabled="fetching" @click="doFetch">
-          {{ fetching ? 'Загрузка...' : 'Из API' }}
-        </button>
-        <button class="btn btn-secondary" :disabled="!hasPreset" @click="doPreset" :title="hasPreset ? '' : 'Пресет для этого мира не найден'">
-          Пресет
-        </button>
-      </div>
-      <div v-if="statusMsg" :class="['status-msg', statusClass]">{{ statusMsg }}</div>
-    </section>
-
-    <!-- Manual settings -->
-    <section class="panel">
-      <h2>Ручной ввод</h2>
-      <div class="collapse-body">
+    <!-- Manual settings (collapsible) -->
+    <section ref="manualSection" class="panel">
+      <button class="manual-toggle" @click="showManual = !showManual">
+        <span>Ручной ввод</span>
+        <span class="manual-caret">{{ showManual ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="showManual" class="collapse-body">
         <div class="form-grid mt">
           <label>
             Код мира
@@ -173,16 +224,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, computed } from 'vue'
+import { ref, reactive, watch, computed, nextTick } from 'vue'
 import { useWorldStore } from '@/stores/worldStore'
+import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { KNOWN_WORLDS } from '@/stores/worldStore'
 import type { UnitTimes, UnitPop } from '@/stores/worldStore'
 import { UNIT_ICONS } from '@/utils/unitIcons'
 import headerSprite from '@/assets/images/header.webp'
 import WorldMapPanel from '@/components/WorldMapPanel.vue'
 
+const enemyStore = useEnemyDataStore()
+const mapPanel = ref<InstanceType<typeof WorldMapPanel> | null>(null)
+const manualSection = ref<HTMLElement | null>(null)
+const showManual = ref(false)   // ручной ввод свёрнут по умолчанию
+
 const worldStore = useWorldStore()
 
+const showHelp = ref(false)   // инструкция свёрнута по умолчанию
 const worldCodeInput = ref(worldStore.settings.worldCode || '')
 const fetching = ref(false)
 const statusMsg = ref('')
@@ -256,8 +314,16 @@ async function doFetch() {
   statusMsg.value = ''
   try {
     await worldStore.fetchFromApi(code)
-    statusMsg.value = `Настройки для "${code}" успешно загружены`
+    // Тем же кликом тянем игровые данные (деревни/игроки/племена).
+    statusMsg.value = `Настройки загружены, тяну игровые данные…`
     statusClass.value = 'status-ok'
+    try {
+      await mapPanel.value?.autoLoad()
+      statusMsg.value = `Настройки и данные мира "${code}" загружены`
+    } catch {
+      statusMsg.value = `Настройки для "${code}" загружены, но игровые данные не подтянулись — скачай вручную ниже`
+      statusClass.value = 'status-warn'
+    }
   } catch (err) {
     statusMsg.value = `Ошибка: ${err instanceof Error ? err.message : String(err)}. Попробуйте пресет или ручной ввод.`
     statusClass.value = 'status-err'
@@ -268,13 +334,44 @@ async function doFetch() {
 
 function doPreset() {
   const code = worldCodeInput.value.trim()
-  if (worldStore.applyPreset(code)) {
-    statusMsg.value = `Пресет "${code}" применён`
-    statusClass.value = 'status-ok'
-  } else {
+  const preset = KNOWN_WORLDS[code]
+  if (!preset) {
     statusMsg.value = `Пресет для "${code}" не найден`
     statusClass.value = 'status-err'
+    return
   }
+  // Грузим значения пресета в форму ручного ввода (НЕ применяем сразу) —
+  // пользователь проверяет и жмёт «Сохранить» внутри формы.
+  form.worldCode = preset.worldCode ?? code
+  if (preset.worldSpeed        !== undefined) form.worldSpeed        = preset.worldSpeed
+  if (preset.unitSpeed         !== undefined) form.unitSpeed         = preset.unitSpeed
+  if (preset.mapSize           !== undefined) form.mapSize           = preset.mapSize
+  if (preset.nightActive       !== undefined) form.nightActive       = preset.nightActive
+  if (preset.nightFrom         !== undefined) form.nightFrom         = preset.nightFrom
+  if (preset.nightTo           !== undefined) form.nightTo           = preset.nightTo
+  if (preset.snobMaxDist       !== undefined) form.snobMaxDist       = preset.snobMaxDist
+  if (preset.snobIntervalMs    !== undefined) form.snobIntervalMs    = preset.snobIntervalMs
+  if (preset.watchtowerEnabled !== undefined) form.watchtowerEnabled = preset.watchtowerEnabled
+  if (preset.unitTimes) Object.assign(form.unitTimesMin, secToMin(preset.unitTimes))
+  if (preset.unitPop)   Object.assign(form.unitPop, preset.unitPop)
+
+  statusMsg.value = `Пресет "${code}" загружен в форму — проверь и нажми «Сохранить»`
+  statusClass.value = 'status-ok'
+
+  // Развернуть ручной ввод и проскроллить к нему
+  showManual.value = true
+  nextTick(() => {
+    manualSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+function resetAll() {
+  if (!confirm('Сбросить все настройки мира к значениям по умолчанию и очистить игровые данные (деревни/игроки/племена)? Это начнёт с чистого листа.')) return
+  worldStore.reset()
+  enemyStore.clearAll()
+  worldCodeInput.value = ''
+  statusMsg.value = 'Всё сброшено к значениям по умолчанию'
+  statusClass.value = 'status-ok'
 }
 
 function saveManual() {
@@ -305,8 +402,41 @@ function saveManual() {
   margin: 0 auto;
 }
 
+// ── Инструкция ───────────────────────────────────────────────────────────────
+.help-box {
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: a($bg-page, 0.4);
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+.help-toggle {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  background: none; border: none; color: $text;
+  font-size: 0.95rem; font-weight: 600; padding: 0.7rem 1rem; cursor: pointer;
+  &:hover { color: $accent; }
+  .help-caret { color: $text-dim; font-size: 0.8rem; }
+}
+.help-content {
+  padding: 0.25rem 1.1rem 1rem;
+  font-size: 0.86rem; line-height: 1.6; color: $text-dim;
+  border-top: 1px solid a($border, 0.7);
+  b { color: $text; }
+  code { background: a($accent, 0.12); color: $accent; padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.82em; }
+  h4 { color: $text; font-size: 0.9rem; margin: 1rem 0 0.4rem; padding-top: 0.6rem; border-top: 1px dashed a($border, 0.5); }
+  p { margin: 0.5rem 0; }
+  ul { margin: 0.4rem 0; padding-left: 1.2rem; li { margin-bottom: 0.4rem; } }
+}
+
 // Panel accent override
 .panel-summary { border-color: $accent; }
+.panel-load { border-color: a($accent, 0.5); }
+.load-hint { color: $text-dim; font-size: 0.85rem; margin: 0 0 0.5rem; }
+.load-opts {
+  margin: 0 0 0.9rem; padding-left: 1.1rem; color: $text-dim; font-size: 0.83rem; line-height: 1.55;
+  li { margin-bottom: 0.3rem; } b { color: $text; }
+}
 
 // Summary block
 .summary-grid { display: flex; flex-wrap: wrap; gap: 1rem 2rem; margin-bottom: 1rem; }
@@ -440,7 +570,11 @@ function saveManual() {
 .unit-icon-sm    { width: 16px; height: 16px; image-rendering: pixelated; }
 
 // Fetch row
-.row { display: flex; gap: 0.75rem; align-items: center; }
+.row {
+  display: flex; gap: 0.75rem; align-items: stretch;
+  .input { flex: 1; min-width: 0; }
+  .btn { white-space: nowrap; flex-shrink: 0; }
+}
 
 // Collapse body
 .collapse-body { margin-top: 1rem; border-top: 1px solid $border; padding-top: 1rem; }
@@ -471,4 +605,27 @@ label {
 
 // status-ok is unique to this view
 .status-ok { background: rgba(0, 200, 100, 0.15); color: $green; }
+.status-warn { background: rgba(250, 179, 50, 0.14); color: #fab387; }
+
+// Разделитель и сброс вложенной панели «Игровые данные» внутри блока загрузки
+.load-div { height: 1px; background: $border; margin: 1.25rem 0; }
+.panel-load {
+  :deep(.nested-panel) {
+    border: none;
+    background: none;
+    padding: 0;
+    margin: 0;
+    border-radius: 0;
+  }
+}
+
+// Тумблер ручного ввода
+.manual-toggle {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  background: none; border: none; color: $text;
+  font-size: 1rem; font-weight: 600; padding: 0; cursor: pointer;
+  &:hover { color: $accent; }
+  .manual-caret { color: $text-dim; font-size: 0.8rem; }
+}
 </style>

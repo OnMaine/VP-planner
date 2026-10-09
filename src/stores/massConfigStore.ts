@@ -13,6 +13,8 @@ export interface MassSlot {
   enabled: boolean
   windowBeforeMin?: number  // spam only: random window, minutes before arrivalTime
   windowAfterMin?: number   // spam only: random window, minutes after arrivalTime
+  spamMaxPerVillage?: number // spam only: max spam attacks from one village (0/undef = без лимита)
+  fillPriority?: number      // приоритет заполнения пула: больше = раньше (0/undef = авто по роли)
 }
 
 // ---------------------------------------------------------------------------

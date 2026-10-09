@@ -15,13 +15,6 @@
           >{{ slotLabel(slot.presetId) }} ×{{ slot.count }}</span>
         </template>
       </div>
-      <span
-        v-if="store.active && planStore.coverageEstimate !== null"
-        class="coverage-badge"
-        :class="coverageBadgeClass"
-        :title="`Оценка покрытия: ~${planStore.coverageEstimate} целей при текущем пуле деревень`"
-      >~{{ planStore.coverageEstimate }} цел.</span>
-
       <div class="row-spacer" />
 
       <span class="time-label">
@@ -124,11 +117,12 @@
         class="input dist-select"
         :value="planStore.offDistribution"
         title="Алгоритм распределения офов по целям"
-        @change="planStore.setOffDistribution(($event.target as HTMLSelectElement).value as 'default' | 'fair' | 'far_first')"
+        @change="planStore.setOffDistribution(($event.target as HTMLSelectElement).value as 'default' | 'fair' | 'far_first' | 'max_coverage')"
       >
         <option value="far_first">Дальние вперёд</option>
         <option value="fair">Справедливо</option>
         <option value="default">Жадно</option>
+        <option value="max_coverage">Максимальное покрытие</option>
       </select>
 
       <div class="v-sep" />
@@ -149,7 +143,7 @@
       <span class="opts-label">Паладины</span>
       <select
         class="input dist-select"
-        :value="worldStore.settings.paladinMode ?? 'manual'"
+        :value="worldStore.settings.paladinMode ?? 'none'"
         @change="worldStore.updateSettings({ paladinMode: ($event.target as HTMLSelectElement).value as 'auto' | 'manual' | 'none' })"
         title="Режим определения офф-паладинов"
       >
@@ -158,6 +152,10 @@
         <option value="auto">Автоматически</option>
       </select>
     </div>
+
+    <p v-if="virtualNobleFilterIgnored" class="virtual-noble-note">
+      ⚠ Режим дворян «Виртуальные»: в пресете с двором фильтр «мин/макс дворов в дере» <b>игнорируется</b> — дворы берутся из общего пула игрока, а не из деревни.
+    </p>
 
   </section>
 </template>
@@ -177,16 +175,23 @@ const store = useMassConfigStore()
 const presetsStore = usePresetsStore()
 const worldStore = useWorldStore()
 const planStore = usePlanStore()
+
+// Виртуальный режим + в активном конфиге есть паравоз с фильтром «мин/макс дворов в дере»
+const virtualNobleFilterIgnored = computed(() => {
+  if ((worldStore.settings.noblePollMode ?? 'real') === 'real') return false
+  const cfg = store.active
+  if (!cfg) return false
+  return cfg.slots.some(slot => {
+    if (!slot.enabled) return false
+    const role = presetsStore.all.find(p => p.id === slot.presetId)?.role
+    if (!role || role.type !== 'custom_off') return false
+    const snobSpec = (role.customUnits?.snob as number | undefined) ?? -1
+    if (snobSpec <= 0) return false
+    return !!(role.customUnitMin?.snob || role.customUnitMax?.snob)
+  })
+})
 const villagesStore = useVillagesStore()
 
-const coverageBadgeClass = computed(() => {
-  const est = planStore.coverageEstimate
-  const targets = planStore.targets.length
-  if (est === null || targets === 0) return ''
-  if (targets > est) return 'coverage-warn'
-  if (targets > est * 0.85) return 'coverage-tight'
-  return 'coverage-ok'
-})
 const { toDatetimeLocal } = useDateFormat()
 
 function slotChipClass(presetId: string): string {
@@ -349,20 +354,16 @@ const frontCount = computed(() => frontReservedCoords.value.size)
 
 .active-none { color: $text-faint; font-style: italic; font-size: 0.85rem; }
 
-.coverage-badge {
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 0.12rem 0.4rem;
-  border-radius: 10px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  background: a($text-faint, 0.1);
-  border: 1px solid a($text-faint, 0.25);
-  color: $text-faint;
-  cursor: default;
-  &.coverage-ok   { background: a(#4ecca3, 0.12); border-color: a(#4ecca3, 0.35); color: #4ecca3; }
-  &.coverage-tight { background: a(#e07b39, 0.12); border-color: a(#e07b39, 0.35); color: #e07b39; }
-  &.coverage-warn  { background: a(#e94560, 0.12); border-color: a(#e94560, 0.4);  color: #e94560; }
+.virtual-noble-note {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: #e0a74e;
+  background: rgba(224, 167, 78, 0.1);
+  border: 1px solid rgba(224, 167, 78, 0.3);
+  border-radius: 6px;
+  b { color: #f0c070; }
 }
 
 .active-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }

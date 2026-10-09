@@ -41,6 +41,12 @@ export type GenerationIssueType =
 
 export type OffsShortReason = 'pool_depleted' | 'night_excluded' | 'no_eligible'
 
+// Режим распределения офов по целям.
+// default = жадно (лучшее совпадение), fair = справедливо (round-robin),
+// far_first = дальние вперёд, max_coverage = максимум покрытых целей
+// (самые зажатые цели обслуживаются первыми).
+export type OffDistribution = 'default' | 'fair' | 'far_first' | 'max_coverage'
+
 export interface GenerationIssue {
   targetCoords: string
   type: GenerationIssueType
@@ -48,6 +54,24 @@ export interface GenerationIssue {
   generated: number
   offsReason?: OffsShortReason  // only for OFFS_SHORT with generated === 0
   slotName?: string
+}
+
+export interface ShortageDiag {
+  reason: 'no_eligible' | 'timing' | 'depleted' | 'no_noble' | 'nobles_short' | 'partial'
+  label: string
+  detail: string
+  eligible: number         // всего полных оффов в пуле
+  reachable: number        // из них укладываются по времени (ночь/старт)
+  free: number             // легальных и ещё не использованных оффов
+  nobleVirtual: boolean    // режим дворян: true = виртуальные (бюджет игрока), false = реальные (физ. дворы)
+  // Реальный режим: деревень с физ. дворами в радиусе / суммарно дворов там.
+  // Виртуальный режим: офф-дер-кандидатов в радиусе / из них свободных.
+  nobleVilInRange: number
+  nobleSnobInRange: number
+  noblesUsed: number       // дворов уже разослано в плане
+  noblesTotal: number      // пул дворов: реальный = физ.сумма, виртуальный = бюджет игроков
+  needed: number
+  generated: number
 }
 
 // ---------------------------------------------------------------------------
@@ -405,11 +429,11 @@ export const usePlanStore = defineStore('plan', () => {
   const spamNobleTargets = ref<Target[]>(loadSpamNobleTargets())
   const playerData = ref<PlayerData[]>(loadPlayerData())
   const watchtowerVillages = ref<WatchtowerVillage[]>(loadWatchtowerVillages())
-  const offDistribution = ref<'default' | 'fair' | 'far_first'>(
-    (localStorage.getItem(LS_OFF_DISTRIBUTION) as 'default' | 'fair' | 'far_first' | null) ?? 'far_first',
+  const offDistribution = ref<OffDistribution>(
+    (localStorage.getItem(LS_OFF_DISTRIBUTION) as OffDistribution | null) ?? 'max_coverage',
   )
 
-  function setOffDistribution(mode: 'default' | 'fair' | 'far_first') {
+  function setOffDistribution(mode: OffDistribution) {
     offDistribution.value = mode
     localStorage.setItem(LS_OFF_DISTRIBUTION, mode)
   }
@@ -909,8 +933,10 @@ export const usePlanStore = defineStore('plan', () => {
         if (!isNaN(floor.getTime()) && sendTime < floor) return false
       }
       // Hard safety net: a noble can never travel beyond the world's snob max
-      // distance — strip it if the loop didn't already filter it out.
-      if (composition.snob > 0 && dist > settings.snobMaxDist) composition.snob = 0
+      // distance — strip it if the loop didn't already filter it out, and flag
+      // so the stripped двор is visible in the plan (не молчаливо).
+      const snobStrippedFar = composition.snob > 0 && dist > settings.snobMaxDist
+      if (snobStrippedFar) composition.snob = 0
 
       const total       = totalUnits(composition)
       const pop         = totalPop(composition, settings.unitPop)
@@ -918,6 +944,7 @@ export const usePlanStore = defineStore('plan', () => {
       const { color: wtColor, icon: wtIcon } = calcWatchtower(total, composition.snob > 0)
 
       const warnings: WarningCode[] = []
+      if (snobStrippedFar) warnings.push('SNOB_TOO_FAR')
       if (sendTime < now) warnings.push('SEND_IN_PAST')
       if (settings.nightActive) {
         if (isInNightWindow(arrivalTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_ARRIVAL')
@@ -1144,13 +1171,53 @@ export const usePlanStore = defineStore('plan', () => {
 
     for (const __wave of waves) {
     const cfg = __wave.cfg
-    const validTargets = __wave.tgts
+    let validTargets = __wave.tgts
+
+    // ── Максимальное покрытие: самые «зажатые» цели обслуживаются первыми ──
+    // Не меняем саму раздачу — только порядок целей. Для каждой цели считаем,
+    // сколько у неё легальных дер-кандидатов под узкий слот (паравоз — офф в
+    // радиусе двора; иначе — фулл-оффы по времени). Меньше → раздаём раньше.
+    if (offDistribution.value === 'max_coverage') {
+      const presStore2 = usePresetsStore()
+      const fullMin2 = presStore2.fullOffMinOffFarm
+      const up2 = settings.unitPop
+      // Любой двор в кастом-пресете (Всё = -1 или Кол-во > 0) включает механику
+      // дальности хода двора → цели сортируем по числу носителей в радиусе.
+      const hasNoble = cfg.slots.some(s => {
+        if (!s.enabled) return false
+        const r = presStore2.all.find(p => p.id === s.presetId)?.role
+        if (r?.type !== 'custom_off') return false
+        const snobVal = (r.customUnits?.snob as number | undefined) ?? 0
+        return snobVal !== 0
+      })
+      const feasCount = (t: Target): number => {
+        const td = targetDataMap.get(t.id)
+        if (!td) return 0
+        const list = hasNoble ? td.nobleVillages : td.byDist
+        let n = 0, scanned = 0
+        for (const v of list) {
+          if (!hasNoble && scanned >= 400) break   // окно для перф в не-нобл конфиге
+          if (calcOffFarm(v.troops, up2) < fullMin2 || v.troops.ram <= 0) continue
+          scanned++
+          if (nightExcludes(v, t, 'off', t.arrivalTime)) continue
+          n++
+        }
+        return n
+      }
+      const diff = new Map(validTargets.map(t => [t.id, feasCount(t)]))
+      validTargets = [...validTargets].sort((a, b) => (diff.get(a.id) ?? 0) - (diff.get(b.id) ?? 0))
+    }
 
     // ── Global sorted slots ───────────────────────────────────────────────
+    // Порядок заполнения пула: сперва явный приоритет слота (больше = раньше
+    // исчерпывает пул по всем целям), затем авто-приоритет по роли, затем порядок.
     const globalOrderedSlots = [...cfg.slots]
       .filter(s => s.enabled)
       .map((s, origIdx) => ({ s, origIdx }))
-      .sort((a, b) => slotPoolPriority(a.s) - slotPoolPriority(b.s) || a.origIdx - b.origIdx)
+      .sort((a, b) =>
+        (b.s.fillPriority ?? 0) - (a.s.fillPriority ?? 0) ||
+        slotPoolPriority(a.s) - slotPoolPriority(b.s) ||
+        a.origIdx - b.origIdx)
       .map(({ s }) => s)
 
     // ── Global assignment for full_off / half_off / spike / custom_off ────
@@ -1593,10 +1660,14 @@ export const usePlanStore = defineStore('plan', () => {
         const meetsUnitMin = (v: Village): boolean => {
           for (const [k, minVal] of Object.entries(unitMinReq)) {
             if (!minVal) continue
+            // В виртуальном режиме дворы берутся из общего пула, а не из деры —
+            // фильтр «мин/макс дворов в дере» для них не применяем.
+            if (k === 'snob' && noblePollMode !== 'real') continue
             if (haveOf(v, k) < minVal) return false
           }
           for (const [k, maxVal] of Object.entries(unitMaxReq)) {
             if (!maxVal) continue
+            if (k === 'snob' && noblePollMode !== 'real') continue
             if (haveOf(v, k) > maxVal) return false
           }
           return true
@@ -1803,8 +1874,27 @@ export const usePlanStore = defineStore('plan', () => {
       if (role.type === 'spam') {
         // Sequential per target — preserve existing spam logic
         const presetColor = preset.color ?? defaultColorForRole(preset.role.type, preset.role)
+        // Маскировка: лимит на деру + балансировка спама по игрокам (аккаунтам).
+        // Счётчики живут на весь слот, между всеми целями.
+        const spamByVillage = new Map<string, number>()
+        const spamByPlayer  = new Map<string, number>()
+        // Игроки со спам-способными дерами (есть хоть 1 таран/кат).
+        const spamPlayers: string[] = (() => {
+          const seen = new Set<string>()
+          const order: string[] = []
+          for (const v of villages) {
+            if (reservedVillages.value.has(v.coords)) continue
+            if (v.troops.ram <= 0 && v.troops.catapult <= 0) continue
+            if (!seen.has(v.player)) { seen.add(v.player); order.push(v.player); spamByPlayer.set(v.player, 0) }
+          }
+          return order
+        })()
+        // Небольшой штраф деф-дерам при подборе спама — офф-деры предпочтительнее
+        // (спам с офф-деры правдоподобнее), но близкая деф всё равно обгонит дальнюю офф.
+        const SPAM_DEF_PENALTY = 15
+        const offMin = presStore.smallOffMinOffFarm
         for (const target of validTargets) {
-          const { byDist, nobleVillages } = targetDataMap.get(target.id)!
+          const { byDist, nobleVillages, distMap } = targetDataMap.get(target.id)!
           const slotArrT = slotArrTMap.get(target.id)!
 
           if ((role.spamTrainSize ?? 0) > 0) {
@@ -1846,24 +1936,74 @@ export const usePlanStore = defineStore('plan', () => {
             }
           } else {
             // ── Regular spam preset ────────────────────────────────────
+            // Балансировка: каждый спам отдаётся игроку с наименьшим числом
+            // спама (у кого есть пригодная дера), его ближайшей деры. Радиусного
+            // лимита нет — рассматриваются ВСЕ деры игрока (фильтрует лишь
+            // ночь/старт). Лимит на деру — maxPerVil.
             const wBefore = slot.windowBeforeMin ?? 0
             const wAfter  = slot.windowAfterMin  ?? 0
             const useWindow = wBefore > 0 || wAfter > 0
-            let left = slot.count
+            const maxPerVil = (slot.spamMaxPerVillage ?? 0) > 0 ? slot.spamMaxPerVillage! : Infinity
+
+            // Все деры игроков к этой цели (siege-способные), с мягким предпочтением
+            // офф-дер: сортируем по расстоянию + штраф деф-дерам.
+            const spamScore = (v: Village): number => {
+              const dist = distMap.get(v.coords) ?? 0
+              const isOff = calcOffFarm(v.troops, settings.unitPop) >= offMin
+              return dist + (isOff ? 0 : SPAM_DEF_PENALTY)
+            }
+            const derasByPlayer = new Map<string, Village[]>()
             for (const v of byDist) {
-              if (left <= 0) break
+              const a = pool.get(v.coords)!
+              if (a.ram <= 0 && a.catapult <= 0) continue
+              const arr = derasByPlayer.get(v.player)
+              if (arr) arr.push(v); else derasByPlayer.set(v.player, [v])
+            }
+            for (const list of derasByPlayer.values()) list.sort((x, y) => spamScore(x) - spamScore(y))
+
+            const usedThisTarget = new Set<string>()
+            const ptr = new Map<string, number>()
+            // Ближайшая ещё доступная дера игрока (двигает указатель мимо занятых/лимитных)
+            const nextDera = (player: string): Village | null => {
+              const list = derasByPlayer.get(player)
+              if (!list) return null
+              let i = ptr.get(player) ?? 0
+              while (i < list.length) {
+                const v = list[i]
+                if (!usedThisTarget.has(v.coords) && (spamByVillage.get(v.coords) ?? 0) < maxPerVil) { ptr.set(player, i); return v }
+                i++
+              }
+              ptr.set(player, i)
+              return null
+            }
+
+            let left = slot.count
+            while (left > 0) {
+              // игрок с минимальным счётчиком, у кого есть доступная дера
+              let bestPlayer: string | null = null
+              let bestCnt = Infinity
+              for (const p of spamPlayers) {
+                const cnt = spamByPlayer.get(p) ?? 0
+                if (cnt >= bestCnt) continue
+                if (nextDera(p)) { bestPlayer = p; bestCnt = cnt }
+              }
+              if (!bestPlayer) break
+              const v = nextDera(bestPlayer)!
               const a = pool.get(v.coords)!
               const c = buildSpamComp(a)
-              if (!c) continue
+              if (!c) { usedThisTarget.add(v.coords); continue }
               const arrT = useWindow
                 ? randomSpamArrival(
                     new Date(slotArrT.getTime() - wBefore * 60_000),
                     new Date(slotArrT.getTime() + wAfter  * 60_000),
                   )
                 : slotArrT
-              if (nightExcludes(v, target, 'spam', arrT, c)) continue
+              if (nightExcludes(v, target, 'spam', arrT, c)) { usedThisTarget.add(v.coords); continue }
               a.ram = Math.max(0, a.ram - c.ram); a.catapult = Math.max(0, a.catapult - c.catapult)
               pushAtk('spam', v, target, c, arrT, preset.name, presetColor)
+              usedThisTarget.add(v.coords)
+              spamByVillage.set(v.coords, (spamByVillage.get(v.coords) ?? 0) + 1)
+              spamByPlayer.set(bestPlayer, bestCnt + 1)
               left--
             }
             if (left > 0) genIssues.push({ targetCoords: target.coords, type: 'SPAM_SHORT', requested: slot.count, generated: slot.count - left, slotName: preset.name })
@@ -2455,6 +2595,128 @@ export const usePlanStore = defineStore('plan', () => {
     return s
   })
 
+  // ── Диагностика недобитых целей: ПОЧЕМУ не хватило оффов ─────────────────
+  // Пост-анализ по финальному состоянию: для каждой цели с нехваткой оффов
+  // классифицируем доминирующую причину, перепроверяя исходный пул.
+  const targetShortageDiagnosis = computed<Map<string, ShortageDiag>>(() => {
+    const settings  = useWorldStore().settings
+    const presStore = usePresetsStore()
+    const villages  = villagesStore.villages
+    const map = new Map<string, ShortageDiag>()
+
+    // Полные оффы в пуле (не зарезервированные)
+    const eligible = villages.filter(v =>
+      !reservedVillages.value.has(v.coords) &&
+      calcOffFarm(v.troops, settings.unitPop) >= presStore.fullOffMinOffFarm && v.troops.ram > 0)
+    const nobleVirtual = (settings.noblePollMode ?? 'real') !== 'real'
+    // Деревни с физ. дворами в пуле
+    const nobleVils = villages.filter(v => !reservedVillages.value.has(v.coords) && v.troops.snob > 0)
+    // Пул дворов: реальный = сумма физ. дворов; виртуальный = бюджет игроков
+    // (pd.totalNobles, иначе физ. дворы игрока — как строится virtualNoblePool).
+    let noblesTotal: number
+    if (!nobleVirtual) {
+      noblesTotal = nobleVils.reduce((s, v) => s + v.troops.snob, 0)
+    } else {
+      const physPerPlayer = new Map<string, number>()
+      for (const v of villages) {
+        if (reservedVillages.value.has(v.coords)) continue
+        physPerPlayer.set(v.player, (physPerPlayer.get(v.player) ?? 0) + v.troops.snob)
+      }
+      noblesTotal = 0
+      for (const player of new Set(villages.map(v => v.player))) {
+        const pd = playerData.value.find(p => p.player === player)
+        noblesTotal += pd?.totalNobles ?? (physPerPlayer.get(player) ?? 0)
+      }
+    }
+    // Дворов уже разослано в плане (сумма snob по всем атакам)
+    const noblesUsed = attacks.value.reduce((s, a) => s + (a.composition.snob ?? 0), 0)
+    // Деревни, уже задействованные под офф-атаки в плане
+    const usedCoords = new Set(
+      attacks.value.filter(a => a.type === 'off' || a.type === 'paladin_off').map(a => a.fromVillage.coords))
+
+    // Отправка укладывается по ночным/старту для пары (деревня, цель)?
+    const offSpeed = settings.unitTimes[speedUnitForType('off')]
+    const floor = settings.earliestSendEnabled && settings.earliestSendTime ? new Date(settings.earliestSendTime) : null
+    const legalSend = (v: Village, t: Target): boolean => {
+      const dist = calcDistance({ x: v.x, y: v.y }, { x: t.x, y: t.y }, settings.mapSize)
+      const travelSec = calcTravelSeconds(dist, offSpeed, settings.worldSpeed, settings.unitSpeed)
+      const sendTime = calcSendTime(t.arrivalTime, travelSec)
+      if (settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return false
+      if (floor && !isNaN(floor.getTime()) && sendTime < floor) return false
+      return true
+    }
+
+    const targetByCoords = new Map(targets.value.filter(t => t.coords).map(t => [t.coords, t]))
+    // Агрегируем по цели (у цели несколько слотов → несколько issue)
+    const shortByTarget = new Map<string, { requested: number; generated: number }>()
+    for (const issue of generationIssues.value) {
+      if (issue.type !== 'OFFS_SHORT') continue
+      const ex = shortByTarget.get(issue.targetCoords) ?? { requested: 0, generated: 0 }
+      ex.requested += issue.requested; ex.generated += issue.generated
+      shortByTarget.set(issue.targetCoords, ex)
+    }
+
+    for (const [coords, agg] of shortByTarget) {
+      const t = targetByCoords.get(coords)
+      if (!t) continue
+
+      const reachable = eligible.filter(v => legalSend(v, t))
+      const free = reachable.filter(v => !usedCoords.has(v.coords))
+      const inRange = (v: Village) =>
+        calcDistance({ x: v.x, y: v.y }, { x: t.x, y: t.y }, settings.mapSize) <= settings.snobMaxDist
+
+      // Кандидаты-носители двора в радиусе хода дворян:
+      //  реальный режим — деревни с физ. дворами; виртуальный — любые офф-деры.
+      let nobleVilInRange: number
+      let nobleSnobInRange: number
+      if (!nobleVirtual) {
+        const nir = nobleVils.filter(inRange)
+        nobleVilInRange = nir.length
+        nobleSnobInRange = nir.reduce((s, v) => s + v.troops.snob, 0)
+      } else {
+        nobleVilInRange = eligible.filter(inRange).length      // офф-дер-кандидатов в радиусе
+        nobleSnobInRange = free.filter(inRange).length          // из них свободных
+      }
+
+      let reason: ShortageDiag['reason']
+      let label: string
+      let detail: string
+      if (eligible.length === 0) {
+        reason = 'no_eligible'; label = 'Нет полных оффов в пуле'
+        detail = 'Импортированные деревни не дотягивают до порога Full_OFF или без таранов.'
+      } else if (reachable.length === 0) {
+        reason = 'timing'; label = 'Не укладываются по времени'
+        detail = `Все ${eligible.length} оффов отправлялись бы в ночь или раньше «Старт не ранее». Разнесите время прихода или ослабьте ограничения.`
+      } else if (free.length === 0) {
+        reason = 'depleted'; label = 'Оффы разобраны другими целями'
+        detail = `${reachable.length} легальных оффов были, но ушли на другие цели. Пул оффов исчерпан под эти параметры.`
+      } else if (nobleVilInRange === 0) {
+        reason = 'no_noble'; label = 'Дворы не достают'
+        detail = nobleVirtual
+          ? `Оффы свободны (${free.length}), но нет офф-деры в ${settings.snobMaxDist} клетках от цели — виртуальным дворам неоткуда стартовать (двор всё равно ограничен ходом). Дальняя для дворов цель.`
+          : `Оффы свободны (${free.length}), но нет деревни с дворами в ${settings.snobMaxDist} клетках. Дальняя для дворов цель.`
+      } else if (noblesTotal - noblesUsed <= 0) {
+        reason = 'nobles_short'; label = 'Дворы кончились'
+        detail = nobleVirtual
+          ? `Оффы свободны (${free.length}), но весь виртуальный бюджет дворов (${noblesTotal}) уже распределён.`
+          : `Оффы свободны (${free.length}), но все дворы (${noblesTotal}) уже разошлись по другим целям.`
+      } else {
+        reason = 'nobles_short'; label = 'Не хватило дворов'
+        detail = nobleVirtual
+          ? `Оффы свободны (${free.length}). Офф-дер в радиусе: ${nobleVilInRange} (свободных ${nobleSnobInRange}) — ближние цели разобрали и деры-носители, и бюджет дворов.`
+          : `Оффы свободны (${free.length}). Дворов в радиусе: ${nobleSnobInRange} (деревень ${nobleVilInRange}) — их разобрали ближние цели.`
+      }
+
+      map.set(coords, {
+        reason, label, detail,
+        eligible: eligible.length, reachable: reachable.length, free: free.length,
+        nobleVirtual, nobleVilInRange, nobleSnobInRange, noblesUsed, noblesTotal,
+        needed: agg.requested, generated: agg.generated,
+      })
+    }
+    return map
+  })
+
   const attacksByPlayer = computed(() => {
     const m = new Map<string, Attack[]>()
     for (const a of attacks.value) {
@@ -2669,74 +2931,6 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   // ── Coverage estimate: max targets the current mass config can cover ────────
-  const coverageEstimate = computed<number | null>(() => {
-    const cfg = useMassConfigStore().active
-    if (!cfg) return null
-    const presStore = usePresetsStore()
-    const { settings } = worldStore
-    const vils = villagesStore.villages
-    if (!vils.length) return null
-
-    const up = settings.unitPop
-
-    // Pool sizes (based on original village data, not current pool state)
-    const fullOffVils = vils.filter(v =>
-      calcOffFarm(v.troops, up) >= presStore.fullOffMinOffFarm && v.troops.ram > 0
-    ).length
-
-    const halfOffVils = vils.filter(v => {
-      const of = calcOffFarm(v.troops, up)
-      return of >= presStore.halfOffMinOffFarm && of < presStore.fullOffMinOffFarm
-    }).length
-
-    const miniOffVils = vils.filter(v => {
-      const of = calcOffFarm(v.troops, up)
-      return of >= presStore.smallOffMinOffFarm && of < presStore.halfOffMinOffFarm
-    }).length
-
-    // Noble pool: built snobs + virtual budget from playerData
-    const builtSnobs = vils.reduce((s, v) => s + v.troops.snob, 0)
-    const noblePollMode = settings.noblePollMode ?? 'real'
-    let totalNobles = builtSnobs
-    if (noblePollMode !== 'real') {
-      const perPlayer = new Map<string, number>()
-      for (const v of vils) perPlayer.set(v.player, (perPlayer.get(v.player) ?? 0) + v.troops.snob)
-      for (const pd of playerData.value) {
-        if (!pd.totalNobles) continue
-        const built = perPlayer.get(pd.player) ?? 0
-        totalNobles += pd.totalNobles - built
-      }
-    }
-    // Noble coverage: 1 village = 1 parovoz → count villages with snobs (not sum of snobs)
-    const nobleVils = vils.filter(v => v.troops.snob > 0).length
-    const nobleVilsVirtual = nobleVils + playerData.value.reduce((s, pd) => {
-      if (!pd.totalNobles) return s
-      const built = vils.filter(v => v.player === pd.player && v.troops.snob > 0).length
-      return s + Math.max(0, pd.totalNobles - built)
-    }, 0)
-
-    let minTargets = Infinity
-    for (const slot of cfg.slots) {
-      if (!slot.enabled || slot.count <= 0) continue
-      const preset = presStore.all.find(p => p.id === slot.presetId)
-      if (!preset) continue
-      const role = preset.role
-
-      let poolSize = 0
-      if (role.type === 'full_off')  poolSize = fullOffVils
-      else if (role.type === 'half_off')  poolSize = halfOffVils
-      else if (role.type === 'mini_off')  poolSize = miniOffVils
-      else if (role.type === 'custom_off') {
-        const snobSpec = (role.customUnits?.snob as number | undefined) ?? -1
-        poolSize = snobSpec > 0 ? nobleVilsVirtual : fullOffVils + halfOffVils + miniOffVils
-      } else continue  // spam: не ограничивает
-
-      minTargets = Math.min(minTargets, Math.floor(poolSize / slot.count))
-    }
-
-    return minTargets === Infinity ? null : minTargets
-  })
-
   const offPoolStats = computed<OffPoolStats>(() => {
     const presStore = usePresetsStore()
     const ws = useWorldStore().settings
@@ -2839,13 +3033,13 @@ export const usePlanStore = defineStore('plan', () => {
     unusedOffStats,
     unusedCatStats,
     uncoveredTargetCoords,
+    targetShortageDiagnosis,
     offPoolStats,
     breachPalByPlayer,
     palVillageCoords,
     poolStatsByPlayer,
     poolUsageStats,
     catMassStats,
-    coverageEstimate,
 
     // Reserved villages
     setReservedVillages,

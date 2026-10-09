@@ -1,9 +1,10 @@
 <template>
   <div id="app-layout">
     <header class="app-header">
-      <div class="brand">VP Planner</div>
+      <RouterLink to="/" class="brand">VP Planner</RouterLink>
       <nav>
-        <RouterLink to="/">Главная</RouterLink>
+        <span class="nav-group-label plan">План</span>
+
         <RouterLink to="/settings">
           Настройки
           <span v-if="!hasWorld" class="badge badge-warn" title="Настройки не сохранены">●</span>
@@ -12,16 +13,20 @@
           Импорт
           <span v-if="!hasVillages" class="badge badge-warn" title="Нет деревень">●</span>
         </RouterLink>
-        <RouterLink to="/planner">Планер</RouterLink>
         <RouterLink to="/presets">Пресеты войск</RouterLink>
         <RouterLink to="/mass-configs">Пресеты масса</RouterLink>
+        <RouterLink to="/planner">Планер</RouterLink>
         <RouterLink to="/attack-map">Карта атак</RouterLink>
+
+        <span class="nav-spacer" />
+
+        <span class="nav-group-label analysis">Анализ</span>
+
         <RouterLink to="/world-map">Карта мира</RouterLink>
         <RouterLink to="/def-map">Карта дефа</RouterLink>
         <RouterLink to="/def-analytics">Аналитика</RouterLink>
         <RouterLink to="/attack-scout">Засветы</RouterLink>
       </nav>
-      <span class="app-version" :title="`Собрано: ${buildTime}`">v{{ appVersion }}</span>
     </header>
     <main class="app-main">
       <RouterView />
@@ -40,9 +45,6 @@ const villagesStore = useVillagesStore()
 
 const hasWorld = computed(() => Boolean(worldStore.settings.worldCode))
 const hasVillages = computed(() => villagesStore.villages.length > 0)
-
-const appVersion = __APP_VERSION__
-const buildTime = new Date(__BUILD_TIME__).toLocaleString('ru-RU')
 </script>
 
 <style lang="scss" scoped>
@@ -64,7 +66,11 @@ const buildTime = new Date(__BUILD_TIME__).toLocaleString('ru-RU')
 
   nav {
     display: flex;
-    gap: 1.5rem;
+    align-items: center;
+    gap: 1.15rem;
+    flex: 1;
+
+    .nav-spacer { flex: 1 1 auto; }
 
     a {
       color: $text-md;
@@ -78,24 +84,32 @@ const buildTime = new Date(__BUILD_TIME__).toLocaleString('ru-RU')
 
       &.router-link-active { color: $accent; }
     }
+
+    .nav-group-label {
+      flex-shrink: 0;
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.12rem 0.5rem;
+      border-radius: 10px;
+      margin: 0 0.25rem;
+      border: 1px solid transparent;
+
+      &.plan     { color: $accent; background: a($accent, 0.12); border-color: a($accent, 0.3); }
+      &.analysis { color: #4ecca3; background: a(#4ecca3, 0.12); border-color: a(#4ecca3, 0.3); }
+    }
   }
 }
 
-.app-version {
-  margin-left: auto;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: $text-md;
-  opacity: 0.5;
-  font-family: monospace;
-  cursor: default;
-}
 
 .brand {
   font-size: 1.1rem;
   font-weight: 700;
   color: $accent;
   white-space: nowrap;
+  text-decoration: none;
+  &:hover { filter: brightness(1.15); }
 }
 
 .badge {

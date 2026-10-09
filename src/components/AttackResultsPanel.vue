@@ -309,7 +309,7 @@
       <section class="panel results-panel">
         <div class="issues-head-row">
           <h3 class="issues-title">Проблемные деревни ({{ problemTargets.length }})</h3>
-          <span class="issues-hint">Целям не хватило войск. «Заглушить» — убрать цель: её войска вернутся в пул на след. генерации, а сама цель больше не участвует.</span>
+          <span class="issues-hint">Для каждой цели — причина нехватки. «Заглушить» — убрать цель: её войска вернутся в пул на след. генерации, а сама цель больше не участвует.</span>
         </div>
 
         <div v-if="!problemTargets.length" class="issues-empty">Нет проблемных целей — всем хватило войск 🎉</div>
@@ -319,7 +319,17 @@
             <span class="player-name-label">{{ p.coords }}</span>
             <span v-if="p.enemyPlayer" class="target-player-label">{{ p.enemyPlayer }}</span>
             <span class="player-attack-count">({{ p.assigned }} / {{ p.total }} атак)</span>
+            <span v-if="p.diag" class="issue-reason" :class="`reason--${p.diag.reason}`">{{ p.diag.label }}</span>
             <button class="issue-mute-btn" title="Убрать цель из масса — войска вернутся в пул на след. генерации" @click="muteTarget(p.id)">✕ Заглушить</button>
+          </div>
+          <div v-if="p.diag" class="issue-diag">
+            <div class="issue-diag-text">{{ p.diag.detail }}</div>
+            <div class="issue-diag-stats">
+              <span title="Свободных легальных оффов / укладываются по времени / всего в пуле">оффы своб.: <b :class="{ 'stat-zero': p.diag.free === 0 }">{{ p.diag.free }}</b> <span class="stat-dim">/ {{ p.diag.reachable }} / {{ p.diag.eligible }}</span></span>
+              <span v-if="p.diag.nobleVirtual" title="Офф-деревень в радиусе хода дворян, способных нести виртуальный паравоз (из них ещё свободных)">офф-дер в радиусе: <b :class="{ 'stat-zero': p.diag.nobleVilInRange === 0 }">{{ p.diag.nobleVilInRange }}</b> <span class="stat-dim">(своб. {{ p.diag.nobleSnobInRange }})</span></span>
+              <span v-else title="Дворов в радиусе хода дворян (сумма / деревень)">дворы в радиусе: <b :class="{ 'stat-zero': p.diag.nobleVilInRange === 0 }">{{ p.diag.nobleSnobInRange }}</b> <span class="stat-dim">({{ p.diag.nobleVilInRange }} дер)</span></span>
+              <span :title="p.diag.nobleVirtual ? 'Дворов разослано / виртуальный бюджет дворов игроков' : 'Дворов задействовано / всего физ. в пуле'">дворы в плане{{ p.diag.nobleVirtual ? ' (вирт.)' : '' }}: <b>{{ p.diag.noblesUsed }}</b> <span class="stat-dim">/ {{ p.diag.noblesTotal }}</span></span>
+            </div>
           </div>
           <ul class="issue-list">
             <li v-for="(msg, i) in p.issues" :key="i">{{ msg }}</li>
@@ -482,6 +492,7 @@ const problemTargets = computed(() => {
         assigned: atks.filter(a => !a.excluded).length,
         total: atks.length,
         issues: issuesByCoords.value.get(coords) ?? [],
+        diag: planStore.targetShortageDiagnosis.get(coords),
       }
     })
     .filter(p => p.id)   // only targets still present
@@ -1013,6 +1024,24 @@ $yellow:       #f0c040;
   &:hover { background: #f38ba8; color: #1a1a2e; }
 }
 .issue-list { margin: 0.4rem 0 0; padding-left: 1.1rem; color: $text-dim; font-size: 0.82rem; line-height: 1.5; }
+
+.issue-reason {
+  font-size: 0.72rem; font-weight: 700; padding: 0.1rem 0.5rem; border-radius: 10px; white-space: nowrap;
+  &.reason--no_eligible  { background: a(#f38ba8, 0.18); color: #f38ba8; }
+  &.reason--timing       { background: a(#fab387, 0.18); color: #fab387; }
+  &.reason--depleted     { background: a(#89b4fa, 0.18); color: #89b4fa; }
+  &.reason--no_noble     { background: a(#cba6f7, 0.18); color: #cba6f7; }
+  &.reason--nobles_short { background: a(#cba6f7, 0.18); color: #cba6f7; }
+  &.reason--partial      { background: a(#f9e2af, 0.18); color: #f9e2af; }
+}
+.issue-diag {
+  margin-top: 0.4rem; padding: 0.45rem 0.6rem; background: a(#000, 0.18); border-radius: 5px;
+  .issue-diag-text { font-size: 0.8rem; color: $text; line-height: 1.5; }
+  .issue-diag-stats {
+    display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 0.35rem; font-size: 0.74rem; color: $text-dim;
+    b { color: $text; } .stat-zero { color: #f38ba8; } .stat-dim { color: a($text-dim, 0.6); }
+  }
+}
 
 // ── Player blocks (visual tab) ────────────────────────────────────────────
 .player-block {

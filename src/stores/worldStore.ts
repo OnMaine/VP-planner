@@ -109,7 +109,7 @@ function defaultSettings(): WorldSettings {
     watchtowerEnabled: false,
     watchtowerAvoidEnabled: true,
     noblePollMode: 'real' as NoblePollMode,
-    paladinMode: 'auto' as const,
+    paladinMode: 'none' as const,
     unitTimes: { ...DEFAULT_UNIT_TIMES },
     unitPop: { ...DEFAULT_UNIT_POP },
   }
@@ -157,6 +157,12 @@ export const useWorldStore = defineStore('world', () => {
 
   function updateSettings(partial: Partial<WorldSettings>) {
     settings.value = { ...settings.value, ...partial }
+    save()
+  }
+
+  /** Полный сброс настроек мира к значениям по умолчанию (чистый лист). */
+  function reset() {
+    settings.value = defaultSettings()
     save()
   }
 
@@ -262,6 +268,7 @@ export const useWorldStore = defineStore('world', () => {
     updateSettings,
     fetchFromApi,
     applyPreset,
+    reset,
     save,
   }
 })

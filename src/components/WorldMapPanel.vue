@@ -139,6 +139,10 @@ async function onAllyFile(event: Event): Promise<void> {
 function resolveAllFromMap(): void {
   resolveCount.value = planStore.resolveAllFromMap()
 }
+
+// Позволяет родителю (Настройки мира) запустить загрузку данных карты
+// одной кнопкой «Из API».
+defineExpose({ autoLoad })
 </script>
 
 <style lang="scss" scoped>

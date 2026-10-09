@@ -11,6 +11,51 @@
 
     <h1>Планер атак</h1>
 
+    <!-- ── Инструкция (сворачиваемая) ────────────────────────────────────── -->
+    <section class="help-box">
+      <button class="help-toggle" @click="showHelp = !showHelp">
+        <span>📖 Инструкция</span>
+        <span class="help-caret">{{ showHelp ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="showHelp" class="help-content">
+        <p>
+          Здесь собирается план массовых атак. <b>Порядок:</b> добавь <b>цели</b> → выбери <b>масс-конфиг</b> и <b>время прихода</b> →
+          настрой ограничения → <b>«Сгенерировать план»</b>. Результат — готовые атаки с точным таймингом, их можно экспортировать.
+        </p>
+
+        <h4>Слева — настройка генерации</h4>
+        <ul>
+          <li><b>Масс-конфиг</b> — какой набор слотов применять (из «Пресеты масса»). «Изменить» ведёт к его редактированию.</li>
+          <li><b>Тайминг</b> — опорное время прихода. <b>«→ всем»</b> проставляет его всем целям разом (у каждой цели можно задать своё).</li>
+          <li><b>🌙 Без ночных</b> — не отправлять атаки, чья отправка попадает в ночное окно (диапазон часов рядом).</li>
+          <li><b>⏰ Старт не ранее</b> — не генерировать отправки раньше указанного времени.</li>
+          <li><b>⚖ Мораль</b> — предупреждать, если очки атакующего сильно выше защитника (риск морали).</li>
+          <li><b>🗼 Башни</b> — учитывать сторожевые башни врага (засветы маршрутов).</li>
+          <li><b>🛡 Резерв фронта</b> — не задействовать деры у линии фронта.</li>
+          <li><b>Распределение</b>: <i>Дальние вперёд</i> (дальним целям — первый выбор дер), <i>Справедливо</i> (равномерно), <i>Жадно</i> (по лучшему совпадению).</li>
+          <li><b>Дворяне</b>: <i>Реальные</i> (по войскам из импорта) или <i>Виртуальные</i> (по счётчику дворов на игрока).</li>
+          <li><b>Паладины</b>: <i>Не распределять</i> / <i>Вручную</i> / <i>Автоматически</i> (раздать пал-оффам).</li>
+        </ul>
+
+        <h4>Генерация и сохранение</h4>
+        <ul>
+          <li><b>Сгенерировать план</b> — рассчитать атаки. Если кнопка заблокирована — под ней причина и ссылки (нет целей / войск / конфига).</li>
+          <li><b>Волны плана</b> — если целям назначены разные масс-конфиги, показывается сводка по волнам (каждая со своим набором).</li>
+          <li><b>↓ Сохранить план / ↑ Загрузить план</b> — экспорт/импорт плана в файл.</li>
+          <li>Счётчики пула: офы / дворы / пробои / каты — сколько задействовано из доступного; «N не в плане» — неиспользованные коры можно скопировать.</li>
+        </ul>
+
+        <h4>Справа — цели и результаты</h4>
+        <ul>
+          <li><b>Цели</b> — список координат с временем прихода. Можно вставить списком, задать волну (масс-конфиг) каждой цели, импортировать.</li>
+          <li><b>Результаты</b> (после генерации): вкладки <b>По деревням</b> / <b>По игрокам</b> (кому что слать), <b>Проблемные</b> (цели, которым не хватило — с причиной: нет оффов / тайминг / дворы не достают / пул исчерпан; «Заглушить» — убрать цель), <b>Текст (BBCode)</b> — готовый код для вставки в игру/форум.</li>
+          <li><b>Башни врага</b> — таблица сторожевых башен (когда учёт башен включён).</li>
+        </ul>
+
+        <p class="help-note">Для максимального покрытия крути пороги на «Импорте» и приоритеты слотов в «Пресеты масса», а причины недобора смотри во вкладке «Проблемные».</p>
+      </div>
+    </section>
+
     <div class="planner-layout">
     <aside class="planner-sidebar">
     <section class="panel mode-bar">
@@ -165,6 +210,7 @@ import AttackResultsPanel from '@/components/AttackResultsPanel.vue'
 import AIPlanPanel from '@/components/AIPlanPanel.vue'
 
 const planStore = usePlanStore()
+const showHelp = ref(false)   // инструкция свёрнута по умолчанию
 const aiStore = useAIPlanStore()
 const worldStore = useWorldStore()
 const enemyStore = useEnemyDataStore()
@@ -338,6 +384,34 @@ function onGenerate(): void {
 .planner-view {
   max-width: 1600px;
   margin: 0 auto;
+}
+
+// ── Инструкция ───────────────────────────────────────────────────────────────
+.help-box {
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: a($bg-page, 0.4);
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+.help-toggle {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  background: none; border: none; color: $text;
+  font-size: 0.95rem; font-weight: 600; padding: 0.7rem 1rem; cursor: pointer;
+  &:hover { color: $accent; }
+  .help-caret { color: $text-dim; font-size: 0.8rem; }
+}
+.help-content {
+  padding: 0.25rem 1.1rem 1rem;
+  font-size: 0.86rem; line-height: 1.6; color: $text-dim;
+  border-top: 1px solid a($border, 0.7);
+  b { color: $text; } i { color: $text; font-style: italic; }
+  code { background: a($accent, 0.12); color: $accent; padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.82em; }
+  h4 { color: $text; font-size: 0.9rem; margin: 1rem 0 0.4rem; padding-top: 0.6rem; border-top: 1px dashed a($border, 0.5); }
+  p { margin: 0.5rem 0; }
+  ul { margin: 0.4rem 0; padding-left: 1.2rem; li { margin-bottom: 0.4rem; } }
+  .help-note { font-size: 0.82rem; font-style: italic; opacity: .9; border-top: 1px solid a($border, 0.5); padding-top: 0.6rem; margin-top: 0.8rem; }
 }
 
 .planner-layout {

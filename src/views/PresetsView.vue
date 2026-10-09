@@ -2,6 +2,44 @@
   <div class="presets-view">
     <h1>Пресеты войск</h1>
 
+    <!-- ── Инструкция (сворачиваемая) ────────────────────────────────────── -->
+    <section class="help-box">
+      <button class="help-toggle" @click="showHelp = !showHelp">
+        <span>📖 Инструкция</span>
+        <span class="help-caret">{{ showHelp ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="showHelp" class="help-content">
+        <p>
+          <b>Пресет войск</b> — это <b>тип атаки</b>: что именно летит из деревни. Пресеты — кирпичики для
+          масс-конфигов (на странице «Пресеты масса» из них собираются слоты). Это <b>шаг 3</b> после импорта войск.
+        </p>
+
+        <h4>Встроенные (по порогам/логике)</h4>
+        <ul>
+          <li><b>Full_OFF</b> — все офф-войска деревни (топоры + ЛК + тараны), offFarm ≥ порога «full».</li>
+          <li><b>Mid_OFF / Mini_OFF</b> — средний / мини офф по диапазонам offFarm (пороги med и mini). <i>Пороги задаются на странице «Импорт» в блоке «Статистика».</i></li>
+          <li><b>CAT</b> — отряд катапульт (мин. размер отряда). Можно указать здание на снос.</li>
+          <li><b>Time_SPAM</b> — фейк: минимум войск + 1 таран/кат для имитации угрозы.</li>
+          <li>Встроенные нельзя удалить — они считаются по логике, подстраиваются под каждую деру.</li>
+        </ul>
+
+        <h4>Кастомные (свой состав)</h4>
+        <p>Кнопка <b>«+ Кастомный»</b> открывает редактор. Для <b>каждого юнита</b> (топоры, ЛК, ТК, тараны, копья, мечи, лазы, каты, паладин, дворянин) задаёшь, сколько его слать:</p>
+        <ul>
+          <li><b>Не брать</b> — юнит не участвует (по умолчанию).</li>
+          <li><b>Всё</b> — забрать весь этот юнит из деревни.</li>
+          <li><b>%</b> — процент от имеющегося в дере.</li>
+          <li><b>Кол-во</b> — фиксированное число.</li>
+          <li><b>Паладин</b> — только «Взять» (1 шт.), <b>Дворянин</b> — «Всё» или «Кол-во» (дворы = паравоз).</li>
+        </ul>
+        <p><b>Мин. / макс. в деревне для подбора</b> (правая колонка) — фильтр, из каких дер брать: деревня подойдёт, только если её запас этого юнита в диапазоне. Пусто = без ограничения. Так, напр., «фулка» берётся лишь из дер с таранами ≥ N.</p>
+        <p><b>Отображение</b> — цвет бейджа (или свой) и иконка пресета (для узнаваемости в списках и на карте).</p>
+        <p>У карточек: <b>Изменить</b> / <b>Копия</b> / <b>✕</b>.</p>
+
+        <p class="help-note">Дальше эти пресеты выбираются в слотах масс-конфига («Пресеты масса») с указанием количества на цель, приоритета и смещения тайминга.</p>
+      </div>
+    </section>
+
     <div class="top-bar">
       <button class="btn btn-primary" @click="openNew('custom')">+ Кастомный</button>
     </div>
@@ -42,36 +80,6 @@
             class="btn btn-secondary btn-sm"
             @click="store.clone(preset.id)"
           >{{ preset.builtIn ? 'Клонировать' : 'Копия' }}</button>
-          <button v-if="!preset.builtIn" class="btn btn-danger btn-sm" @click="confirmRemove(preset.id)">✕</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Train presets -->
-    <h2 class="section-head">Комбинированные пресеты</h2>
-    <div class="presets-grid">
-      <div
-        v-for="preset in trainPresets"
-        :key="preset.id"
-        :class="['preset-card', 'card-train', { 'card-editing': editingId === preset.id, 'card-builtin': preset.builtIn, 'card-spam': preset.role.type === 'spam' }]"
-      >
-        <div class="card-head">
-          <img v-for="(ico, i) in roleIcons(preset.role)" :key="i" :src="ico" class="card-role-icon" />
-          <span class="card-name">{{ preset.name }}</span>
-          <span v-if="preset.builtIn" class="badge-builtin">встроенный</span>
-        </div>
-        <p class="card-desc">{{ cardDescription(preset) }}</p>
-        <p v-if="cardNote(preset)" class="card-note">{{ cardNote(preset) }}</p>
-        <div class="card-chips">
-          <span
-            class="chip"
-            :style="chipStyle(preset)"
-          >{{ preset.name }}</span>
-          <span v-for="(d, i) in roleDetails(preset.role, preset.builtIn)" :key="i" :class="['chip', d.warn ? 'chip-warn' : 'chip-detail']">{{ d.label }}</span>
-        </div>
-        <div class="card-actions">
-          <button v-if="!preset.builtIn" class="btn btn-secondary btn-sm" @click="openEdit(preset.id)">Изменить</button>
-          <button v-if="preset.id !== 'bi_spam_train'" class="btn btn-secondary btn-sm" @click="store.clone(preset.id)">{{ preset.builtIn ? 'Клонировать' : 'Копия' }}</button>
           <button v-if="!preset.builtIn" class="btn btn-danger btn-sm" @click="confirmRemove(preset.id)">✕</button>
         </div>
       </div>
@@ -226,6 +234,12 @@
               <span v-else class="cu-min-na">—</span>
             </div>
           </div>
+          <p
+            v-if="(getCustomUnitMin('snob') || getCustomUnitMax('snob')) && worldStore.settings.noblePollMode !== 'real'"
+            class="cu-virtual-note"
+          >
+            ⚠ Сейчас выбран режим дворян «Виртуальные» — фильтр «мин/макс дворов в дере» для дворянина <b>игнорируется</b> (дворы берутся из общего пула игрока, а не из деревни). Он действует только в режиме «Реальные».
+          </p>
         </div>
         <div v-if="(form.role.customUnits?.catapult ?? 0) !== 0" class="form-row cu-cat-target-row">
           <label class="f-label">
@@ -292,9 +306,9 @@ import { UNIT_ICONS } from '@/utils/unitIcons'
 
 const store = usePresetsStore()
 
-const singlePresets = computed(() => store.all.filter(p => !p.combined))
-const trainPresets  = computed(() => store.all.filter(p => !!p.combined))
+const singlePresets = computed(() => store.all)
 
+const showHelp = ref(false)   // инструкция свёрнута по умолчанию
 const editorOpen = ref(false)
 const editingId = ref<string | null>(null)
 const editorMode = ref<'single' | 'custom'>('single')
@@ -375,7 +389,6 @@ function roleIcons(role: VillageRole): string[] {
 function cardNote(preset: AttackPreset): string {
   if (preset.id === 'bi_cat_squad') return ''
   if (preset.id === 'bi_spam_weak') return 'ℹ Для спама нужен хотя бы 1 таран или 1 катапульта — не влияет на подбор деревень'
-  if (preset.id === 'bi_spam_train') return 'ℹ Подбор деревни — только по наличию дворов (реальных или виртуальных); состав войск не учитывается'
   return ''
 }
 
@@ -660,6 +673,34 @@ function scrollToEditor(): void {
 .presets-view {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+// ── Инструкция ───────────────────────────────────────────────────────────────
+.help-box {
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: a($bg-page, 0.4);
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+.help-toggle {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  background: none; border: none; color: $text;
+  font-size: 0.95rem; font-weight: 600; padding: 0.7rem 1rem; cursor: pointer;
+  &:hover { color: $accent; }
+  .help-caret { color: $text-dim; font-size: 0.8rem; }
+}
+.help-content {
+  padding: 0.25rem 1.1rem 1rem;
+  font-size: 0.86rem; line-height: 1.6; color: $text-dim;
+  border-top: 1px solid a($border, 0.7);
+  b { color: $text; } i { color: $text; font-style: italic; }
+  code { background: a($accent, 0.12); color: $accent; padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.82em; }
+  h4 { color: $text; font-size: 0.9rem; margin: 1rem 0 0.4rem; padding-top: 0.6rem; border-top: 1px dashed a($border, 0.5); }
+  p { margin: 0.5rem 0; }
+  ul { margin: 0.4rem 0; padding-left: 1.2rem; li { margin-bottom: 0.4rem; } }
+  .help-note { font-size: 0.82rem; font-style: italic; opacity: .9; border-top: 1px solid a($border, 0.5); padding-top: 0.6rem; margin-top: 0.8rem; }
 }
 
 .top-bar {
@@ -1050,6 +1091,17 @@ function scrollToEditor(): void {
   line-height: 1.4;
 }
 
+.cu-virtual-note {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #e0a74e;
+  background: rgba(224, 167, 78, 0.1);
+  border: 1px solid rgba(224, 167, 78, 0.3);
+  border-radius: 6px;
+  b { color: #f0c070; }
+}
 .cu-min-na {
   display: flex;
   align-items: center;

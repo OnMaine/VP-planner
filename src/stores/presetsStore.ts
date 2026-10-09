@@ -140,7 +140,6 @@ export interface AttackPreset {
   description: string
   color?: string   // display color for badge + BB code; falls back to defaultColorForRole
   builtIn?: true
-  combined?: true
   role: VillageRole
 }
 
@@ -209,15 +208,6 @@ const BUILT_IN: AttackPreset[] = [
     description: 'Фейк атака — минимум войск для имитации угрозы',
     builtIn: true,
     role: { type: 'spam', spamStrength: 'weak', spamNobleCount: 0, spamTrainSize: 0 },
-  },
-  {
-    id: 'bi_spam_train',
-    name: 'Train_SPAM_x5',
-    description: '5 фейк-атак с дворянином из одной деревни — имитация захвата',
-    builtIn: true,
-    combined: true,
-    color: '#4ecca3',
-    role: { type: 'spam', spamCount: 5, spamStrength: 'weak', spamNobleCount: 5, spamTrainSize: 5 },
   },
 ]
 
@@ -289,7 +279,6 @@ export const usePresetsStore = defineStore('presets', () => {
     return add({
       name: `${preset.name} (копия)`,
       description: preset.description,
-      combined: preset.combined,
       role: { ...preset.role },
     })
   }

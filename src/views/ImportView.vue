@@ -10,6 +10,49 @@
       >✕ Очистить всю инфу по импорту</button>
     </div>
 
+    <!-- ── Инструкция (сворачиваемая) ────────────────────────────────────── -->
+    <section class="help-box">
+      <button class="help-toggle" @click="showHelp = !showHelp">
+        <span>📖 Инструкция</span>
+        <span class="help-caret">{{ showHelp ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="showHelp" class="help-content">
+        <p>
+          Здесь загружается <b>пул своих войск</b> — деревни, из которых Планер раздаёт атаки.
+          Это <b>шаг 2</b> после настроек мира. Нужны координаты и состав войск по каждой дере.
+        </p>
+
+        <h4>Загрузка войск</h4>
+        <ul>
+          <li><b>↑ Загрузить файл</b> — выбери <code>.csv</code> или <code>.xlsx</code> с выгрузкой войск. Можно просто <b>перетащить</b> файл в область.</li>
+          <li><b>▼ Вставить текст</b> — вставь CSV прямо из буфера (напр. из гугл-таблицы).</li>
+          <li>Формат колонок: <code>Игрок, Координаты, Очки, Копья, Мечи, Топоры, Лазы, ЛК, ТК, Тараны, Каты, Пал, Двор</code>. Разделитель <code>,</code> или <code>;</code> определяется автоматически; .xlsx берётся с первого листа.</li>
+          <li><b>Ручной ввод деревни</b> — добавить одну деру руками, если нет выгрузки.</li>
+        </ul>
+
+        <h4>Дворяне и палы (отдельно от войск)</h4>
+        <ul>
+          <li><b>Импорт дворов</b> — сколько дворян у каждого игрока (для режима «виртуальные дворы» в Планере, когда в выгрузке войск дворян нет).</li>
+          <li><b>Импорт офовых палов</b> — сколько офф-паладинов у игрока. Планер раздаёт их сильнейшим офф-дерам (пал-офф приоритет при совпадении времени прихода).</li>
+        </ul>
+
+        <h4>Статистика и пороги</h4>
+        <ul>
+          <li><b>Офф-ферм</b> (<code>топоры×1 + ЛК×4 + тараны×5</code>) и пороги <b>full / med / mini</b> делят деры на <b>Фулл офф / Медиум / Мини</b>. <b>Пробой</b> — фулл-оффы с таранами ≥ порога. Эти пороги общие с пресетами войск и влияют на генерацию.</li>
+          <li>Плитки пересчитываются <b>на лету</b> при смене порогов.</li>
+          <li><b>⧉ в углу плитки</b> — скопировать координаты всех дер этой группы (Фулл/Пробой/Медиум/Мини/Паровозов/кандидаты в Офф-палы) через пробел — для вставки в игру или фильтр «Оставить только…». Берутся по <b>текущим порогам</b>.</li>
+        </ul>
+
+        <h4>Фильтрация пула</h4>
+        <ul>
+          <li><b>Оставить только выбранные деры</b> — вставь список координат (напр. выбранных на карте) → останутся только они, лишние удалятся из импорта.</li>
+          <li><b>Резерв</b> — пометить деры, которые не раздавать в атаки (держать в резерве фронта).</li>
+        </ul>
+
+        <p><b>✕ Очистить всю инфу по импорту</b> — удалить все деревни, дворы, палы и ручной ввод (чистый лист пула).</p>
+      </div>
+    </section>
+
     <!-- CSV import toolbar -->
     <section
       class="panel import-toolbar"
@@ -43,10 +86,9 @@
         </div>
       </div>
       <div v-if="error" class="status-msg status-err" style="margin-top:0.5rem">{{ error }}</div>
-    </section>
 
-    <!-- Manual village entry -->
-    <section class="panel">
+      <!-- Manual village entry — part of the same «add villages» block -->
+      <div class="import-divider" />
       <button class="collapse-toggle" @click="manualOpen = !manualOpen">
         <span>
           Ручной ввод деревни
@@ -115,7 +157,7 @@
     </section>
 
     <!-- Nobles import -->
-    <section class="panel">
+    <section class="panel collapsible-panel">
       <button class="collapse-toggle" @click="noblesImportOpen = !noblesImportOpen">
         <span>
           Импорт дворов
@@ -149,7 +191,7 @@
     </section>
 
     <!-- Pal-off import -->
-    <section class="panel">
+    <section class="panel collapsible-panel">
       <button class="collapse-toggle" @click="palOffImportOpen = !palOffImportOpen">
         <span>
           Импорт офовых палов
@@ -182,7 +224,7 @@
     </section>
 
     <!-- Keep only selected villages -->
-    <section v-if="villagesStore.villages.length > 0" class="panel">
+    <section v-if="villagesStore.villages.length > 0" class="panel collapsible-panel">
       <button class="collapse-toggle" @click="keepOnlyOpen = !keepOnlyOpen">
         <span>Оставить только выбранные деры</span>
         <span class="collapse-icon">{{ keepOnlyOpen ? '▲' : '▼' }}</span>
@@ -203,7 +245,7 @@
     </section>
 
     <!-- Reserve import -->
-    <section v-if="villagesStore.villages.length > 0" class="panel">
+    <section v-if="villagesStore.villages.length > 0" class="panel collapsible-panel">
       <button class="collapse-toggle" @click="reserveOpen = !reserveOpen">
         <span>
           Резерв деревень
@@ -276,6 +318,7 @@ const highlightCoords = computed(() => route.query.highlight as string | undefin
 
 const importStatsRef = ref<InstanceType<typeof ImportStats> | null>(null)
 
+const showHelp = ref(false)   // инструкция свёрнута по умолчанию
 const isDragging = ref(false)
 const csvText = ref('')
 const pasteOpen = ref(false)
@@ -576,6 +619,42 @@ function clearEverything() {
 .import-view {
   max-width: 1100px;
   margin: 0 auto;
+}
+
+// ── Инструкция ───────────────────────────────────────────────────────────────
+.help-box {
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: a($bg-page, 0.4);
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+.help-toggle {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  background: none; border: none; color: $text;
+  font-size: 0.95rem; font-weight: 600; padding: 0.7rem 1rem; cursor: pointer;
+  &:hover { color: $accent; }
+  .help-caret { color: $text-dim; font-size: 0.8rem; }
+}
+.help-content {
+  padding: 0.25rem 1.1rem 1rem;
+  font-size: 0.86rem; line-height: 1.6; color: $text-dim;
+  border-top: 1px solid a($border, 0.7);
+  b { color: $text; }
+  code { background: a($accent, 0.12); color: $accent; padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.82em; }
+  h4 { color: $text; font-size: 0.9rem; margin: 1rem 0 0.4rem; padding-top: 0.6rem; border-top: 1px dashed a($border, 0.5); }
+  p { margin: 0.5rem 0; }
+  ul { margin: 0.4rem 0; padding-left: 1.2rem; li { margin-bottom: 0.4rem; } }
+}
+
+// Разделитель между загрузкой файла и ручным вводом в объединённом блоке
+.import-divider { height: 1px; background: $border; margin: 1rem 0 0.75rem; }
+
+// Компактные свёрнутые панели (дворы/палы/оставить-только/резерв) — не съедают высоту
+.collapsible-panel {
+  padding: 0.55rem 1rem;
+  margin-bottom: 0.55rem;
 }
 
 .import-header {

@@ -34,21 +34,25 @@
         <span class="stat-label">Игроков</span>
       </div>
       <div class="stat-card stat-card--red">
+        <button class="stat-copy" title="Скопировать координаты всех фулл-оффов" @click="copyGroup('full')">{{ copiedGroup === 'full' ? '✓' : '⧉' }}</button>
         <span class="stat-num">{{ totals.fullOff }}</span>
         <span class="stat-label">Фулл офф</span>
         <span v-if="totals.reserveFull > 0" class="stat-sublabel stat-reserve">({{ totals.reserveFull }} резерв)</span>
       </div>
       <div class="stat-card stat-card--accent" :title="`Подмножество фулл оффов: офф-ферм ≥ ${presetsStore.fullOffMinOffFarm} И тараны ≥ ${presetsStore.breachMinRams}`">
+        <button class="stat-copy" title="Скопировать координаты пробойных дер" @click="copyGroup('breach')">{{ copiedGroup === 'breach' ? '✓' : '⧉' }}</button>
         <span class="stat-num">{{ totals.breakOff }}</span>
         <span class="stat-label">Пробой</span>
         <span class="stat-sublabel">(из фулл)</span>
       </div>
       <div class="stat-card stat-card--orange">
+        <button class="stat-copy" title="Скопировать координаты медиум-оффов" @click="copyGroup('half')">{{ copiedGroup === 'half' ? '✓' : '⧉' }}</button>
         <span class="stat-num">{{ totals.halfOff }}</span>
         <span class="stat-label">Медиум офф</span>
         <span v-if="totals.reserveHalf > 0" class="stat-sublabel stat-reserve">({{ totals.reserveHalf }} резерв)</span>
       </div>
       <div class="stat-card stat-card--yellow">
+        <button class="stat-copy" title="Скопировать координаты мини-оффов" @click="copyGroup('mini')">{{ copiedGroup === 'mini' ? '✓' : '⧉' }}</button>
         <span class="stat-num">{{ totals.smallOff }}</span>
         <span class="stat-label">Мини</span>
         <span v-if="totals.reserveSmall > 0" class="stat-sublabel stat-reserve">({{ totals.reserveSmall }} резерв)</span>
@@ -58,10 +62,12 @@
         <span class="stat-label">Дворов</span>
       </div>
       <div class="stat-card stat-card--teal">
+        <button class="stat-copy" title="Скопировать координаты деревень с дворами (источники паровозов)" @click="copyGroup('train')">{{ copiedGroup === 'train' ? '✓' : '⧉' }}</button>
         <span class="stat-num">{{ totals.trains }}</span>
         <span class="stat-label">Паровозов</span>
       </div>
       <div class="stat-card stat-card--gold">
+        <button class="stat-copy" title="Скопировать кандидатов на пал-офф (сильнейшие фулл-оффы каждого игрока по числу его палов)" @click="copyGroup('paloff')">{{ copiedGroup === 'paloff' ? '✓' : '⧉' }}</button>
         <span class="stat-num">{{ planStore.playerData.reduce((s, pd) => s + pd.offPaladins, 0) }}</span>
         <span class="stat-label">Офф-палов</span>
       </div>
@@ -71,6 +77,10 @@
         <span class="stat-sublabel">({{ totals.catSquadsTotal }} отр.)</span>
       </div>
     </div>
+
+    <p class="stats-copy-hint">
+      <span class="chip-demo">⧉</span> в углу плитки — скопировать координаты всех деревень этой группы (через пробел) для вставки в игру/фильтры.
+    </p>
 
     <!-- Players table -->
     <h3>Игроки</h3>
@@ -468,6 +478,56 @@ const totals = computed(() => {
   return { breakOff, fullOff, halfOff, smallOff, snobs, trains, catapults, catSquadsTotal, reserveFull, reserveHalf, reserveSmall }
 })
 
+// ── Копирование координат деревень по группе ───────────────────────────
+type StatGroup = 'full' | 'breach' | 'half' | 'mini' | 'train' | 'paloff'
+function groupCoords(group: StatGroup): string[] {
+  // Офф-палы — счётчик на игрока; в генерации раздаются сильнейшим фулл-оффам.
+  // Это КАНДИДАТЫ: для каждого игрока топ-N фулл-оффов по силе оффа (N = его палов).
+  if (group === 'paloff') {
+    const out: string[] = []
+    const byPlayer = new Map<string, Array<(typeof villagesStore.villages)[number]>>()
+    for (const v of villagesStore.villages) {
+      if (offFarm(v.troops) < presetsStore.fullOffMinOffFarm) continue
+      const arr = byPlayer.get(v.player)
+      if (arr) arr.push(v); else byPlayer.set(v.player, [v])
+    }
+    for (const [player, vils] of byPlayer) {
+      const n = planStore.getPlayerData(player).offPaladins ?? 0
+      if (n <= 0) continue
+      vils.sort((a, b) => offFarm(b.troops) - offFarm(a.troops))
+      for (const v of vils.slice(0, n)) out.push(v.coords)
+    }
+    return out
+  }
+
+  const out: string[] = []
+  for (const v of villagesStore.villages) {
+    const of = offFarm(v.troops)
+    const ram = v.troops.ram
+    let match = false
+    switch (group) {
+      case 'full':   match = of >= presetsStore.fullOffMinOffFarm; break
+      case 'breach': match = of >= presetsStore.fullOffMinOffFarm && ram >= presetsStore.breachMinRams; break
+      case 'half':   match = of >= presetsStore.halfOffMinOffFarm && of < presetsStore.fullOffMinOffFarm; break
+      case 'mini':   match = of >= presetsStore.smallOffMinOffFarm && of < presetsStore.halfOffMinOffFarm; break
+      case 'train':  match = v.troops.snob > 0; break   // деревни с дворами (источники паровозов)
+    }
+    if (match) out.push(v.coords)
+  }
+  return out
+}
+
+const copiedGroup = ref<StatGroup | null>(null)
+async function copyGroup(group: StatGroup) {
+  const coords = groupCoords(group)
+  if (!coords.length) return
+  try {
+    await navigator.clipboard.writeText(coords.join(' '))
+    copiedGroup.value = group
+    setTimeout(() => { if (copiedGroup.value === group) copiedGroup.value = null }, 1500)
+  } catch { /* clipboard unavailable */ }
+}
+
 function removePlayer(player: string) {
   const coords = villagesStore.villages
     .filter(v => v.player === player)
@@ -570,6 +630,7 @@ defineExpose({ prefillAll })
 }
 
 .stat-card {
+  position: relative;
   background: $bg-page;
   border: 1px solid $border;
   border-radius: 8px;
@@ -579,6 +640,29 @@ defineExpose({ prefillAll })
   align-items: center;
   gap: 0.15rem;
   min-width: 72px;
+}
+.stats-copy-hint {
+  margin: 0.75rem 0 1.25rem;
+  font-size: 0.78rem;
+  color: $text-dim;
+  .chip-demo {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; vertical-align: middle;
+    background: a($accent, 0.14); color: $accent;
+    border-radius: 5px; font-size: 0.82rem;
+  }
+}
+.stat-copy {
+  position: absolute;
+  top: 4px; right: 5px;
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px;
+  background: none; border: none; border-radius: 5px;
+  color: $text-dim; cursor: pointer;
+  font-size: 0.82rem; line-height: 1;
+  opacity: 0.55;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  &:hover { opacity: 1; color: $accent; background: a($accent, 0.14); }
 }
 
 .stat-num      { font-size: 1.35rem; font-weight: 700; color: $accent; line-height: 1.2; }

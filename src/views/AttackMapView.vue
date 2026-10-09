@@ -14,9 +14,6 @@
         <label class="tog" title="Маршруты спам-атак (по умолчанию скрыты — слишком много линий)">
           <input type="checkbox" v-model="showSpam" /> Спам
         </label>
-        <label class="tog" title="Показывать кат волну на карте (цели и линии атак)">
-          <input type="checkbox" v-model="showCatMass" /> Кат волна
-        </label>
         <label class="tog" title="Координаты и имена игроков над деревнями">
           <input type="checkbox" v-model="showLabels" /> Подписи
         </label>
@@ -52,6 +49,7 @@
         <span class="tb-group-label">Игрок</span>
         <select class="input player-filter" v-model="filterPlayer" title="Показать деревни и атаки только одного игрока">
           <option value="">Все</option>
+          <option value="__none__">Скрыть все</option>
           <option v-for="p in allPlayers" :key="p" :value="p">{{ p }}</option>
         </select>
       </div>
@@ -62,6 +60,7 @@
         <span class="tb-group-label">Враг</span>
         <select class="input player-filter" v-model="filterEnemy" title="Показать атаки только на одного врага">
           <option value="">Все</option>
+          <option value="__none__">Скрыть все</option>
           <option v-for="p in allEnemies" :key="p" :value="p">{{ p }}</option>
         </select>
       </div>
@@ -421,7 +420,6 @@ const VFILTER_OPTS: Array<{ value: VillageFilter; label: string; color?: string;
   { value: 'breach',   label: 'Пробой',    color: '#89b4fa', hint: 'Full_OFF с таранами ≥ порога пробоя (могут пробить стену)' },
   { value: 'paladin',  label: 'Пал-офф',   color: '#a99ef0', hint: 'Деревни с офф-паладином (pal_off или breach+pal)' },
   { value: 'nobles',   label: 'Дворяне',   color: '#a78bfa', hint: 'Деревни, из которых идёт дворянская атака в плане' },
-  { value: 'cat_wave', label: 'Кат волна', color: '#89b4fa', hint: 'Деревни, назначенные в кат волну' },
 ]
 
 function villageMatchesFilter(v: Village): boolean {
@@ -668,13 +666,21 @@ async function copySourceCoords() {
 
 // ── Villages ──────────────────────────────────────────────────────────
 const attackingCoords = computed(() => {
-  let attacks = filterEnemy.value
+  // '__none__' на фильтре врага прячет вражеские цели/линии, но НАШИ деры-источники
+  // должны остаться — поэтому для подсветки дер врага-фильтр '__none__' игнорируем.
+  let attacks = filterEnemy.value && filterEnemy.value !== '__none__'
     ? planStore.attacks.filter(a => a.target.enemyPlayer === filterEnemy.value)
     : planStore.attacks
   if (!showCatMass.value) {
     // exclude villages whose only attacks are cat mass
     const nonCatCoords = new Set(attacks.filter(a => !a.catMass).map(a => a.fromVillage.coords))
     attacks = attacks.filter(a => nonCatCoords.has(a.fromVillage.coords))
+  }
+  if (!showSpam.value) {
+    // exclude villages whose only attacks are spam (nothing to show when spam hidden)
+    const nonSpamCoords = new Set(
+      attacks.filter(a => a.type !== 'spam' && a.type !== 'spam_noble').map(a => a.fromVillage.coords))
+    attacks = attacks.filter(a => nonSpamCoords.has(a.fromVillage.coords))
   }
   return new Set(attacks.map(a => a.fromVillage.coords))
 })
@@ -1360,16 +1366,23 @@ const selectedTarget = computed(() =>
   planStore.targets.find(t => t.id === selectedTargetId.value) ?? null
 )
 
+// Спам в детальной панели скрываем так же, как на карте (тумблер «Спам»).
+const isSpamAtk = (a: Attack) => a.type === 'spam' || a.type === 'spam_noble'
+const passesDetailFilters = (a: Attack) =>
+  (showSpam.value || !isSpamAtk(a)) &&
+  (showCatMass.value || !a.catMass)
+
 const selectedVillageAttacks = computed(() => {
   if (!selectedVillageCoords.value) return []
   return planStore.attacks
-    .filter(a => a.fromVillage.coords === selectedVillageCoords.value)
+    .filter(a => a.fromVillage.coords === selectedVillageCoords.value && passesDetailFilters(a))
     .slice().sort((a, b) => a.arrivalTime.getTime() - b.arrivalTime.getTime())
 })
 
 const selectedTargetAttacks = computed(() => {
   if (!selectedTargetId.value) return []
   return (attacksByTarget.value.get(selectedTargetId.value) ?? [])
+    .filter(passesDetailFilters)
     .slice().sort((a, b) => a.arrivalTime.getTime() - b.arrivalTime.getTime())
 })
 

@@ -2,6 +2,45 @@
   <div class="mass-configs-view">
     <h1>Конфигуратор масса</h1>
 
+    <!-- ── Инструкция (сворачиваемая) ────────────────────────────────────── -->
+    <section class="help-box">
+      <button class="help-toggle" @click="showHelp = !showHelp">
+        <span>📖 Инструкция</span>
+        <span class="help-caret">{{ showHelp ? '▲' : '▼' }}</span>
+      </button>
+      <div v-if="showHelp" class="help-content">
+        <p>
+          <b>Масс-конфиг</b> — набор <b>слотов атак</b>, который применяется к каждой цели в Планере.
+          Один слот = один тип атаки. Выбери конфиг кнопкой «Выбрать», затем генерируй план в Планере.
+        </p>
+
+        <h4>Карточка слота</h4>
+        <ul>
+          <li><b>Пресет</b> — что за атака (берётся из «Пресеты войск»): фулка оффа, Full_OFF, паравоз (офф + дворяне), Time_SPAM (фейк) и т.д.</li>
+          <li><b>× Кол-во</b> — сколько атак этого типа придёт на <i>каждую</i> цель.</li>
+          <li><b>Приоритет пула</b> — слот с бо́льшим значением <b>первым</b> забирает деревни из общего пула по всем целям. <code>0</code> = авто (по типу слота: нобль-слоты и так идут раньше оффов). Ставь выше дефицитным слотам (например паравозу), чтобы им хватило дер, а недостаток обычной фулки был менее критичен.</li>
+          <li><b>Смещение от тайминга</b> (<code>± ч/м/с/мс</code>) — сдвигает прилёт этого слота относительно опорного времени цели <b>T</b>. Кнопка <code>+/−</code> — знак. Если 0 — слоты приходят в порядке очереди. Так разводят атаки на миллисекунды, чтобы они шли подряд.</li>
+        </ul>
+
+        <h4>Опции спама (Time_SPAM)</h4>
+        <ul>
+          <li><b>макс/деру</b> — максимум спам-атак с одной деревни (0 = без лимита). Спам распределяется <b>по разным игрокам</b> (у кого меньше фейков — тому следующий), чтобы замаскировать источник.</li>
+          <li><b>диапазон</b> — случайный разброс времени прихода спама (минут до/после), чтобы фейки не падали ровно в одну секунду.</li>
+          <li>Спам предпочитает офф-деры (правдоподобнее), берётся без радиусного лимита, но подчиняется «Без ночных» / «Старт не ранее».</li>
+        </ul>
+
+        <h4>Панель «Порядок прихода»</h4>
+        <p><b>T</b> — опорное время цели. Точки показывают, в каком порядке и с каким смещением прилетают слоты. Это тайминг, а не приоритет заполнения пула (их два разных понятия).</p>
+
+        <h4>Действия с конфигом</h4>
+        <ul>
+          <li><b>Выбрать</b> — сделать активным (используется при генерации в Планере).</li>
+          <li><b>Изменить</b> — редактировать слоты. <b>Копия</b> — дублировать. <b>✕</b> — удалить.</li>
+          <li>Внутри редактора: <code>↑ ↓</code> — порядок слотов, <code>✕</code> — удалить слот, «+ Добавить слот» — новый.</li>
+        </ul>
+      </div>
+    </section>
+
     <div class="top-bar">
       <button class="btn btn-primary" @click="openNew">+ Новый масс</button>
     </div>
@@ -70,7 +109,8 @@
         </div>
 
         <p class="slots-note">
-          Порядок слотов определяет приоритет распределения войск. Если смещение не задано — атаки приходят строго в порядке очереди. Смещение сдвигает тайминг конкретного слота относительно опорного времени цели.
+          <b>Приоритет пула</b> — слот с бо́льшим значением первым забирает деревни по всем целям (0 = авто по типу слота): ставь выше дефицитным слотам, например паравозу.
+          <b>Смещение</b> сдвигает тайминг слота относительно опорного времени цели (если не задано — атаки приходят в порядке очереди).
         </p>
 
         <div v-if="form.slots.length === 0" class="slots-empty">Слотов нет — добавьте хотя бы один</div>
@@ -79,6 +119,7 @@
           <span class="sh-check"></span>
           <span class="sh-preset">Пресет</span>
           <span class="sh-count">Кол-во</span>
+          <span class="sh-prio" title="Приоритет заполнения пула: слот с бо́льшим значением первым забирает деревни по всем целям. 0 = авто (по типу слота).">Приоритет пула</span>
           <span class="sh-offset">Смещение от тайминга</span>
         </div>
 
@@ -98,6 +139,15 @@
             ×
             <input v-model.number="slot.count" type="number" min="1" max="50" class="input input-xs" />
           </label>
+
+          <span class="slot-vsep" />
+
+          <!-- Fill priority -->
+          <label class="slot-inline-label slot-prio-field" title="Приоритет заполнения пула: больше = раньше исчерпывает пул по всем целям. 0 = авто (по типу слота). Поставь выше дефицитным слотам (напр. паравозу).">
+            <input v-model.number="slot.fillPriority" type="number" min="0" max="9" placeholder="0" class="input input-xs" />
+          </label>
+
+          <span class="slot-vsep" />
 
           <!-- Offset ±h/m/s/ms -->
           <div class="slot-offset-group">
@@ -135,8 +185,19 @@
             </label>
           </div>
 
-          <!-- Spam window toggle -->
-          <template v-if="isSpamPreset(slot.presetId)">
+          <!-- Move + delete -->
+          <div class="slot-actions">
+            <button class="icon-btn" :disabled="i === 0" @click="moveSlotUp(i)" title="Вверх">↑</button>
+            <button class="icon-btn" :disabled="i === form.slots.length - 1" @click="moveSlotDown(i)" title="Вниз">↓</button>
+            <button class="icon-btn icon-btn-danger" @click="removeSlot(i)" title="Удалить">✕</button>
+          </div>
+
+          <!-- Spam options — own full-width sub-row -->
+          <div v-if="isSpamPreset(slot.presetId)" class="slot-spam-extras">
+            <span class="slot-spam-label">Спам:</span>
+            <label class="slot-inline-label slot-window" title="Максимум спам-атак из одной деревни (0 = без лимита). Распределяет спам по разным игрокам для маскировки.">
+              макс/деру <input v-model.number="slot.spamMaxPerVillage" type="number" min="0" max="99" placeholder="0" class="input input-xxs" />
+            </label>
             <label class="slot-inline-label slot-window-toggle">
               <input type="checkbox" :checked="hasSpamWindow(slot)" @change="toggleSpamWindow(slot)" />
               диапазон
@@ -149,13 +210,6 @@
                 +<input v-model.number="slot.windowAfterMin" type="number" min="0" max="1440" class="input input-xs" /> мин после
               </label>
             </template>
-          </template>
-
-          <!-- Move + delete -->
-          <div class="slot-actions">
-            <button class="icon-btn" :disabled="i === 0" @click="moveSlotUp(i)" title="Вверх">↑</button>
-            <button class="icon-btn" :disabled="i === form.slots.length - 1" @click="moveSlotDown(i)" title="Вниз">↓</button>
-            <button class="icon-btn icon-btn-danger" @click="removeSlot(i)" title="Удалить">✕</button>
           </div>
         </div>
       </div>
@@ -365,6 +419,7 @@ const previewItems = computed<TLItem[]>(() => {
 
 const editorOpen = ref(false)
 const editingId  = ref<string | null>(null)
+const showHelp   = ref(false)   // инструкция свёрнута по умолчанию
 
 let _slotCounter = 0
 function genFormSlotId() { return `fsl_${Date.now()}_${++_slotCounter}` }
@@ -378,6 +433,8 @@ interface FormSlot {
   enabled: boolean
   windowBeforeMin: number
   windowAfterMin: number
+  spamMaxPerVillage: number
+  fillPriority: number
 }
 
 interface FormData {
@@ -401,6 +458,8 @@ function slotToForm(s: MassSlot): FormSlot {
     enabled:         s.enabled,
     windowBeforeMin: s.windowBeforeMin ?? 0,
     windowAfterMin:  s.windowAfterMin  ?? 0,
+    spamMaxPerVillage: s.spamMaxPerVillage ?? 0,
+    fillPriority:    s.fillPriority ?? 0,
   }
 }
 
@@ -413,6 +472,8 @@ function formSlotToMassSlot(s: FormSlot): MassSlot {
     base.windowBeforeMin = s.windowBeforeMin
     base.windowAfterMin  = s.windowAfterMin
   }
+  if (s.spamMaxPerVillage > 0) base.spamMaxPerVillage = s.spamMaxPerVillage
+  if (s.fillPriority > 0) base.fillPriority = s.fillPriority
   return base
 }
 
@@ -484,6 +545,8 @@ function addSlot() {
     enabled:         defaults.enabled,
     windowBeforeMin: 0,
     windowAfterMin:  0,
+    spamMaxPerVillage: 0,
+    fillPriority:    0,
   })
 }
 
@@ -508,6 +571,49 @@ function moveSlotDown(i: number) {
 .mass-configs-view {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+.help-box {
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: a($bg-page, 0.4);
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+.help-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  color: $text;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  &:hover { color: $accent; }
+  .help-caret { color: $text-dim; font-size: 0.8rem; }
+}
+.help-content {
+  padding: 0.25rem 1.1rem 1rem;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: $text-dim;
+  border-top: 1px solid a($border, 0.7);
+
+  b { color: $text; }
+  i { color: $text; font-style: italic; }
+  code {
+    background: a($accent, 0.12); color: $accent;
+    padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.82em;
+  }
+  h4 {
+    color: $text; font-size: 0.9rem; margin: 1rem 0 0.4rem;
+    padding-top: 0.6rem; border-top: 1px dashed a($border, 0.5);
+  }
+  p { margin: 0.5rem 0; }
+  ul { margin: 0.4rem 0; padding-left: 1.2rem; li { margin-bottom: 0.4rem; } }
 }
 
 .top-bar {
@@ -798,7 +904,8 @@ function moveSlotDown(i: number) {
 
   .sh-check  { width: 15px; flex-shrink: 0; }
   .sh-preset { flex: 1 1 160px; min-width: 120px; max-width: 260px; }
-  .sh-count  { width: 68px; }
+  .sh-count  { width: 72px; }
+  .sh-prio   { width: 110px; }
   .sh-offset { flex: 1; }
 }
 
@@ -881,6 +988,32 @@ function moveSlotDown(i: number) {
   &.sign-pos { color: $green;  border-color: a($green,  0.4); background: a($green,  0.08); }
   &.sign-neg { color: $accent; border-color: a($accent, 0.4); background: a($accent, 0.08); }
   &:hover    { filter: brightness(1.2); }
+}
+
+.slot-vsep {
+  width: 1px;
+  align-self: stretch;
+  background: a($border, 0.8);
+  margin: 0.1rem 0.15rem;
+  flex-shrink: 0;
+}
+
+.slot-spam-extras {
+  flex-basis: 100%;        // всегда отдельная строка под основными полями
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed a($border, 0.7);
+}
+.slot-spam-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: $green;
 }
 
 .slot-window {
