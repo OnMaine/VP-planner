@@ -8,6 +8,7 @@
         </div>
       </div>
     </Transition>
+    <LoadingOverlay :show="isPlanIO" :text="planIOText" />
 
     <h1>Планер атак</h1>
 
@@ -84,7 +85,7 @@
       <button :class="['mode-btn', { active: aiStore.mode === 'ai' }]" disabled title="AI-режим в разработке" @click="aiStore.setMode('ai')">AI</button>
       <span class="mode-bar-spacer" />
       <span class="plan-file-group">
-        <button v-if="planStore.attacks.length > 0" class="btn btn-secondary btn-io" title="Сохранить план в файл" @click="planStore.exportPlan()">↓ Сохр.</button>
+        <button v-if="planStore.attacks.length > 0" class="btn btn-secondary btn-io" title="Сохранить план в файл" @click="onExportPlan">↓ Сохр.</button>
         <label class="btn btn-secondary btn-io plan-import-label" title="Загрузить план из файла">
           ↑ Загр.
           <input type="file" accept=".json" class="plan-import-input" @change="onImportPlan" />
@@ -297,6 +298,8 @@ import PalOffPanel from '@/components/PalOffPanel.vue'
 import WatchtowerTable from '@/components/WatchtowerTable.vue'
 import AttackResultsPanel from '@/components/AttackResultsPanel.vue'
 import AIPlanPanel from '@/components/AIPlanPanel.vue'
+import LoadingOverlay from '@/components/LoadingOverlay.vue'
+import { nextPaint } from '@/utils/nextPaint'
 
 const planStore = usePlanStore()
 const showHelp = ref(false)   // инструкция свёрнута по умолчанию
@@ -360,6 +363,8 @@ function onAddWave(): void {
 const resultsPanel   = ref<InstanceType<typeof AttackResultsPanel> | null>(null)
 const palOffPanel    = ref<InstanceType<typeof PalOffPanel> | null>(null)
 const isGenerating   = ref(false)
+const isPlanIO       = ref(false)
+const planIOText     = ref('Обработка…')
 
 const activeAttackCount = computed(() => planStore.attacks.filter((a) => !a.excluded).length)
 const shortageTargetCount = computed(() => new Set(planStore.generationIssues.map(i => i.targetCoords)).size)
@@ -473,13 +478,29 @@ async function onImportPlan(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
   importError.value = ''
+  isPlanIO.value = true
+  planIOText.value = 'Загружаю план…'
+  await nextPaint()
   try {
     await planStore.importPlan(file)
     resultsPanel.value?.expandAll(planStore.attacksByPlayer.keys())
   } catch (err: any) {
     importError.value = err?.message ?? 'Ошибка импорта'
+  } finally {
+    isPlanIO.value = false
   }
   ;(e.target as HTMLInputElement).value = ''
+}
+
+async function onExportPlan() {
+  isPlanIO.value = true
+  planIOText.value = 'Сохраняю план…'
+  await nextPaint()
+  try {
+    planStore.exportPlan()
+  } finally {
+    isPlanIO.value = false
+  }
 }
 
 async function doGenerate(): Promise<void> {

@@ -1,5 +1,6 @@
 <template>
   <section class="panel">
+    <LoadingOverlay :show="isImporting" text="Импорт целей…" />
     <button class="collapse-toggle" @click="open = !open">
       <span>
         Цели<template v-if="scopedTargets.length"> ({{ scopedTargets.length }})</template>
@@ -146,6 +147,8 @@ import type { Target } from '@/stores/planStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useMassConfigStore } from '@/stores/massConfigStore'
 import { readTabularFile } from '@/utils/importFile'
+import { nextPaint } from '@/utils/nextPaint'
+import LoadingOverlay from '@/components/LoadingOverlay.vue'
 import { useDateFormat } from '@/composables/useDateFormat'
 import { useCoordInput } from '@/composables/useCoordInput'
 import { usePlayerResolution } from '@/composables/usePlayerResolution'
@@ -190,6 +193,7 @@ const bulkText = ref('')
 const bulkDatetime = ref(toDatetimeLocal(new Date(Math.floor((Date.now() + 3600_000) / 1000) * 1000)))
 const bulkError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+const isImporting = ref(false)
 
 const groupBy = ref<GroupBy>('none')
 const groupByOptions = computed<{ value: GroupBy; label: string }[]>(() => [
@@ -293,10 +297,13 @@ function doBulkAdd(): void {
   if (skipped) bulkError.value = `Добавлено ${added}, пропущено ${skipped} некорректных`
 }
 
-function onTargetFile(event: Event): void {
+async function onTargetFile(event: Event): Promise<void> {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
-  readTabularFile(file).then((text) => {
+  isImporting.value = true
+  await nextPaint()
+  try {
+    const text = await readTabularFile(file)
     const entries = parseTargetsFromText(text)
     if (!entries.length) { bulkError.value = 'В файле не найдено координат формата 500|500'; return }
     const arrivalTime = new Date(Date.now() + 3600_000)
@@ -304,7 +311,11 @@ function onTargetFile(event: Event): void {
     if (added) open.value = false   // auto-collapse the filled list
     bulkError.value = `Из файла добавлено ${added} целей. Отредактируй время прилёта в таблице.`
     if (fileInput.value) fileInput.value.value = ''
-  }).catch((err) => { bulkError.value = err instanceof Error ? err.message : String(err) })
+  } catch (err) {
+    bulkError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    isImporting.value = false
+  }
 }
 </script>
 

@@ -1,5 +1,6 @@
 <template>
   <div v-if="planStore.attacks.length > 0" class="results-root">
+    <LoadingOverlay :show="isExporting" text="Готовлю файл…" />
 
     <!-- Tab switcher -->
     <div class="results-tabs">
@@ -400,6 +401,8 @@ import { ref, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { usePlanStore } from '@/stores/planStore'
 import { exportAttacksToXlsx } from '@/composables/useExcelExport'
+import { nextPaint } from '@/utils/nextPaint'
+import LoadingOverlay from '@/components/LoadingOverlay.vue'
 import type { Attack, AttackType, WarningCode, AttackComposition } from '@/stores/planStore'
 import { CAT_TARGET_LABELS } from '@/stores/presetsStore'
 import type { CatTarget } from '@/stores/presetsStore'
@@ -756,6 +759,7 @@ function compParts(c: AttackComposition): Array<{ key: string; icon: string; cou
 
 const bbcodePlayer    = ref('')
 const copied          = ref(false)
+const isExporting     = ref(false)
 const includeAttackMap = ref(false)
 
 const allPlayers = computed(() => [...planStore.attacksByPlayer.keys()])
@@ -1029,15 +1033,21 @@ function copyBBCode(): void {
   })
 }
 
-function doExportXlsx(): void {
-  const idLookup = (coords: string): number | null =>
-    enemyStore.lookupCoords(coords)?.village.id ?? null
+async function doExportXlsx(): Promise<void> {
+  isExporting.value = true
+  await nextPaint()
+  try {
+    const idLookup = (coords: string): number | null =>
+      enemyStore.lookupCoords(coords)?.village.id ?? null
 
-  const date = new Date()
-  const ds = `${date.getDate().toString().padStart(2,'0')}.${(date.getMonth()+1).toString().padStart(2,'0')}`
-  const filename = `mass_plan_${ds}.xlsx`
+    const date = new Date()
+    const ds = `${date.getDate().toString().padStart(2,'0')}.${(date.getMonth()+1).toString().padStart(2,'0')}`
+    const filename = `mass_plan_${ds}.xlsx`
 
-  exportAttacksToXlsx(planStore.attacks, idLookup, bbcodePlayer.value, filename)
+    exportAttacksToXlsx(planStore.attacks, idLookup, bbcodePlayer.value, filename)
+  } finally {
+    isExporting.value = false
+  }
 }
 
 

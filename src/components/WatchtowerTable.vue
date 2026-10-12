@@ -1,5 +1,6 @@
 <template>
   <section class="panel">
+    <LoadingOverlay :show="isImporting" text="Импорт башен…" />
     <button class="collapse-toggle" @click="open = !open">
       <span class="panel-title-row">
         <img :src="watchtowerIcon" class="section-icon" />
@@ -106,6 +107,8 @@ import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useCoordInput } from '@/composables/useCoordInput'
 import { usePlayerResolution } from '@/composables/usePlayerResolution'
 import { readTabularFile } from '@/utils/importFile'
+import { nextPaint } from '@/utils/nextPaint'
+import LoadingOverlay from '@/components/LoadingOverlay.vue'
 import type { WatchtowerVillage } from '@/stores/planStore'
 import { watchtowerIcon } from '@/utils/unitIcons'
 
@@ -124,6 +127,7 @@ const bulkOpen = ref(false)
 const bulkText = ref('')
 const bulkError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+const isImporting = ref(false)
 
 interface TowerBlock { player: string; villages: WatchtowerVillage[] }
 
@@ -182,16 +186,23 @@ function doBulkAdd(): void {
   bulkOpen.value = false
 }
 
-function onTowerFile(event: Event): void {
+async function onTowerFile(event: Event): Promise<void> {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
-  readTabularFile(file).then((text) => {
+  isImporting.value = true
+  await nextPaint()
+  try {
+    const text = await readTabularFile(file)
     const entries = parseTowersFromText(text)
     if (!entries.length) { bulkError.value = 'В файле не найдено строк формата 500|500'; return }
     planStore.importWatchtowerVillages(entries)
     bulkError.value = `Из файла добавлено ${entries.length} башен.`
     if (fileInput.value) fileInput.value.value = ''
-  }).catch((err) => { bulkError.value = err instanceof Error ? err.message : String(err) })
+  } catch (err) {
+    bulkError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    isImporting.value = false
+  }
 }
 </script>
 

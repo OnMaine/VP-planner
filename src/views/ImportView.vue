@@ -1,5 +1,6 @@
 <template>
   <div class="import-view">
+    <LoadingOverlay :show="isImporting" :text="importingText" />
     <div class="import-header">
       <h1>Импорт CSV</h1>
       <button
@@ -306,7 +307,9 @@ import { usePlanStore } from '@/stores/planStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { calcDistance } from '@/utils/coords'
 import { readTabularFile } from '@/utils/importFile'
+import { nextPaint } from '@/utils/nextPaint'
 import ImportStats from '@/components/ImportStats.vue'
+import LoadingOverlay from '@/components/LoadingOverlay.vue'
 import type { VillageTroops, Village } from '@/stores/villagesStore'
 
 const route = useRoute()
@@ -320,6 +323,8 @@ const importStatsRef = ref<InstanceType<typeof ImportStats> | null>(null)
 
 const showHelp = ref(false)   // инструкция свёрнута по умолчанию
 const isDragging = ref(false)
+const isImporting = ref(false)
+const importingText = ref('Обработка…')
 const csvText = ref('')
 const pasteOpen = ref(false)
 
@@ -560,18 +565,30 @@ function onDrop(event: DragEvent) {
   if (file) readFile(file)
 }
 
-function readFile(file: File) {
-  readTabularFile(file)
-    .then((text) => {
-      csvText.value = text
-      parseCsv(text)
-    })
-    .catch((err) => { error.value = err instanceof Error ? err.message : String(err) })
+async function readFile(file: File) {
+  isImporting.value = true
+  importingText.value = 'Читаю файл…'
+  await nextPaint()
+  try {
+    const text = await readTabularFile(file)
+    csvText.value = text
+    importingText.value = 'Разбираю данные…'
+    await nextPaint()
+    parseCsv(text)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    isImporting.value = false
+  }
 }
 
-function doParseText() {
+async function doParseText() {
   if (!csvText.value.trim()) { error.value = 'CSV пустой'; return }
+  isImporting.value = true
+  importingText.value = 'Разбираю данные…'
+  await nextPaint()
   parseCsv(csvText.value)
+  isImporting.value = false
 }
 
 function parseCsv(text: string) {
