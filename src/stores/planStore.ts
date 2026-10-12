@@ -49,6 +49,7 @@ export type OffDistribution = 'default' | 'fair' | 'far_first' | 'max_coverage'
 
 export interface GenerationIssue {
   targetCoords: string
+  targetId?: string   // конкретная цель (важно при дублях кор между волнами)
   type: GenerationIssueType
   requested: number
   generated: number
@@ -98,7 +99,6 @@ export type AttackType =
   | 'mini_off'   // mini-off attack — all troops from a weak-off village
   | 'cat'               // catapult squad — cats only, independent pool
   | 'spam'              // fake attack (min troops + 1 ram)
-  | 'spam_noble'        // noble on decoy target
 
 // ---------------------------------------------------------------------------
 // Watchtower
@@ -146,7 +146,32 @@ export interface Target {
   breachOffCount?: number   // how many breach-offs (breach_off) to assign separately
   bpOffCount?: number       // how many breach+pal (both) to assign explicitly
   nobleVillageCoords?: string  // manual noble village assignment
-  massConfigId?: string  // which mass-config (wave) generates this target; undefined = active
+  massConfigId?: string  // DEPRECATED (старая модель «активный конфиг»); больше не читается
+  waveId?: string        // к какой волне плана (planWaves[].id) относится цель; undefined = без волны
+  muted?: boolean        // «заглушена» — остаётся в списке, но не участвует в генерации (войска свободны)
+}
+
+// Настройки генерации, индивидуальные для волны (остальное — глобально).
+export interface WaveSettings {
+  arrivalTime: string          // опорное время (datetime-local); «→ всем» применяет к целям волны
+  sendExcludeEnabled: boolean  // Без ночных
+  nightFrom: number
+  nightTo: number
+  earliestSendEnabled: boolean // Старт не ранее
+  earliestSendTime: string
+  moraleEnabled: boolean       // Мораль
+  offDistribution: OffDistribution // Распределение
+  watchtowerAvoidEnabled: boolean  // 🗼 Башни: обходить засвеченные маршруты (пер-волна)
+  frontReserveEnabled: boolean     // 🛡 Резерв фронта: не брать деры у фронта этой волны
+  frontReserveDist: number         // радиус фронта в полях (от целей этой волны)
+}
+
+// Волна плана: экземпляр масс-конфига в плане. Один конфиг может быть в нескольких
+// волнах (разные id, одинаковый configId).
+export interface PlanWave {
+  id: string
+  configId: string
+  settings: WaveSettings
 }
 
 export interface Attack {
@@ -172,6 +197,7 @@ export interface Attack {
   buildPaladin?: boolean  // player needs to recruit a paladin in fromVillage before sending
   trainGroupId?: string   // shared by all attacks of the same spam train run
   catMass?: boolean       // belongs to cat mass (secondary wave), not main mass
+  countAsSpam?: boolean   // пресет помечен «считать как спам» — для подсчёта/фильтров
 }
 
 // ---------------------------------------------------------------------------
@@ -289,8 +315,6 @@ function buildPoolTags(
 // Determine speed unit for a composition (slowest meaningful unit for attack type)
 function speedUnitForType(type: AttackType): keyof VillageTroops {
   switch (type) {
-    case 'spam_noble':     return 'snob'
-
     case 'cat':            return 'catapult'
     default:               return 'ram'
   }
@@ -319,8 +343,8 @@ const LS_CAT_TARGETS = 'vp_cat_targets'
 const LS_CAT_MASS_QUEUE = 'vp_cat_mass_queue'
 const LS_PLAYER_DATA = 'vp_player_data'
 const LS_WATCHTOWER = 'vp_watchtower'
-const LS_SPAM_NOBLE_TARGETS = 'vp_spam_noble_targets'
 const LS_OFF_DISTRIBUTION = 'vp_off_distribution'
+const LS_PLAN_WAVES = 'vp_plan_waves'
 const LS_ATTACKS = 'vp_attacks'
 const LS_RESERVED = 'vp_reserved_villages'
 
@@ -372,17 +396,6 @@ function loadWatchtowerVillages(): WatchtowerVillage[] {
   return []
 }
 
-function loadSpamNobleTargets(): Target[] {
-  try {
-    const raw = localStorage.getItem(LS_SPAM_NOBLE_TARGETS)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Array<Omit<Target, 'arrivalTime'> & { arrivalTime: string }>
-      return parsed.map((t) => ({ ...t, arrivalTime: new Date(t.arrivalTime) }))
-    }
-  } catch { /* ignore */ }
-  return []
-}
-
 function loadCatTargets(): Target[] {
   try {
     const raw = localStorage.getItem(LS_CAT_TARGETS)
@@ -426,7 +439,6 @@ export const usePlanStore = defineStore('plan', () => {
     } catch { return [] }
   })())
   const reservedVillages = ref<Set<string>>(loadReservedVillages())
-  const spamNobleTargets = ref<Target[]>(loadSpamNobleTargets())
   const playerData = ref<PlayerData[]>(loadPlayerData())
   const watchtowerVillages = ref<WatchtowerVillage[]>(loadWatchtowerVillages())
   const offDistribution = ref<OffDistribution>(
@@ -436,6 +448,100 @@ export const usePlanStore = defineStore('plan', () => {
   function setOffDistribution(mode: OffDistribution) {
     offDistribution.value = mode
     localStorage.setItem(LS_OFF_DISTRIBUTION, mode)
+  }
+
+  // ── Волны плана (явный упорядоченный список) ───────────────────────────────
+  // Снимок текущих глобальных настроек как дефолт для новой/мигрируемой волны.
+  function makeWaveSettings(): WaveSettings {
+    const s = worldStore.settings
+    return {
+      arrivalTime: '',
+      sendExcludeEnabled: s.sendExcludeEnabled,
+      nightFrom: s.nightFrom,
+      nightTo: s.nightTo,
+      earliestSendEnabled: s.earliestSendEnabled,
+      earliestSendTime: s.earliestSendTime,
+      moraleEnabled: s.moraleEnabled,
+      offDistribution: offDistribution.value,
+      watchtowerAvoidEnabled: s.watchtowerAvoidEnabled ?? true,
+      frontReserveEnabled: s.frontReserveEnabled ?? false,
+      frontReserveDist: s.frontReserveDist ?? 10,
+    }
+  }
+
+  const planWaves = ref<PlanWave[]>((() => {
+    try {
+      const raw = localStorage.getItem(LS_PLAN_WAVES)
+      const parsed = raw ? JSON.parse(raw) : []
+      if (!Array.isArray(parsed)) return []
+      return parsed
+        .filter((w: unknown) => !!w && typeof (w as PlanWave).id === 'string' && typeof (w as PlanWave).configId === 'string')
+        .map((w: Partial<PlanWave>): PlanWave => ({
+          id: w.id!, configId: w.configId!,
+          settings: { ...makeWaveSettings(), ...(w.settings ?? {}) },  // миграция старых волн
+        }))
+    } catch { return [] }
+  })())
+
+  function persistWaves(): void {
+    localStorage.setItem(LS_PLAN_WAVES, JSON.stringify(planWaves.value))
+  }
+
+  function updateWaveSettings(waveId: string, partial: Partial<WaveSettings>): void {
+    planWaves.value = planWaves.value.map(w =>
+      w.id === waveId ? { ...w, settings: { ...w.settings, ...partial } } : w)
+    persistWaves()
+  }
+
+  function addWave(configId: string): PlanWave {
+    // Поэтапно: перед добавлением новой волны закрепляем все «плавающие» цели
+    // (без явной волны) за текущей последней волной — чтобы они не осиротели.
+    if (planWaves.value.length > 0) {
+      const lastId = planWaves.value[planWaves.value.length - 1].id
+      let changed = false
+      for (const t of targets.value) {
+        if (!t.waveId || !planWaves.value.some(w => w.id === t.waveId)) { t.waveId = lastId; changed = true }
+      }
+      if (changed) saveTargets()
+    }
+    const wave: PlanWave = { id: `w_${genId()}`, configId, settings: makeWaveSettings() }
+    planWaves.value = [...planWaves.value, wave]
+    selectedWaveId.value = wave.id   // новая волна сразу становится активной для конфигурации
+    persistWaves()
+    return wave
+  }
+
+  function removeWave(waveId: string): void {
+    planWaves.value = planWaves.value.filter(w => w.id !== waveId)
+    // Цели этой волны становятся «без волны».
+    for (const t of targets.value) {
+      if (t.waveId === waveId) t.waveId = undefined
+    }
+    if (selectedWaveId.value === waveId) selectedWaveId.value = planWaves.value[0]?.id ?? null
+    saveTargets()
+    persistWaves()
+  }
+
+  function moveWave(waveId: string, dir: -1 | 1): void {
+    const arr = [...planWaves.value]
+    const i = arr.findIndex(w => w.id === waveId)
+    if (i < 0) return
+    const j = i + dir
+    if (j < 0 || j >= arr.length) return
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+    planWaves.value = arr
+    persistWaves()
+  }
+
+  // Выбранная (активная для конфигурации) волна — под неё показываются «Цели»/настройки.
+  const selectedWaveId = ref<string | null>(planWaves.value[0]?.id ?? null)
+  function setSelectedWave(id: string | null): void { selectedWaveId.value = id }
+  // Гарантируем, что выбор всегда валиден (или первая волна).
+  function ensureSelectedWave(): string | null {
+    if (!selectedWaveId.value || !planWaves.value.some(w => w.id === selectedWaveId.value)) {
+      selectedWaveId.value = planWaves.value[0]?.id ?? null
+    }
+    return selectedWaveId.value
   }
 
 
@@ -517,10 +623,6 @@ export const usePlanStore = defineStore('plan', () => {
   const unusedOffStats = ref<UnusedVillageStats>({ noSlots: 0, nightExcluded: 0, earliestExcluded: 0 })
   const unusedCatStats = ref<UnusedVillageStats>({ noSlots: 0, nightExcluded: 0, earliestExcluded: 0 })
 
-  function saveSpamNobleTargets() {
-    localStorage.setItem(LS_SPAM_NOBLE_TARGETS, JSON.stringify(spamNobleTargets.value))
-  }
-
   // ---------------------------------------------------------------------------
   // Targets CRUD
   // ---------------------------------------------------------------------------
@@ -528,7 +630,9 @@ export const usePlanStore = defineStore('plan', () => {
   function addTarget(coords: string, arrivalTime: Date, options?: Partial<Omit<Target, 'id' | 'coords' | 'arrivalTime' | 'x' | 'y'>>): Target | null {
     const xy = coordsToXY(coords)
     if (!xy) return null
-    if (targets.value.some(t => t.coords === coords)) return null
+    // Дедуп пер-волну: одни коры в одной волне — раз, но в разных волнах можно.
+    const waveId = (options as { waveId?: string } | undefined)?.waveId
+    if (targets.value.some(t => t.coords === coords && t.waveId === waveId)) return null
     const t: Target = {
       id: genId(),
       coords,
@@ -559,10 +663,28 @@ export const usePlanStore = defineStore('plan', () => {
     saveTargets()
   }
 
+  // Обратимое заглушение цели: muted=true — цель остаётся в списке, но не
+  // генерится (её войска свободны). Уже сгенерированные атаки на неё убираем,
+  // чтобы они не висели до следующей генерации.
+  function setTargetMuted(id: string, muted: boolean) {
+    const target = targets.value.find((t) => t.id === id)
+    if (!target) return
+    target.muted = muted
+    if (muted) {
+      attacks.value = attacks.value.filter((a) => a.target.id !== id)
+      if (target.coords) {
+        generationIssues.value = generationIssues.value.filter((i) => i.targetId !== id)
+      }
+    }
+    saveTargets()
+  }
+
   function updateTarget(id: string, patch: Partial<Omit<Target, 'id'>>) {
     const t = targets.value.find((t) => t.id === id)
     if (!t) return
-    if (patch.coords && targets.value.some(other => other.id !== id && other.coords === patch.coords)) return
+    // Дедуп кор пер-волну: одни коры дважды в ОДНОЙ волне нельзя, в разных — можно.
+    const newWaveId = patch.waveId !== undefined ? patch.waveId : t.waveId
+    if (patch.coords && targets.value.some(other => other.id !== id && other.coords === patch.coords && other.waveId === newWaveId)) return
     Object.assign(t, patch)
     if (patch.coords) {
       const xy = coordsToXY(patch.coords)
@@ -572,46 +694,6 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   // ---------------------------------------------------------------------------
-  // Spam noble targets CRUD
-  // ---------------------------------------------------------------------------
-
-  function addEmptySpamNobleTarget(arrivalTime: Date): Target {
-    const t: Target = { id: genId(), coords: '', x: 0, y: 0, arrivalTime }
-    spamNobleTargets.value.push(t)
-    saveSpamNobleTargets()
-    return t
-  }
-
-  function addSpamNobleTarget(coords: string, arrivalTime: Date): Target | null {
-    const xy = coordsToXY(coords)
-    if (!xy) return null
-    const t: Target = { id: genId(), coords, x: xy.x, y: xy.y, arrivalTime }
-    spamNobleTargets.value.push(t)
-    saveSpamNobleTargets()
-    return t
-  }
-
-  function updateSpamNobleTarget(id: string, patch: Partial<Omit<Target, 'id'>>) {
-    const t = spamNobleTargets.value.find((t) => t.id === id)
-    if (!t) return
-    Object.assign(t, patch)
-    if (patch.coords) {
-      const xy = coordsToXY(patch.coords)
-      if (xy) { t.x = xy.x; t.y = xy.y }
-    }
-    saveSpamNobleTargets()
-  }
-
-  function removeSpamNobleTarget(id: string) {
-    spamNobleTargets.value = spamNobleTargets.value.filter((t) => t.id !== id)
-    saveSpamNobleTargets()
-  }
-
-  function clearSpamNobleTargets() {
-    spamNobleTargets.value = []
-    saveSpamNobleTargets()
-  }
-
   // ---------------------------------------------------------------------------
   // Cat targets CRUD
   // ---------------------------------------------------------------------------
@@ -826,8 +908,12 @@ export const usePlanStore = defineStore('plan', () => {
     const mcStore    = useMassConfigStore()
     const presStore  = usePresetsStore()
     const enemyStore = useEnemyDataStore()
-    const cfg = mcStore.active
-    if (!cfg) return
+    // Волны плана (только те, чей конфиг ещё существует). Без волн генерация запрещена.
+    const planWaveList = planWaves.value.filter(w => mcStore.all.some(c => c.id === w.configId))
+    if (planWaveList.length === 0) return
+    // Настройки «текущей волны» — обновляются в начале каждой итерации цикла волн.
+    // Их читают pushAtk / nightExcludes / код цикла (пер-волновые настройки).
+    let ws: WaveSettings = planWaveList[0].settings
 
     const { settings } = worldStore
     const { villages } = villagesStore
@@ -865,9 +951,9 @@ export const usePlanStore = defineStore('plan', () => {
       presStore.fullOffMinOffFarm, presStore.breachMinRams, settings.unitPop,
     )
 
-    // Attacker points per player (for morale)
+    // Attacker points per player (for morale) — строим, если мораль включена в любой волне
     const attackerPoints = new Map<string, number>()
-    if (settings.moraleEnabled) {
+    if (planWaveList.some(w => w.settings.moraleEnabled)) {
       for (const v of villages) {
         attackerPoints.set(v.player, (attackerPoints.get(v.player) ?? 0) + v.points)
       }
@@ -914,6 +1000,7 @@ export const usePlanStore = defineStore('plan', () => {
       type: AttackType, village: Village, target: Target,
       composition: AttackComposition, arrivalTime: Date, label?: string, color?: string,
       _buildNobles?: number, trainGroupId?: string, catTarget?: CatTarget,
+      countAsSpam?: boolean,
     ): boolean {
       const speedUnit   = slowestUnitInComp(composition, settings.unitTimes)
       const unitBaseSec = settings.unitTimes[speedUnit]
@@ -922,14 +1009,14 @@ export const usePlanStore = defineStore('plan', () => {
       const sendTime    = calcSendTime(arrivalTime, travelSec)
 
       // Night exclude mode: skip this village if send time falls in night window
-      if (settings.sendExcludeEnabled) {
-        if (isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return false
+      if (ws.sendExcludeEnabled) {
+        if (isInNightWindow(sendTime, ws.nightFrom, ws.nightTo)) return false
       }
       // Earliest send: never generate an attack that would launch before the floor.
       // (Belt-and-suspenders — most loops pre-check via nightExcludes(), but some
       //  paths like spam-train fakes push directly.)
-      if (settings.earliestSendEnabled && settings.earliestSendTime) {
-        const floor = new Date(settings.earliestSendTime)
+      if (ws.earliestSendEnabled && ws.earliestSendTime) {
+        const floor = new Date(ws.earliestSendTime)
         if (!isNaN(floor.getTime()) && sendTime < floor) return false
       }
       // Hard safety net: a noble can never travel beyond the world's snob max
@@ -947,14 +1034,14 @@ export const usePlanStore = defineStore('plan', () => {
       if (snobStrippedFar) warnings.push('SNOB_TOO_FAR')
       if (sendTime < now) warnings.push('SEND_IN_PAST')
       if (settings.nightActive) {
-        if (isInNightWindow(arrivalTime, settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_ARRIVAL')
-        if (isInNightWindow(sendTime,    settings.nightFrom, settings.nightTo)) warnings.push('NIGHT_SEND')
+        if (isInNightWindow(arrivalTime, ws.nightFrom, ws.nightTo)) warnings.push('NIGHT_ARRIVAL')
+        if (isInNightWindow(sendTime,    ws.nightFrom, ws.nightTo)) warnings.push('NIGHT_SEND')
       }
       if (settings.watchtowerEnabled && watchtowerVillages.value.length > 0) {
         const { detected } = calcWatchtowerExposure(village.x, village.y, target.x, target.y, target.enemyPlayer)
         if (detected) warnings.push('WATCHTOWER_HIT')
       }
-      if (settings.moraleEnabled && target.enemyPlayer) {
+      if (ws.moraleEnabled && target.enemyPlayer) {
         const defPoints = enemyStore.playerByName.get(target.enemyPlayer)?.points ?? 0
         const atkPoints = attackerPoints.get(village.player) ?? 0
         if (defPoints > 0 && atkPoints > 0) {
@@ -975,6 +1062,7 @@ export const usePlanStore = defineStore('plan', () => {
         ...(buildNobles    ? { buildNobles    } : {}),
         ...(buildPaladin   ? { buildPaladin   } : {}),
         ...(trainGroupId   ? { trainGroupId   } : {}),
+        ...(countAsSpam    ? { countAsSpam    } : {}),
       })
       return true
     }
@@ -988,9 +1076,9 @@ export const usePlanStore = defineStore('plan', () => {
       const dist = calcDistance({ x: village.x, y: village.y }, { x: target.x, y: target.y }, settings.mapSize)
       const travelSec = calcTravelSeconds(dist, unitBaseSec, settings.worldSpeed, settings.unitSpeed)
       const sendTime = calcSendTime(arrivalTime, travelSec)
-      if (settings.sendExcludeEnabled && isInNightWindow(sendTime, settings.nightFrom, settings.nightTo)) return true
-      if (settings.earliestSendEnabled && settings.earliestSendTime) {
-        const floor = new Date(settings.earliestSendTime)
+      if (ws.sendExcludeEnabled && isInNightWindow(sendTime, ws.nightFrom, ws.nightTo)) return true
+      if (ws.earliestSendEnabled && ws.earliestSendTime) {
+        const floor = new Date(ws.earliestSendTime)
         if (!isNaN(floor.getTime()) && sendTime < floor) return true
       }
       return false
@@ -1053,7 +1141,8 @@ export const usePlanStore = defineStore('plan', () => {
 
       for (const { v, isVirtual } of entries) {
         if (usedNobleVillages.has(v.coords)) continue
-        if (nightExcludes(v, target, 'spam_noble', arrT)) continue
+        // Ночная проверка по скорости двора (передаём comp с двором вместо типа).
+        if (nightExcludes(v, target, 'off', arrT, { ...emptyComposition(), snob: 1 })) continue
         if (isVirtual) {
           const snob = pool.get(v.coords)?.snob ?? 0
           const budgetNeeded = need - snob
@@ -1113,30 +1202,56 @@ export const usePlanStore = defineStore('plan', () => {
       wtMap: Map<string, number>
     }
     const targetDataMap = new Map<string, TargetData>()
-    const validTargets = targets.value.filter(t => !!t.coords)
-    const nonReserved = villages.filter(v => !reservedVillages.value.has(v.coords))
+    // Заглушённые цели (muted) не участвуют в генерации — их войска остаются в пуле.
+    const validTargets = targets.value.filter(t => !!t.coords && !t.muted)
+    // Базовый пул кандидатов — минус только РУЧНОЙ резерв (reservedVillages).
+    // Резерв фронта считается отдельно, пер-волна (ниже).
+    const baseNonReserved = villages.filter(v => !reservedVillages.value.has(v.coords))
+
+    // Резерв фронта — пер-волна: для каждой волны со включённым резервом собираем
+    // множество дер в радиусе frontReserveDist от ЕЁ целей; такие деры не берутся
+    // как источники только в этой волне.
+    const waveFrontSets = new Map<string, Set<string>>()
+    for (const w of planWaveList) {
+      if (!w.settings.frontReserveEnabled) continue
+      const fdist = w.settings.frontReserveDist ?? 10
+      const wTargets = validTargets.filter(t => (t.waveId ?? planWaveList[0].id) === w.id)
+      if (wTargets.length === 0) continue
+      const front = new Set<string>()
+      for (const v of baseNonReserved) {
+        for (const t of wTargets) {
+          if (calcDistance({ x: v.x, y: v.y }, { x: t.x, y: t.y }, settings.mapSize) <= fdist) { front.add(v.coords); break }
+        }
+      }
+      waveFrontSets.set(w.id, front)
+    }
 
     for (const target of validTargets) {
+      // Настройки волны этой цели — резерв фронта и обход башен индивидуальны для волны.
+      const twave = planWaveList.find(w => w.id === target.waveId) ?? planWaveList[0]
+      const avoidWt = twave.settings.watchtowerAvoidEnabled ?? true
+      const front = waveFrontSets.get(twave.id)
+      const candidates = front ? baseNonReserved.filter(v => !front.has(v.coords)) : baseNonReserved
+
       const distMap = new Map<string, number>()
       const wtMap   = new Map<string, number>()
       for (const v of villages) {
         const d = calcDistance({ x: v.x, y: v.y }, { x: target.x, y: target.y }, settings.mapSize)
         distMap.set(v.coords, d)
-        if (settings.watchtowerEnabled && settings.watchtowerAvoidEnabled && watchtowerVillages.value.length > 0) {
+        // wtMap считаем всегда при включённых башнях — применяем пер-волна (avoidWt).
+        if (settings.watchtowerEnabled && watchtowerVillages.value.length > 0) {
           const { detected, chord } = calcWatchtowerExposure(v.x, v.y, target.x, target.y, target.enemyPlayer)
           wtMap.set(v.coords, detected ? 1_000_000 + chord : 0)
         }
       }
-      const byDist = [...nonReserved].sort((a, b) => {
-        const sa = (wtMap.get(a.coords) ?? 0) + (distMap.get(a.coords) ?? 0)
-        const sb = (wtMap.get(b.coords) ?? 0) + (distMap.get(b.coords) ?? 0)
-        return sa - sb
+      const byDist = [...candidates].sort((a, b) => {
+        const pa = avoidWt ? (wtMap.get(a.coords) ?? 0) : 0
+        const pb = avoidWt ? (wtMap.get(b.coords) ?? 0) : 0
+        return (pa + (distMap.get(a.coords) ?? 0)) - (pb + (distMap.get(b.coords) ?? 0))
       })
-      const byDistFar = [...nonReserved].sort((a, b) => {
-        const wa = wtMap.get(a.coords) ?? 0
-        const wb = wtMap.get(b.coords) ?? 0
-        const aDetected = wa > 0
-        const bDetected = wb > 0
+      const byDistFar = [...candidates].sort((a, b) => {
+        const aDetected = avoidWt && (wtMap.get(a.coords) ?? 0) > 0
+        const bDetected = avoidWt && (wtMap.get(b.coords) ?? 0) > 0
         if (aDetected !== bDetected) return aDetected ? 1 : -1
         return (distMap.get(b.coords) ?? 0) - (distMap.get(a.coords) ?? 0)
       })
@@ -1155,29 +1270,38 @@ export const usePlanStore = defineStore('plan', () => {
     // Each group is a "wave" run against the SHARED village pool, in mass-config
     // order (active config first). A target with no massConfigId uses the active
     // one, so a single-config plan behaves exactly as before.
-    const waves: { cfg: MassConfig; tgts: Target[] }[] = (() => {
-      const byId = new Map<string, Target[]>()
-      for (const t of validTargets) {
-        const id = t.massConfigId && mcStore.all.some(c => c.id === t.massConfigId) ? t.massConfigId : cfg.id
-        const arr = byId.get(id) ?? []
-        arr.push(t)
-        byId.set(id, arr)
+    const waves: { id: string; cfg: MassConfig; tgts: Target[]; settings: WaveSettings }[] = (() => {
+      // Одна волна в плане — все цели принадлежат ей (без явной привязки).
+      if (planWaveList.length === 1) {
+        const w = planWaveList[0]
+        return [{ id: w.id, cfg: mcStore.all.find(c => c.id === w.configId)!, tgts: [...validTargets], settings: w.settings }]
       }
-      const order = [cfg.id, ...mcStore.all.map(c => c.id).filter(id => id !== cfg.id)]
-      return order
-        .filter(id => byId.has(id))
-        .map(id => ({ cfg: mcStore.all.find(c => c.id === id) ?? cfg, tgts: byId.get(id)! }))
+      const byWave = new Map<string, Target[]>()
+      for (const t of validTargets) {
+        // Цель без волны (или волна удалена) — в генерацию не идёт.
+        if (!t.waveId || !planWaveList.some(w => w.id === t.waveId)) continue
+        const arr = byWave.get(t.waveId) ?? []
+        arr.push(t)
+        byWave.set(t.waveId, arr)
+      }
+      return planWaveList
+        .filter(w => byWave.has(w.id))
+        .map(w => ({ id: w.id, cfg: mcStore.all.find(c => c.id === w.configId)!, tgts: byWave.get(w.id)!, settings: w.settings }))
     })()
 
     for (const __wave of waves) {
     const cfg = __wave.cfg
     let validTargets = __wave.tgts
+    ws = __wave.settings   // настройки текущей волны (читают pushAtk / nightExcludes / цикл)
+    // Деры фронта этой волны (пер-волновый резерв) — исключаем из источников.
+    const waveFront = waveFrontSets.get(__wave.id)
+    const waveNonReserved = waveFront ? baseNonReserved.filter(v => !waveFront.has(v.coords)) : baseNonReserved
 
     // ── Максимальное покрытие: самые «зажатые» цели обслуживаются первыми ──
     // Не меняем саму раздачу — только порядок целей. Для каждой цели считаем,
     // сколько у неё легальных дер-кандидатов под узкий слот (паравоз — офф в
     // радиусе двора; иначе — фулл-оффы по времени). Меньше → раздаём раньше.
-    if (offDistribution.value === 'max_coverage') {
+    if (ws.offDistribution === 'max_coverage') {
       const presStore2 = usePresetsStore()
       const fullMin2 = presStore2.fullOffMinOffFarm
       const up2 = settings.unitPop
@@ -1248,7 +1372,7 @@ export const usePlanStore = defineStore('plan', () => {
 
         for (const target of gTargets) {
           const { byDist, byDistFar } = targetDataMap.get(target.id)!
-          const base = offDistribution.value === 'far_first' ? byDistFar : byDist
+          const base = ws.offDistribution === 'far_first' ? byDistFar : byDist
 
           let ordered: TaggedVillage[]
           if (isNonePaladin) {
@@ -1307,7 +1431,7 @@ export const usePlanStore = defineStore('plan', () => {
 
           // Tower avoidance: regardless of tag priority, move wt-detected villages to the end
           // so a non-detected full_off always beats a detected pal/breach village
-          if (settings.watchtowerEnabled && settings.watchtowerAvoidEnabled) {
+          if (settings.watchtowerEnabled && ws.watchtowerAvoidEnabled) {
             const twm = targetDataMap.get(target.id)!.wtMap
             const nonDet = ordered.filter(({ village: v }) => (twm.get(v.coords) ?? 0) === 0)
             const det    = ordered.filter(({ village: v }) => (twm.get(v.coords) ?? 0) > 0)
@@ -1319,7 +1443,7 @@ export const usePlanStore = defineStore('plan', () => {
 
         const pointers = new Map<string, number>()
 
-        if (offDistribution.value !== 'default') {
+        if (ws.offDistribution !== 'default') {
           // Round-robin: each round every unfulfilled target picks its next available candidate
           let anyAssigned = true
           while (anyAssigned) {
@@ -1413,7 +1537,7 @@ export const usePlanStore = defineStore('plan', () => {
         const midMin = presStore.halfOffMinOffFarm
         const midMax = presStore.fullOffMinOffFarm
 
-        if (offDistribution.value !== 'default') {
+        if (ws.offDistribution !== 'default') {
           const pointers3 = new Map<string, number>()
           let anyAssigned = true
           while (anyAssigned) {
@@ -1422,7 +1546,7 @@ export const usePlanStore = defineStore('plan', () => {
               const filled = targetFilled.get(target.id) ?? 0
               if (filled >= slot.count) continue
               const td3 = targetDataMap.get(target.id)!
-              const halfList = offDistribution.value === 'far_first' ? td3.byDistFar : td3.byDist
+              const halfList = ws.offDistribution === 'far_first' ? td3.byDistFar : td3.byDist
               let ptr = pointers3.get(target.id) ?? 0
               const slotArrT = slotArrTMap.get(target.id)!
               let assigned = false
@@ -1510,7 +1634,7 @@ export const usePlanStore = defineStore('plan', () => {
         const miniMin = presStore.smallOffMinOffFarm
         const miniMax = presStore.halfOffMinOffFarm
 
-        if (offDistribution.value !== 'default') {
+        if (ws.offDistribution !== 'default') {
           const pointersMini = new Map<string, number>()
           let anyAssigned = true
           while (anyAssigned) {
@@ -1519,7 +1643,7 @@ export const usePlanStore = defineStore('plan', () => {
               const filled = targetFilled.get(target.id) ?? 0
               if (filled >= slot.count) continue
               const tdMini = targetDataMap.get(target.id)!
-              const miniList = offDistribution.value === 'far_first' ? tdMini.byDistFar : tdMini.byDist
+              const miniList = ws.offDistribution === 'far_first' ? tdMini.byDistFar : tdMini.byDist
               let ptr = pointersMini.get(target.id) ?? 0
               const slotArrT = slotArrTMap.get(target.id)!
               let assigned = false
@@ -1602,7 +1726,7 @@ export const usePlanStore = defineStore('plan', () => {
 
         // Group cat villages by player — round-robin across players per target
         const catByPlayer = new Map<string, Village[]>()
-        for (const v of nonReserved) {
+        for (const v of waveNonReserved) {
           const cats = villagesStore.villages.find(x => x.coords === v.coords)?.troops.catapult ?? 0
           if (cats < minCats) continue
           if (!catByPlayer.has(v.player)) catByPlayer.set(v.player, [])
@@ -1684,7 +1808,7 @@ export const usePlanStore = defineStore('plan', () => {
         // Noble custom_off: village is exclusively assigned to one target (usedNobleVillages)
         const isNobleSlot = snobSpec > 0
 
-        if (offDistribution.value !== 'default') {
+        if (ws.offDistribution !== 'default') {
           const pointers4 = new Map<string, number>()
           let anyAssigned = true
           while (anyAssigned) {
@@ -1693,7 +1817,7 @@ export const usePlanStore = defineStore('plan', () => {
               const filled = targetFilled.get(target.id) ?? 0
               if (filled >= slot.count) continue
               const td4 = targetDataMap.get(target.id)!
-              const customList = (offDistribution.value === 'far_first' && !isNobleSlot) ? td4.byDistFar : td4.byDist
+              const customList = (ws.offDistribution === 'far_first' && !isNobleSlot) ? td4.byDistFar : td4.byDist
               let ptr = pointers4.get(target.id) ?? 0
               const slotArrT = slotArrTMap.get(target.id)!
               let assigned = false
@@ -1751,7 +1875,7 @@ export const usePlanStore = defineStore('plan', () => {
                 if (snobSpec > 0) virtualNoblePool.set(v.player, (virtualNoblePool.get(v.player) ?? 0) - snobSpec)
                 for (const k of unitKeys) { if (k !== 'snob') a[k] -= c[k] }
                 if (snobSpec === -1) a.snob -= c.snob
-                if (!pushAtk('off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role), snobBuildNeeded || undefined, undefined, customCatTarget)) {
+                if (!pushAtk('off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role), snobBuildNeeded || undefined, undefined, customCatTarget, role.countAsSpam)) {
                   if (snobSpec > 0) virtualNoblePool.set(v.player, (virtualNoblePool.get(v.player) ?? 0) + snobSpec)
                   for (const k of unitKeys) { if (k !== 'snob') a[k] += c[k] }
                   if (snobSpec === -1) a.snob += c.snob
@@ -1830,7 +1954,7 @@ export const usePlanStore = defineStore('plan', () => {
             if (snobSpec > 0) virtualNoblePool.set(v.player, (virtualNoblePool.get(v.player) ?? 0) - snobSpec)
             for (const k of unitKeys) { if (k !== 'snob') a[k] -= c[k] }
             if (snobSpec === -1) a.snob -= c.snob
-            if (!pushAtk('off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role), snobBuildNeeded || undefined)) {
+            if (!pushAtk('off', v, target, c, slotArrT, preset.name, preset.color ?? defaultColorForRole(preset.role.type, preset.role), snobBuildNeeded || undefined, undefined, undefined, role.countAsSpam)) {
               if (snobSpec > 0) virtualNoblePool.set(v.player, (virtualNoblePool.get(v.player) ?? 0) + snobSpec)
               for (const k of unitKeys) { if (k !== 'snob') a[k] += c[k] }
               if (snobSpec === -1) a.snob += c.snob
@@ -1854,7 +1978,7 @@ export const usePlanStore = defineStore('plan', () => {
             else if (skippedN > 0 && skippedD === 0) offsReason = 'night_excluded'
             else if (skippedD === 0 && skippedN === 0) offsReason = 'no_eligible'
           }
-          genIssues.push({ targetCoords: target.coords, type: 'OFFS_SHORT', requested: slot.count, generated, offsReason, slotName: preset.name })
+          genIssues.push({ targetCoords: target.coords, targetId: target.id, type: 'OFFS_SHORT', requested: slot.count, generated, offsReason, slotName: preset.name })
         }
       }
     }
@@ -1871,9 +1995,61 @@ export const usePlanStore = defineStore('plan', () => {
         slotArrTMap.set(t.id, new Date(t.arrivalTime.getTime() + slot.offsetMs))
       }
 
-      if (role.type === 'spam') {
-        // Sequential per target — preserve existing spam logic
+      if (role.type === 'spam' || (role.type === 'custom_off' && role.countAsSpam)) {
+        // Spam-style distribution. Балансировка по РАЗНЫМ игрокам маскирует
+        // источник: каждая атака отдаётся игроку с наименьшим числом отправок.
+        // Сюда же попадают кастомные пресеты с галочкой «считать как спам» —
+        // они раздаются по тем же законам, но со своим составом.
         const presetColor = preset.color ?? defaultColorForRole(preset.role.type, preset.role)
+        const isCustomSpam = role.type === 'custom_off'
+
+        // ── Стратегия состава ──────────────────────────────────────────────
+        // Реальный спам → мелкий фейк (buildSpamComp). Кастом «как спам» →
+        // собственный состав пресета, но раздаётся по спам-правилам.
+        const csUnits  = role.customUnits ?? {}
+        const csPct    = role.customUnitPct ?? {}
+        const csMinReq = role.customUnitMin ?? {}
+        const csMaxReq = role.customUnitMax ?? {}
+        const csMin    = role.customMin ?? 0
+        const csMax    = role.customMax ?? 99999
+        // knight/snob исключены — спам не возит ни паладинов, ни дворян
+        const csKeys: Array<keyof AttackComposition> = ['spear','sword','axe','spy','light','heavy','ram','catapult']
+        const csCatTarget: CatTarget | undefined = (csUnits.catapult ?? 0) !== 0
+          ? (role.catTarget ?? presStore.catDefaultTarget) : undefined
+        const csResolve = (k: keyof AttackComposition, av: number): number => {
+          const pct = (csPct[k] as number | undefined) ?? 0
+          if (pct > 0) return Math.floor(av * pct / 100)
+          const spec = (csUnits[k] as number | undefined) ?? -1
+          if (spec === 0) return 0
+          return spec === -1 ? av : Math.min(av, spec)
+        }
+        const csMeetsMin = (v: Village): boolean => {
+          for (const [k, mn] of Object.entries(csMinReq)) { if (mn && v.troops[k as keyof VillageTroops] < mn) return false }
+          for (const [k, mx] of Object.entries(csMaxReq)) { if (mx && v.troops[k as keyof VillageTroops] > mx) return false }
+          return true
+        }
+        const buildComp: (v: Village, a: AttackComposition) => AttackComposition | null = isCustomSpam
+          ? (v, a) => {
+              if (!csMeetsMin(v)) return null
+              const c = emptyComposition()
+              for (const k of csKeys) c[k] = csResolve(k, a[k])
+              const total = totalUnits(c)
+              if (total < csMin || total > csMax) return null
+              return c
+            }
+          : (_v, a) => buildSpamComp(a)
+        // Вычитаем из общего пула ВЕСЬ состав (а не только ram/cat) — иначе
+        // наполнитель спама (топоры/копья/… до minAttackSize) не списывался и мог
+        // быть потрачен повторно настоящим оффом. Касается любого юнита.
+        const allCompKeys = Object.keys(emptyComposition()) as Array<keyof AttackComposition>
+        const consumeComp: (a: AttackComposition, c: AttackComposition) => void =
+          (a, c) => { for (const k of allCompKeys) a[k] = Math.max(0, a[k] - c[k]) }
+        const deraEligible: (v: Village, a: AttackComposition) => boolean = isCustomSpam
+          ? (v) => csMeetsMin(v)
+          : (_v, a) => a.ram > 0 || a.catapult > 0
+        const spamAtkType: AttackType = isCustomSpam ? 'off' : 'spam'
+        const spamCountFlag: boolean | undefined = isCustomSpam ? true : undefined
+        const spamPushCat: CatTarget | undefined = isCustomSpam ? csCatTarget : undefined
         // Маскировка: лимит на деру + балансировка спама по игрокам (аккаунтам).
         // Счётчики живут на весь слот, между всеми целями.
         const spamByVillage = new Map<string, number>()
@@ -1913,25 +2089,6 @@ export const usePlanStore = defineStore('plan', () => {
                 a.ram = Math.max(0, a.ram - c.ram); a.catapult = Math.max(0, a.catapult - c.catapult)
                 pushAtk('spam', nv, target, c, slotArrT, preset.name, presetColor, undefined, tgId)
               }
-              for (let i = 0; i < trainSize; i++) {
-                if (a.snob <= 0) break
-                const arrT = new Date(slotArrT.getTime() + i * settings.snobIntervalMs)
-                if (nightExcludes(nv, target, 'spam_noble', arrT)) break
-                const up = settings.unitPop
-                const c = emptyComposition()
-                c.snob = 1; a.snob -= 1
-                let popLeft = settings.minAttackSize - up.snob
-                const order: Array<keyof AttackComposition> = ['spear', 'sword', 'axe', 'spy', 'light', 'heavy']
-                for (const unit of order) {
-                  if (popLeft <= 0) break
-                  const upVal = up[unit] ?? 1
-                  const needed = Math.ceil(popLeft / upVal)
-                  c[unit] = Math.min(a[unit], needed)
-                  popLeft -= c[unit] * upVal
-                }
-                if (popLeft > 0) { a.snob += 1; break }
-                pushAtk('spam_noble', nv, target, c, arrT, preset.name, presetColor, undefined, tgId)
-              }
               trainsLeft--
             }
           } else {
@@ -1955,7 +2112,7 @@ export const usePlanStore = defineStore('plan', () => {
             const derasByPlayer = new Map<string, Village[]>()
             for (const v of byDist) {
               const a = pool.get(v.coords)!
-              if (a.ram <= 0 && a.catapult <= 0) continue
+              if (!deraEligible(v, a)) continue
               const arr = derasByPlayer.get(v.player)
               if (arr) arr.push(v); else derasByPlayer.set(v.player, [v])
             }
@@ -1990,23 +2147,28 @@ export const usePlanStore = defineStore('plan', () => {
               if (!bestPlayer) break
               const v = nextDera(bestPlayer)!
               const a = pool.get(v.coords)!
-              const c = buildSpamComp(a)
-              if (!c) { usedThisTarget.add(v.coords); continue }
+              const c = buildComp(v, a)
+              // Вырожденный состав (истощённая деревня: населения меньше minAttackSize)
+              // — не тратим слот, помечаем деру использованной и пробуем следующую.
+              if (!c || totalPop(c, settings.unitPop) < settings.minAttackSize) { usedThisTarget.add(v.coords); continue }
               const arrT = useWindow
                 ? randomSpamArrival(
                     new Date(slotArrT.getTime() - wBefore * 60_000),
                     new Date(slotArrT.getTime() + wAfter  * 60_000),
                   )
                 : slotArrT
-              if (nightExcludes(v, target, 'spam', arrT, c)) { usedThisTarget.add(v.coords); continue }
-              a.ram = Math.max(0, a.ram - c.ram); a.catapult = Math.max(0, a.catapult - c.catapult)
-              pushAtk('spam', v, target, c, arrT, preset.name, presetColor)
+              if (nightExcludes(v, target, spamAtkType, arrT, c)) { usedThisTarget.add(v.coords); continue }
+              // pushAtk может отклонить (ночь/старт/минимум) — тогда слот не тратим.
+              if (!pushAtk(spamAtkType, v, target, c, arrT, preset.name, presetColor, undefined, undefined, spamPushCat, spamCountFlag)) {
+                usedThisTarget.add(v.coords); continue
+              }
+              consumeComp(a, c)
               usedThisTarget.add(v.coords)
               spamByVillage.set(v.coords, (spamByVillage.get(v.coords) ?? 0) + 1)
               spamByPlayer.set(bestPlayer, bestCnt + 1)
               left--
             }
-            if (left > 0) genIssues.push({ targetCoords: target.coords, type: 'SPAM_SHORT', requested: slot.count, generated: slot.count - left, slotName: preset.name })
+            if (left > 0) genIssues.push({ targetCoords: target.coords, targetId: target.id, type: 'SPAM_SHORT', requested: slot.count, generated: slot.count - left, slotName: preset.name })
           }
         }
 
@@ -2486,11 +2648,6 @@ export const usePlanStore = defineStore('plan', () => {
     saveTargets()
   }
 
-  function clearSpamNobleTargetsAndSave(): void {
-    spamNobleTargets.value = []
-    saveSpamNobleTargets()
-  }
-
   function resetGenerated(): void {
     attacks.value = []
     noblePlacements.value = []
@@ -2534,12 +2691,10 @@ export const usePlanStore = defineStore('plan', () => {
 
   function resetAll(): void {
     targets.value = []
-    spamNobleTargets.value = []
     playerData.value = []
     watchtowerVillages.value = []
     resetGenerated()
     saveTargets()
-    saveSpamNobleTargets()
     savePlayerData()
     saveWatchtowerVillages()
   }
@@ -2555,7 +2710,7 @@ export const usePlanStore = defineStore('plan', () => {
     const targetPlayers = new Map<string, Set<string>>()
     for (const atk of attacks.value) {
       if (atk.excluded) continue
-      if (atk.type === 'spam' || atk.type === 'spam_noble') continue
+      if (atk.type === 'spam') continue
       const tid = atk.target.id
       if (!targetPlayers.has(tid)) targetPlayers.set(tid, new Set())
       targetPlayers.get(tid)!.add(atk.fromVillage.player)
@@ -2840,7 +2995,7 @@ export const usePlanStore = defineStore('plan', () => {
 
   function exportPlan(): void {
     // Flush planStore in-memory refs so the localStorage snapshot is current.
-    saveTargets(); saveCatTargets(); saveSpamNobleTargets(); savePlayerData()
+    saveTargets(); saveCatTargets(); savePlayerData()
     saveWatchtowerVillages(); saveAttacks()
 
     // v2: verbatim snapshot of every plan-defining localStorage key, so loading
@@ -2985,7 +3140,6 @@ export const usePlanStore = defineStore('plan', () => {
     // State
     targets,
     catTargets,
-    spamNobleTargets,
     playerData,
     watchtowerVillages,
     reservedVillages,
@@ -2996,6 +3150,7 @@ export const usePlanStore = defineStore('plan', () => {
     addTarget,
     addEmptyTarget,
     removeTarget,
+    setTargetMuted,
     updateTarget,
     // Player data
     setPlayerData,
@@ -3007,12 +3162,6 @@ export const usePlanStore = defineStore('plan', () => {
     updateWatchtowerVillage,
     removeWatchtowerVillage,
     clearWatchtowerVillages,
-    // Spam noble targets
-    addEmptySpamNobleTarget,
-    addSpamNobleTarget,
-    updateSpamNobleTarget,
-    removeSpamNobleTarget,
-    clearSpamNobleTargets: clearSpamNobleTargetsAndSave,
     // Plan
     generate,
     generateCatMass,
@@ -3024,6 +3173,14 @@ export const usePlanStore = defineStore('plan', () => {
     resetAll,
     offDistribution,
     setOffDistribution,
+    planWaves,
+    addWave,
+    removeWave,
+    moveWave,
+    updateWaveSettings,
+    selectedWaveId,
+    setSelectedWave,
+    ensureSelectedWave,
     nobleRecommendations,
     // Computed
     attacksByTarget,

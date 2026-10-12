@@ -19,28 +19,40 @@
       </button>
       <div v-if="showHelp" class="help-content">
         <p>
-          Здесь собирается план массовых атак. <b>Порядок:</b> добавь <b>цели</b> → выбери <b>масс-конфиг</b> и <b>время прихода</b> →
-          настрой ограничения → <b>«Сгенерировать план»</b>. Результат — готовые атаки с точным таймингом, их можно экспортировать.
+          Здесь собирается план массовых атак. <b>Порядок:</b> собери <b>волны</b> (каждая со своим масс-конфигом) → выбери волну и задай её
+          <b>настройки</b> и <b>цели</b> → <b>«Сгенерировать план»</b>. Результат — готовые атаки с точным таймингом, их можно экспортировать.
         </p>
 
-        <h4>Слева — настройка генерации</h4>
+        <h4>Волны плана (вверху слева)</h4>
         <ul>
-          <li><b>Масс-конфиг</b> — какой набор слотов применять (из «Пресеты масса»). «Изменить» ведёт к его редактированию.</li>
-          <li><b>Тайминг</b> — опорное время прихода. <b>«→ всем»</b> проставляет его всем целям разом (у каждой цели можно задать своё).</li>
+          <li><b>План — это упорядоченный список волн.</b> Каждая волна = один масс-конфиг + свои настройки + свои цели.</li>
+          <li><b>+ Добавить волну</b> — выбери конфиг и жми «Добавить». Новую волну можно добавить, только когда у текущей последней уже есть цели.</li>
+          <li><b>Клик по волне</b> выбирает её (подсветка + метка «выбрана») — ниже редактируются настройки именно этой волны, а справа в «Целях» показываются её цели.</li>
+          <li><b>↑ / ↓</b> — порядок волн (деры расходуются из общего пула по порядку), <b>✕</b> — удалить волну. Один конфиг можно использовать в нескольких волнах; одинаковые координаты целей допустимы в разных волнах.</li>
+        </ul>
+
+        <h4>Настройки выбранной волны</h4>
+        <ul>
+          <li><b>Тайминг</b> — опорное время прихода. <b>«→ целям волны N»</b> проставляет его всем целям этой волны (у каждой цели можно задать своё).</li>
           <li><b>🌙 Без ночных</b> — не отправлять атаки, чья отправка попадает в ночное окно (диапазон часов рядом).</li>
           <li><b>⏰ Старт не ранее</b> — не генерировать отправки раньше указанного времени.</li>
           <li><b>⚖ Мораль</b> — предупреждать, если очки атакующего сильно выше защитника (риск морали).</li>
-          <li><b>🗼 Башни</b> — учитывать сторожевые башни врага (засветы маршрутов).</li>
-          <li><b>🛡 Резерв фронта</b> — не задействовать деры у линии фронта.</li>
+          <li><b>🗼 Башни</b> — обходить сторожевые башни врага (засвеченные деры уходят в конец очереди подбора). Таблица ввода башен врага появляется под «Целями», когда хоть одна волна их обходит.</li>
+          <li><b>🛡 Резерв фронта</b> — не брать как источники деры в радиусе N полей от целей <b>этой</b> волны (рядом — поле радиуса). Напр.: реальной волне резерв включён, спам-волне — выключен.</li>
           <li><b>Распределение</b>: <i>Максимальное покрытие</i> (по умолчанию — самые «зажатые» цели обслуживаются первыми, чтобы закрыть как можно больше целей), <i>Дальние вперёд</i> (дальним целям — первый выбор дер), <i>Справедливо</i> (равномерно), <i>Жадно</i> (по лучшему совпадению).</li>
+          <li><b>Все эти настройки индивидуальны для каждой волны</b> — переключая волну, видишь её тайминг/ограничения/башни/резерв/распределение.</li>
+        </ul>
+
+        <h4>Общие для плана</h4>
+        <ul>
           <li><b>Дворяне</b>: <i>Реальные</i> (по войскам из импорта) или <i>Виртуальные</i> (по счётчику дворов на игрока).</li>
           <li><b>Паладины</b>: <i>Не распределять</i> / <i>Вручную</i> / <i>Автоматически</i> (раздать пал-оффам).</li>
+          <li class="help-note" style="margin:.3rem 0 0">Эти два — общие для всего плана (действуют на все волны), остальное выше — пер-волна.</li>
         </ul>
 
         <h4>Генерация и сохранение</h4>
         <ul>
-          <li><b>Сгенерировать план</b> — рассчитать атаки. Если кнопка заблокирована — под ней причина и ссылки (нет целей / войск / конфига).</li>
-          <li><b>Волны плана</b> — если целям назначены разные масс-конфиги, показывается сводка по волнам (каждая со своим набором).</li>
+          <li><b>Сгенерировать план</b> — рассчитать атаки по всем волнам. Если кнопка заблокирована — под ней причина и ссылки (нет волн / целей / войск).</li>
           <li><b>↓ Сохр. / ↑ Загр.</b> (вверху панели) — экспорт/импорт плана в файл.</li>
           <li>Счётчики пула: офы / дворы / пробои / каты — сколько задействовано из доступного.</li>
           <li><b>«Не задействованы в плане»</b> — отдельный блок внизу: клик по строке («N офов / N кат не в плане») копирует коры этих деревень в буфер.</li>
@@ -48,12 +60,20 @@
 
         <h4>Справа — цели и результаты</h4>
         <ul>
-          <li><b>Цели</b> — список координат с временем прихода. Можно вставить списком, задать волну (масс-конфиг) каждой цели, импортировать.</li>
-          <li><b>Результаты</b> (после генерации): вкладки <b>По деревням</b> / <b>По игрокам</b> (кому что слать), <b>Проблемные</b> (цели, которым не хватило — с причиной: нет оффов / тайминг / дворы не достают / пул исчерпан; «Заглушить» — убрать цель), <b>Текст (BBCode)</b> — готовый код для вставки в игру/форум. Метка <b>«Далеко»</b> на атаке — двор был дальше лимита хода (<code>snobMaxDist</code>) и снят, атака ушла без двора.</li>
+          <li><b>Цели</b> — список координат выбранной волны (вставка списком, импорт, авто-подстановка игрока/племени). <b>🔇</b> у цели — заглушить (обратимо): цель не участвует в генерации, но остаётся в списке и помечается «заглушена»; <b>🔈 Вернуть</b> — снова включить. <b>✕</b> — удалить совсем.</li>
+          <li><b>Результаты</b> (после генерации): вкладки <b>По деревням</b> / <b>По игрокам</b> (кому что слать), <b>Проблемные</b> (цели, которым не хватило — с причиной: нет оффов / тайминг / дворы не достают / пул исчерпан), <b>Текст (BBCode)</b> — готовый код для игры/форума.</li>
+          <li><b>Фильтр по волнам</b> в «Показ:» (когда волн несколько): <i>Все волны</i> / <i>По волнам</i> (секциями) / <i>Волна N · конфиг</i> (только одна волна). Такой же фильтр есть на «Карте атак».</li>
+          <li><b>«Заглушить»</b> во вкладке «Проблемные» = тот же обратимый мьют: цель выключается из генерации (войска свободны), вернуть её можно в «Целях».</li>
+          <li>Если двор не достаёт до цели (дальше <code>snobMaxDist</code>), деревня пропускается — ищется следующая; «ушедших без двора» атак не бывает.</li>
           <li><b>Башни врага</b> — таблица сторожевых башен (когда учёт башен включён).</li>
         </ul>
 
-        <p class="help-note">Для максимального покрытия крути пороги на «Импорте» и приоритеты слотов в «Пресеты масса», а причины недобора смотри во вкладке «Проблемные».</p>
+        <h4>Как поднять покрытие</h4>
+        <ul>
+          <li><b>Режимы подбора — главное.</b> Самый эффективный для большого числа целей: <i>Максимальное покрытие</i> (по войскам) + дворяне <i>Виртуальные</i>. Так самые «зажатые» цели берут деры первыми, а дворы не привязаны к конкретной дере.</li>
+          <li><b>Глуши лишние цели в «Проблемных» и перегенери.</b> Заглушённая цель возвращает свои войска в пул — их получают другие цели. Да, итоговое число целей уменьшается, зато остальные закрываются.</li>
+          <li>Крути пороги оффов на «Импорте» и приоритеты слотов в «Пресеты масса», а причины недобора смотри во вкладке «Проблемные».</li>
+        </ul>
       </div>
     </section>
 
@@ -73,20 +93,68 @@
       </span>
     </section>
 
+    <!-- ── Волны плана: билдер (над настройками) ──────────────────────────── -->
+    <section class="panel waves-summary">
+      <span class="section-label">Волны плана</span>
+
+      <!-- Нет ни одного масс-конфига -->
+      <div v-if="massConfigStore.all.length === 0" class="waves-empty">
+        <p class="waves-empty-text">Сначала создай пресет масса — набор слотов атак. Потом собери из них волны плана.</p>
+        <RouterLink to="/mass-configs" class="btn btn-primary waves-empty-btn">→ Пресеты масса</RouterLink>
+      </div>
+
+      <template v-else>
+        <div v-if="!wavesSummary.length" class="waves-hint">
+          План пуст. Добавь волну — выбери пресет масса. Волн может быть несколько (одна за другой выедают общий пул).
+        </div>
+
+        <div
+          v-for="(w, i) in wavesSummary" :key="w.waveId"
+          class="wave-row" :class="{ 'wave-row--missing': w.missing, 'wave-row--selected': w.waveId === selectedWaveId }"
+          @click="planStore.setSelectedWave(w.waveId)"
+          :title="w.waveId === selectedWaveId ? 'Активная волна — её настройки и цели показаны' : 'Выбрать волну (переключить настройки и цели на неё)'"
+        >
+          <div class="wave-head">
+            <span class="wave-idx">{{ i + 1 }}</span>
+            <span class="wave-name">{{ w.name }}</span>
+            <span v-if="w.waveId === selectedWaveId" class="wave-sel-tag">выбрана</span>
+            <span class="wave-count">{{ w.count }} цел.</span>
+            <span class="wave-move" @click.stop>
+              <button class="wave-ctrl" title="Выше (раньше выедает пул)" :disabled="i === 0" @click="planStore.moveWave(w.waveId, -1)">↑</button>
+              <button class="wave-ctrl" title="Ниже" :disabled="i === wavesSummary.length - 1" @click="planStore.moveWave(w.waveId, 1)">↓</button>
+              <button class="wave-ctrl wave-ctrl--del" title="Убрать волну (цели станут без волны)" @click="planStore.removeWave(w.waveId)">✕</button>
+            </span>
+          </div>
+          <div v-if="w.slots.length" class="wave-chips">
+            <span
+              v-for="(c, ci) in w.slots" :key="ci"
+              class="wave-chip"
+              :style="{ color: c.color, borderColor: c.color + '66', background: c.color + '1a' }"
+            >{{ c.label }} ×{{ c.count }}</span>
+          </div>
+        </div>
+
+        <!-- Добавить волну (поэтапно: только когда у текущей волны есть цели) -->
+        <div class="wave-add">
+          <select v-model="newWaveConfigId" class="input wave-add-select" :disabled="!canAddWave">
+            <option value="">+ Добавить волну…</option>
+            <option v-for="c in massConfigStore.all" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <button class="btn btn-primary btn-sm" :disabled="!newWaveConfigId || !canAddWave" @click="onAddWave">Добавить</button>
+        </div>
+        <div v-if="!canAddWave" class="wave-add-hint">Сначала добавь цели в текущую волну — потом можно создать следующую.</div>
+
+        <div v-if="unassignedTargetCount > 0" class="waves-unassigned" title="Эти цели не привязаны к волне и не попадут в генерацию. Назначь им волну в «Цели».">
+          ⚠ {{ unassignedTargetCount }} цел. без волны — не войдут в план
+        </div>
+
+        <RouterLink to="/mass-configs" class="wave-edit-link">Настроить конфиги →</RouterLink>
+      </template>
+    </section>
+
     <AIPlanPanel v-if="aiStore.mode === 'ai'" @generate="onGenerate" />
 
     <MassActivePanel />
-
-    <!-- Waves summary (only when the plan spans more than one mass-config) -->
-    <section v-if="wavesSummary.length > 1" class="panel waves-summary">
-      <span class="section-label">Волны плана</span>
-      <div v-for="(w, i) in wavesSummary" :key="w.id" class="wave-row">
-        <span class="wave-idx">{{ i + 1 }}</span>
-        <span class="wave-name" :title="w.name">{{ w.name }}</span>
-        <span class="wave-count">{{ w.count }} цел.</span>
-      </div>
-      <RouterLink to="/mass-configs" class="wave-edit-link">Настроить конфиги →</RouterLink>
-    </section>
 
     <!-- Generate -->
     <section class="panel generate-section">
@@ -205,8 +273,8 @@
     </aside>
 
     <main class="planner-main">
+    <WatchtowerTable v-if="worldStore.settings.watchtowerEnabled && planStore.planWaves.some(w => w.settings.watchtowerAvoidEnabled)" />
     <TargetsTable />
-    <WatchtowerTable v-if="worldStore.settings.watchtowerEnabled && (worldStore.settings.watchtowerAvoidEnabled ?? true)" />
 
     <AttackResultsPanel ref="resultsPanel" />
     </main>
@@ -222,6 +290,7 @@ import { useAIPlanStore } from '@/stores/aiPlanStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useMassConfigStore } from '@/stores/massConfigStore'
+import { usePresetsStore, defaultColorForRole } from '@/stores/presetsStore'
 import MassActivePanel from '@/components/MassActivePanel.vue'
 import TargetsTable from '@/components/TargetsTable.vue'
 import PalOffPanel from '@/components/PalOffPanel.vue'
@@ -235,21 +304,59 @@ const aiStore = useAIPlanStore()
 const worldStore = useWorldStore()
 const enemyStore = useEnemyDataStore()
 const massConfigStore = useMassConfigStore()
+const presetsStore = usePresetsStore()
 
 // Waves = mass-configs actually used by targets (active first), with counts.
+// Явный список волн плана (из planStore.planWaves). Порядок = приоритет выедания пула.
 const wavesSummary = computed(() => {
-  const active = massConfigStore.active
-  const byId = new Map<string, number>()
-  for (const t of planStore.targets) {
-    const id = t.massConfigId && massConfigStore.all.some(c => c.id === t.massConfigId) ? t.massConfigId : active?.id
-    if (!id) continue
-    byId.set(id, (byId.get(id) ?? 0) + 1)
+  const single = planStore.planWaves.length === 1
+  const countByWave = new Map<string, number>()
+  if (single) {
+    // Одна волна — все цели принадлежат ей.
+    countByWave.set(planStore.planWaves[0].id, planStore.targets.length)
+  } else {
+    for (const t of planStore.targets) {
+      if (!t.waveId) continue
+      countByWave.set(t.waveId, (countByWave.get(t.waveId) ?? 0) + 1)
+    }
   }
-  const order = active ? [active.id, ...massConfigStore.all.map(c => c.id).filter(id => id !== active.id)] : massConfigStore.all.map(c => c.id)
-  return order.filter(id => byId.has(id)).map(id => ({
-    id, name: massConfigStore.all.find(c => c.id === id)?.name ?? '—', count: byId.get(id)!,
-  }))
+  return planStore.planWaves.map(w => {
+    const cfg = massConfigStore.all.find(c => c.id === w.configId)
+    const slots = (cfg?.slots ?? []).filter(s => s.enabled).map(s => {
+      const p = presetsStore.all.find(pp => pp.id === s.presetId)
+      const color = p?.color ?? (p ? defaultColorForRole(p.role.type, p.role) : '#8a8aa0')
+      return { label: p?.name ?? '—', count: s.count, color }
+    })
+    return {
+      waveId: w.id, configId: w.configId, name: cfg?.name ?? '(конфиг удалён)',
+      missing: !cfg, slots, count: countByWave.get(w.id) ?? 0,
+    }
+  })
 })
+// Цели без волны (не попадут в генерацию). При одной волне все цели принадлежат ей → 0.
+const unassignedTargetCount = computed(() => {
+  if (planStore.planWaves.length <= 1) return 0
+  return planStore.targets.filter(t => !t.waveId || !planStore.planWaves.some(w => w.id === t.waveId)).length
+})
+// Поэтапно: новую волну можно добавить, только если у текущей последней волны есть цели.
+const lastWaveTargetCount = computed(() => {
+  const waves = planStore.planWaves
+  if (!waves.length) return 0
+  if (waves.length === 1) return planStore.targets.length   // одна волна — все цели её
+  const last = waves[waves.length - 1]
+  return planStore.targets.filter(t => t.waveId === last.id).length
+})
+const canAddWave = computed(() => planStore.planWaves.length === 0 || lastWaveTargetCount.value > 0)
+
+// Выбранная волна (с фолбэком на первую) — для подсветки.
+const selectedWaveId = computed(() => planStore.selectedWaveId ?? planStore.planWaves[0]?.id ?? null)
+
+const newWaveConfigId = ref('')
+function onAddWave(): void {
+  if (!newWaveConfigId.value || !canAddWave.value) return
+  planStore.addWave(newWaveConfigId.value)
+  newWaveConfigId.value = ''
+}
 const resultsPanel   = ref<InstanceType<typeof AttackResultsPanel> | null>(null)
 const palOffPanel    = ref<InstanceType<typeof PalOffPanel> | null>(null)
 const isGenerating   = ref(false)
@@ -291,10 +398,13 @@ const breachOffAssigned = computed(() => {
   return planStore.targets.reduce((s, t) => s + (t.breachOffCount ?? 0), 0)
 })
 
+const activeWaveCount = computed(() =>
+  planStore.planWaves.filter(w => massConfigStore.all.some(c => c.id === w.configId)).length)
+
 const generateBlockLinks = computed<Array<{ to: string; label: string }>>(() => {
   const links: Array<{ to: string; label: string }> = []
   if (!worldStore.settings.worldCode) links.push({ to: '/settings', label: 'Настройки мира →' })
-  if (!massConfigStore.active) links.push({ to: '/mass-configs', label: 'Конфигуратор масса →' })
+  if (massConfigStore.all.length === 0) links.push({ to: '/mass-configs', label: 'Конфигуратор масса →' })
   return links
 })
 
@@ -302,7 +412,7 @@ const generateBlockReason = computed<string | null>(() => {
   const missing: string[] = []
   if (!worldStore.settings.worldCode) missing.push('настройки мира')
   if (!enemyStore.hasVillageData)      missing.push('village.txt')
-  if (!massConfigStore.active)         missing.push('масс-конфиг')
+  if (activeWaveCount.value === 0)     missing.push('хотя бы одна волна плана')
   if (missing.length === 0) return null
   return `Не хватает: ${missing.join(', ')}`
 })
@@ -500,15 +610,53 @@ function onGenerate(): void {
 .waves-summary {
   .section-label { display: block; margin-bottom: 0.5rem; }
   .wave-row {
-    display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.85rem;
+    padding: 0.4rem 0.45rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    &:hover { background: a($accent, 0.05); }
+  }
+  .wave-row--selected { background: a($green, 0.08); border-color: a($green, 0.4); }
+  .wave-sel-tag {
+    font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    color: $green; background: a($green, 0.16); border-radius: 999px; padding: 0.05rem 0.4rem;
+  }
+  .wave-head {
+    display: flex; align-items: center; gap: 0.5rem; width: 100%;
+    font-size: 0.85rem; color: inherit;
   }
   .wave-idx {
     width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
     background: rgba(233, 69, 96, 0.15); color: $accent; border-radius: 4px; font-size: 0.72rem; font-weight: 700;
   }
-  .wave-name { flex: 1; color: $text; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .wave-count { color: $text-dim; font-variant-numeric: tabular-nums; }
+  .wave-name { color: $text; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wave-active-tag {
+    font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    color: $green; background: a($green, 0.14); border-radius: 999px; padding: 0.05rem 0.4rem;
+  }
+  .wave-count { margin-left: auto; color: $text-dim; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .wave-move { display: inline-flex; gap: 0.15rem; flex-shrink: 0; }
+  .wave-ctrl {
+    width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
+    background: a($border, 0.6); border: 1px solid $border; color: $text-dim; border-radius: 4px;
+    cursor: pointer; font-size: 0.7rem; line-height: 1;
+    &:hover:not(:disabled) { border-color: $accent; color: $text; }
+    &:disabled { opacity: 0.3; cursor: not-allowed; }
+    &.wave-ctrl--del:hover:not(:disabled) { border-color: $accent; color: $accent; }
+  }
+  .wave-row--missing { opacity: 0.6; .wave-name { color: $accent; font-style: italic; } }
+  .wave-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.35rem; padding-left: 26px; }
+  .wave-chip {
+    font-size: 0.72rem; font-weight: 600; border: 1px solid; border-radius: 999px; padding: 0.05rem 0.45rem;
+  }
+  .wave-add { display: flex; gap: 0.4rem; margin-top: 0.6rem; }
+  .wave-add-select { flex: 1; min-width: 0; }
+  .wave-add-hint { margin-top: 0.3rem; font-size: 0.74rem; color: $text-faint; line-height: 1.3; }
+  .waves-hint { font-size: 0.8rem; color: $text-dim; line-height: 1.35; margin-bottom: 0.4rem; }
+  .waves-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  .waves-empty-text { margin: 0; font-size: 0.82rem; color: $text-dim; line-height: 1.4; }
+  .waves-empty-btn { text-decoration: none; }
+  .waves-unassigned { margin-top: 0.5rem; font-size: 0.78rem; color: $orange; font-weight: 600; cursor: default; }
   .wave-edit-link { display: inline-block; margin-top: 0.5rem; font-size: 0.8rem; color: $accent; text-decoration: none; &:hover { text-decoration: underline; } }
 }
 

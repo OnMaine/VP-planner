@@ -13,12 +13,16 @@ export interface TargetBlock {
   targets: Target[]
 }
 
-export function useTargetGroups(groupBy: Ref<GroupBy>, towerCoordsSet: Ref<Set<string>>) {
+export function useTargetGroups(
+  groupBy: Ref<GroupBy>,
+  towerCoordsSet: Ref<Set<string>>,
+  source?: () => Target[],
+) {
   const planStore = usePlanStore()
   const enemyStore = useEnemyDataStore()
 
   const targetBlocks = computed<TargetBlock[]>(() => {
-    const targets = [...planStore.targets]
+    const targets = source ? [...source()] : [...planStore.targets]
     const by = groupBy.value
 
     if (by === 'none') return [{ key: '__all', label: '', targets }]

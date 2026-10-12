@@ -10,8 +10,9 @@
       </button>
       <div v-if="showHelp" class="help-content">
         <p>
-          <b>Масс-конфиг</b> — набор <b>слотов атак</b>, который применяется к каждой цели в Планере.
-          Один слот = один тип атаки. Выбери конфиг кнопкой «Выбрать», затем генерируй план в Планере.
+          <b>Масс-конфиг</b> — набор <b>слотов атак</b>, который применяется к целям в Планере.
+          Один слот = один тип атаки. Создай нужные конфиги здесь, а <b>какой конфиг на какие цели</b> — выбирай
+          прямо в Планере (блоки волн в «Цели»). Можно несколько конфигов в одном плане (несколько волн).
         </p>
 
         <h4>Карточка слота</h4>
@@ -34,7 +35,6 @@
 
         <h4>Действия с конфигом</h4>
         <ul>
-          <li><b>Выбрать</b> — сделать активным (используется при генерации в Планере).</li>
           <li><b>Изменить</b> — редактировать слоты. <b>Копия</b> — дублировать. <b>✕</b> — удалить.</li>
           <li>Внутри редактора: <code>↑ ↓</code> — порядок слотов, <code>✕</code> — удалить слот, «+ Добавить слот» — новый.</li>
         </ul>
@@ -51,13 +51,11 @@
         v-for="cfg in store.all"
         :key="cfg.id"
         :class="['cfg-card', {
-          'cfg-active':  store.activeId === cfg.id,
           'cfg-editing': editingId === cfg.id,
         }]"
       >
         <div class="card-head">
           <span class="card-name">{{ cfg.name }}</span>
-          <span v-if="store.activeId === cfg.id" class="badge-active">активный</span>
         </div>
 
         <p class="card-desc">{{ cfg.description || '—' }}</p>
@@ -71,11 +69,6 @@
         </div>
 
         <div class="card-actions">
-          <button
-            v-if="store.activeId !== cfg.id"
-            class="btn btn-primary btn-sm"
-            @click="store.setActive(cfg.id)"
-          >Выбрать</button>
           <button class="btn btn-secondary btn-sm" @click="openEdit(cfg.id)">Изменить</button>
           <button class="btn btn-secondary btn-sm" @click="store.clone(cfg.id)">Копия</button>
           <button class="btn btn-danger btn-sm" @click="confirmRemove(cfg.id)">✕</button>
@@ -281,7 +274,7 @@ function slotChipStyle(presetId: string): Record<string, string> {
 
 function isSpamPreset(presetId: string): boolean {
   const p = presetsStore.all.find(pr => pr.id === presetId)
-  return p?.role.type === 'spam'
+  return p?.role.type === 'spam' || !!p?.role.countAsSpam
 }
 
 function hasSpamWindow(slot: FormSlot): boolean {
@@ -545,7 +538,7 @@ function addSlot() {
     enabled:         defaults.enabled,
     windowBeforeMin: 0,
     windowAfterMin:  0,
-    spamMaxPerVillage: 0,
+    spamMaxPerVillage: 5,
     fillPriority:    0,
   })
 }
@@ -640,7 +633,6 @@ function moveSlotDown(i: number) {
   gap: 0.6rem;
   transition: border-color 0.15s;
 
-  &.cfg-active   { border-color: $green; box-shadow: 0 0 0 2px a($green, 0.15); }
   &.cfg-editing  { border-color: $accent; box-shadow: 0 0 0 2px a($accent, 0.2); }
 }
 
@@ -656,17 +648,6 @@ function moveSlotDown(i: number) {
   font-size: 1rem;
   color: $text;
   flex: 1;
-}
-
-.badge-active {
-  font-size: 0.65rem;
-  background: a($green, 0.15);
-  color: $green;
-  border: 1px solid a($green, 0.35);
-  border-radius: 10px;
-  padding: 0.1rem 0.45rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .card-desc {

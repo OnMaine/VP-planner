@@ -1,7 +1,10 @@
 <template>
   <section class="panel">
     <button class="collapse-toggle" @click="open = !open">
-      <span>Цели<template v-if="planStore.targets.length"> ({{ planStore.targets.length }})</template></span>
+      <span>
+        Цели<template v-if="scopedTargets.length"> ({{ scopedTargets.length }})</template>
+        <span v-if="selectedWaveInfo" class="targets-wave-badge">волна {{ selectedWaveInfo.ordinal }} · {{ selectedWaveInfo.name }}</span>
+      </span>
       <span class="collapse-right">
         <span @click.stop>
           <button
@@ -36,8 +39,8 @@
         @click="groupBy = opt.value"
       >{{ opt.label }}</button>
       <div class="sort-bar-sep"></div>
-      <span v-if="planStore.targets.length" class="target-count" style="margin-left:auto">
-        {{ planStore.targets.length }} целей
+      <span v-if="scopedTargets.length" class="target-count" style="margin-left:auto">
+        {{ scopedTargets.length }} целей
       </span>
     </div>
 
@@ -52,33 +55,25 @@
             Дата и время прилёта
             <input v-model="bulkDatetime" type="datetime-local" class="input" step="0.001" />
           </label>
-          <label v-if="showConfigCol">
-            Волна (масс-конфиг)
-            <select v-model="bulkConfigId" class="input">
-              <option value="">Основной{{ massConfigStore.active ? ` (${massConfigStore.active.name})` : '' }}</option>
-              <option v-for="c in massConfigStore.all" :key="c.id" :value="c.id">{{ c.name }}</option>
-            </select>
-          </label>
           <button class="btn btn-primary" @click="doBulkAdd">Добавить</button>
         </div>
       </div>
       <div v-if="bulkError" class="status-msg status-err">{{ bulkError }}</div>
     </div>
 
-    <div v-if="planStore.targets.length" class="table-wrap">
+    <div v-if="scopedTargets.length" class="table-wrap">
       <table class="mini-table targets-table">
         <thead><tr>
           <th>Координаты</th>
           <th>Игрок (цель)</th>
           <th>Племя</th>
-          <th v-if="showConfigCol" title="Каким масс-конфигом (волной) генерится эта цель">Волна</th>
           <th>Тайминг</th>
           <th></th>
         </tr></thead>
         <tbody>
           <template v-for="block in targetBlocks" :key="block.key">
             <tr v-if="groupBy !== 'none'" class="group-sep-row">
-              <td :colspan="showConfigCol ? 5 : 4">
+              <td colspan="4">
                 <span class="target-group-player">{{ block.label }}</span>
                 <span v-if="block.sublabel" class="target-group-ally">{{ block.sublabel }}</span>
                 <span class="target-group-count">{{ block.targets.length }} целей</span>
@@ -89,6 +84,7 @@
               :class="{
                 'row-has-tower': towerCoordsSet.has(t.coords),
                 'row-uncovered': planStore.uncoveredTargetCoords.has(t.coords),
+                'row-muted': t.muted,
               }"
             >
               <td>
@@ -99,6 +95,7 @@
                     @input="filterCoordsInput($event)"
                     @change="onCoordsChange(t.id, ($event.target as HTMLInputElement).value)"
                   />
+                  <span v-if="t.muted" class="muted-badge" title="Заглушена — не участвует в генерации">🔇 заглушена</span>
                   <span v-if="planStore.uncoveredTargetCoords.has(t.coords)" class="uncovered-badge" title="Не хватило войск для покрытия этой цели">⚠</span>
                   <span v-if="towerCoordsSet.has(t.coords)" class="tower-badge" :title="`Башня уровень ${targetTowerLevel(t.coords)}`">
                     <img :src="watchtowerIcon" class="tower-icon" />{{ targetTowerLevel(t.coords) }}
@@ -115,14 +112,6 @@
                 />
               </td>
               <td class="muted-small">{{ enemyStore.lookupCoords(t.coords)?.ally?.tag ?? t.enemyAllyTag ?? '—' }}</td>
-              <td v-if="showConfigCol">
-                <select class="input" style="width:150px"
-                  :value="t.massConfigId ?? ''"
-                  @change="planStore.updateTarget(t.id, { massConfigId: ($event.target as HTMLSelectElement).value || undefined })">
-                  <option value="">Основной{{ massConfigStore.active ? ` (${massConfigStore.active.name})` : '' }}</option>
-                  <option v-for="c in massConfigStore.all" :key="c.id" :value="c.id">{{ c.name }}</option>
-                </select>
-              </td>
               <td>
                 <input
                   type="datetime-local" class="input" style="width:185px" step="0.001"
@@ -130,7 +119,15 @@
                   @change="onDatetimeChange(t.id, ($event.target as HTMLInputElement).value)"
                 />
               </td>
-              <td><button class="btn btn-danger btn-sm" @click="planStore.removeTarget(t.id)">✕</button></td>
+              <td class="target-actions-cell">
+                <button
+                  class="btn btn-sm mute-toggle-btn"
+                  :class="t.muted ? 'mute-toggle-btn--on' : ''"
+                  :title="t.muted ? 'Вернуть цель в генерацию' : 'Заглушить — выключить из генерации (обратимо)'"
+                  @click="planStore.setTargetMuted(t.id, !t.muted)"
+                >{{ t.muted ? '🔈 Вернуть' : '🔇' }}</button>
+                <button class="btn btn-danger btn-sm" title="Удалить цель" @click="planStore.removeTarget(t.id)">✕</button>
+              </td>
             </tr>
           </template>
         </tbody>
@@ -145,6 +142,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { usePlanStore } from '@/stores/planStore'
+import type { Target } from '@/stores/planStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
 import { useMassConfigStore } from '@/stores/massConfigStore'
 import { readTabularFile } from '@/utils/importFile'
@@ -168,28 +166,42 @@ const { resolveTargetPlayer } = usePlayerResolution()
 // UI state
 // Collapsed by default when targets already exist (e.g. loaded from a plan).
 const massConfigStore = useMassConfigStore()
-// Show the wave (mass-config) column only when there is more than one config.
-const showConfigCol = computed(() => massConfigStore.all.length > 1)
+
+// Выбранная волна (её цели показываем). При ≤1 волне — просто единственная/нет.
+const selectedWaveId = computed(() => planStore.selectedWaveId ?? planStore.planWaves[0]?.id ?? null)
+const selectedWaveInfo = computed(() => {
+  const waves = planStore.planWaves
+  if (waves.length <= 1) return null
+  const idx = waves.findIndex(w => w.id === selectedWaveId.value)
+  if (idx < 0) return null
+  const cfg = massConfigStore.all.find(c => c.id === waves[idx].configId)
+  return { ordinal: idx + 1, name: cfg?.name ?? '(конфиг удалён)' }
+})
+
+// Цели выбранной волны (при ≤1 волне — все цели плана).
+const scopedTargets = computed<Target[]>(() => {
+  if (planStore.planWaves.length <= 1) return planStore.targets
+  return planStore.targets.filter(t => t.waveId === selectedWaveId.value)
+})
 
 const open = ref(planStore.targets.length === 0)
 const bulkOpen = ref(false)
 const bulkText = ref('')
-const bulkConfigId = ref('')   // mass-config to tag pasted/imported targets with
 const bulkDatetime = ref(toDatetimeLocal(new Date(Math.floor((Date.now() + 3600_000) / 1000) * 1000)))
 const bulkError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const groupBy = ref<GroupBy>('none')
-const groupByOptions: { value: GroupBy; label: string }[] = [
+const groupByOptions = computed<{ value: GroupBy; label: string }[]>(() => [
   { value: 'none',    label: 'Нет' },
   { value: 'player',  label: 'Игрок' },
   { value: 'tribe',   label: 'Племя' },
   { value: 'arrival', label: 'Время прилёта' },
   { value: 'tower',   label: 'Башня' },
-]
+])
 
 const towerCoordsSet = computed(() => new Set(planStore.watchtowerVillages.map((w) => w.coords)))
-const { targetBlocks } = useTargetGroups(groupBy, towerCoordsSet)
+const { targetBlocks } = useTargetGroups(groupBy, towerCoordsSet, () => scopedTargets.value)
 
 function targetTowerLevel(coords: string): number | null {
   const wt = planStore.watchtowerVillages.find((w) => w.coords === coords)
@@ -223,11 +235,14 @@ function onTargetPlayerChange(id: string, coords: string, value: string): void {
   if (tower) planStore.updateWatchtowerVillage(tower.id, { player: value })
 }
 
-// Add empty
+// Add empty — привязываем к выбранной волне.
 function addEmptyTarget(): void {
   const now = new Date()
   now.setSeconds(0); now.setMilliseconds(0)
-  planStore.addEmptyTarget(now)
+  const t = planStore.addEmptyTarget(now)
+  if (planStore.planWaves.length > 1 && selectedWaveId.value) {
+    planStore.updateTarget(t.id, { waveId: selectedWaveId.value })
+  }
 }
 
 // Bulk add
@@ -246,14 +261,15 @@ function parseTargetsFromText(text: string): ParsedTarget[] {
   return results
 }
 
-function addTargetsFromParsed(entries: ParsedTarget[], arrivalTime: Date, configId?: string): { added: number; skipped: number } {
+function addTargetsFromParsed(entries: ParsedTarget[], arrivalTime: Date, waveId?: string): { added: number; skipped: number } {
   let added = 0; let skipped = 0
-  const existing = new Set(planStore.targets.map(t => t.coords).filter(Boolean))
+  // Дедуп пер-волну: одни коры в одной волне — раз, в разных волнах — можно.
+  const existing = new Set(planStore.targets.filter(t => t.waveId === waveId).map(t => t.coords).filter(Boolean))
   for (const e of entries) {
     if (existing.has(e.coords)) { skipped++; continue }
     const info = enemyStore.lookupCoords(e.coords)
     const opts: Record<string, unknown> = {}
-    if (configId) opts.massConfigId = configId
+    if (waveId) opts.waveId = waveId
     if (info) {
       opts.villageId = info.village.id
       if (info.player) { opts.enemyPlayer = info.player.name; opts.enemyAllyTag = info.ally?.tag ?? '' }
@@ -270,7 +286,7 @@ function doBulkAdd(): void {
   if (!entries.length) { bulkError.value = 'Не найдено координат. Формат: 500|500 или 500|500,15 (уровень башни)'; return }
   const arrivalTime = new Date(bulkDatetime.value)
   if (isNaN(arrivalTime.getTime())) { bulkError.value = 'Некорректная дата'; return }
-  const { added, skipped } = addTargetsFromParsed(entries, arrivalTime, bulkConfigId.value || undefined)
+  const { added, skipped } = addTargetsFromParsed(entries, arrivalTime, (planStore.planWaves.length > 1 ? selectedWaveId.value : null) ?? undefined)
   bulkText.value = ''
   bulkOpen.value = false
   if (added) open.value = false   // auto-collapse the filled list
@@ -284,7 +300,7 @@ function onTargetFile(event: Event): void {
     const entries = parseTargetsFromText(text)
     if (!entries.length) { bulkError.value = 'В файле не найдено координат формата 500|500'; return }
     const arrivalTime = new Date(Date.now() + 3600_000)
-    const { added } = addTargetsFromParsed(entries, arrivalTime, bulkConfigId.value || undefined)
+    const { added } = addTargetsFromParsed(entries, arrivalTime, (planStore.planWaves.length > 1 ? selectedWaveId.value : null) ?? undefined)
     if (added) open.value = false   // auto-collapse the filled list
     bulkError.value = `Из файла добавлено ${added} целей. Отредактируй время прилёта в таблице.`
     if (fileInput.value) fileInput.value.value = ''
@@ -300,6 +316,11 @@ function onTargetFile(event: Event): void {
   &:hover { opacity: 0.85; }
 }
 .collapse-right { display: flex; align-items: center; gap: 0.5rem; }
+.targets-wave-badge {
+  margin-left: 0.5rem; font-size: 0.72rem; font-weight: 600;
+  color: $green; background: a($green, 0.12); border: 1px solid a($green, 0.3);
+  border-radius: 999px; padding: 0.05rem 0.5rem; white-space: nowrap;
+}
 .collapse-icon  { font-size: 0.75rem; color: $text-faint; }
 
 .targets-table td { vertical-align: middle; }
@@ -313,8 +334,48 @@ function onTargetFile(event: Event): void {
 .target-group-ally   { color: $orange; font-size: 0.78rem; margin-right: 0.4rem; }
 .target-group-count  { color: $text-faint; font-size: 0.75rem; float: right; }
 
+/* Блок волны — заголовок + вставка полной шириной */
+.wave-block-row td {
+  background: #0c2546;
+  border-top: 3px solid a($green, 0.55);
+  padding: 0.55rem 0.7rem;
+}
+.wave-block-row--none td { border-top-color: a($orange, 0.5); background: a($orange, 0.05); }
+.wave-block-head { display: flex; align-items: center; gap: 0.5rem; }
+.wave-ordinal {
+  font-weight: 700; font-size: 0.72rem; letter-spacing: 0.02em; flex-shrink: 0;
+  color: $green; background: a($green, 0.12);
+  border: 1px solid a($green, 0.35); border-radius: 999px;
+  padding: 0.05rem 0.5rem; cursor: default;
+}
+.wave-block-name { font-weight: 700; font-size: 0.9rem; color: $text; }
+.wave-block-count { margin-left: auto; font-size: 0.78rem; color: $text-dim; font-variant-numeric: tabular-nums; }
+.wave-block-insert { display: flex; gap: 0.5rem; align-items: stretch; margin-top: 0.5rem; }
+.wave-insert-area {
+  flex: 1; min-width: 0; resize: vertical; font-family: monospace; font-size: 0.82rem;
+  min-height: 2.6rem; line-height: 1.4;
+}
+.wave-insert-btn { white-space: nowrap; align-self: stretch; }
+.wave-block-hint { margin-top: 0.4rem; font-size: 0.78rem; color: $orange; }
+
 .row-has-tower  { background: a($orange, 0.07) !important; border-left: 2px solid a($orange, 0.5); }
 .row-uncovered  { background: a($accent, 0.08) !important; border-left: 2px solid a($accent, 0.5); opacity: 0.7; }
+.row-muted      { background: a($text-dim, 0.06) !important; border-left: 2px solid a($text-dim, 0.5); opacity: 0.55; }
+
+.muted-badge {
+  display: inline-flex; align-items: center;
+  font-size: 0.68rem; font-weight: 600; white-space: nowrap;
+  color: $text-dim; background: a($text-dim, 0.12);
+  border: 1px solid a($text-dim, 0.3); border-radius: 8px;
+  padding: 0.05rem 0.4rem; cursor: default;
+}
+
+.target-actions-cell { display: flex; gap: 0.3rem; align-items: center; white-space: nowrap; }
+.mute-toggle-btn {
+  background: a($text-dim, 0.12); color: $text-dim; border: 1px solid a($text-dim, 0.3);
+  &:hover { background: a($text-dim, 0.22); }
+  &--on { background: a($green, 0.16); color: $green; border-color: a($green, 0.45); &:hover { background: a($green, 0.26); } }
+}
 
 .coords-cell  { display: flex; align-items: center; gap: 0.4rem; }
 .tower-badge  { display: inline-flex; align-items: center; gap: 2px; font-size: 0.72rem; color: $orange; white-space: nowrap; cursor: default; }

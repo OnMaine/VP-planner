@@ -31,7 +31,6 @@ function attackLabelAndColor(atk: Attack): { label: string; color: string } {
     mini_off:       '#b8a832',
     cat:            '#89b4fa',
     spam:           '#888888',
-    spam_noble:     '#666688',
   }
   const baseLabel: Record<string, string> = {
     off:            'ФУЛЛ_ОФФ',
@@ -40,7 +39,6 @@ function attackLabelAndColor(atk: Attack): { label: string; color: string } {
     mini_off:       'МИНИ_ОФФ',
     cat:            'КАТЫ',
     spam:           'СПАМ',
-    spam_noble:     'СПАМ_ДВОР',
   }
 
   let label: string

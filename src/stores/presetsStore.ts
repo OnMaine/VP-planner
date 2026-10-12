@@ -94,6 +94,7 @@ export interface VillageRole {
   customMax?: number
   customColor?: string         // hex цвет бейджа в результатах (def '#e07b39')
   customImageUrl?: string      // user-uploaded image (data URL or object URL)
+  countAsSpam?: boolean        // считать атаки этого пресета спамом (для подсчёта в BBCode и фильтров карты)
   customUnits?: Partial<Record<string, number>>
   customUnitPct?: Partial<Record<string, number>> // per-unit percentage (1–100); overrides customUnits when set
   customUnitMin?: Partial<Record<string, number>> // per-unit minimum in village troops required for eligibility
@@ -113,7 +114,6 @@ export interface VillageRole {
   // spam
   spamCount?: number               // кол-во спам-атак (def 10)
   spamStrength?: 'weak' | 'strong' | 'full' // слабый / рыжий (1000+) / фуллами (def 'weak')
-  spamNobleCount?: number          // кол-во спам-дворян (def 0)
   spamTrainSize?: number           // размер спам-паровоза (def 0 = нет)
 }
 
@@ -162,9 +162,9 @@ export function defaultColorForRole(type: VillageRoleType, role?: VillageRole): 
 export function defaultRoleForType(type: VillageRoleType): VillageRole {
   switch (type) {
     case 'half_off':   return { type, halfMin: 1001, halfMax: 5000, halfFixedComp: false }
-    case 'custom_off': return { type, customMin: 0, customMax: 99999, customColor: '#e07b39', customUnits: { spear: 0, sword: 0, axe: 0, spy: 0, light: 0, heavy: 0, ram: 0, catapult: 0, knight: 0, snob: 0 } }
+    case 'custom_off': return { type, customMin: 0, customMax: 99999, customColor: '#e07b39', countAsSpam: false, customUnits: { spear: 0, sword: 0, axe: 0, spy: 0, light: 0, heavy: 0, ram: 0, catapult: 0, knight: 0, snob: 0 } }
     case 'cat_squad':  return { type, catMinCats: 50 }
-    case 'spam':       return { type, spamCount: 10, spamStrength: 'weak', spamNobleCount: 0, spamTrainSize: 0 }
+    case 'spam':       return { type, spamCount: 10, spamStrength: 'weak', spamTrainSize: 0 }
     default:           return { type }
   }
 }
@@ -207,7 +207,7 @@ const BUILT_IN: AttackPreset[] = [
     name: 'Time_SPAM',
     description: 'Фейк атака — минимум войск для имитации угрозы',
     builtIn: true,
-    role: { type: 'spam', spamStrength: 'weak', spamNobleCount: 0, spamTrainSize: 0 },
+    role: { type: 'spam', spamStrength: 'weak', spamTrainSize: 0 },
   },
 ]
 

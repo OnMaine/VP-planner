@@ -66,6 +66,16 @@
       </div>
       <span class="vsep" v-if="allEnemies.length > 1" />
 
+      <!-- Волна -->
+      <div class="tb-group" v-if="multiWave">
+        <span class="tb-group-label">Волна</span>
+        <select class="input player-filter" v-model="filterWave" title="Показать атаки только одной волны">
+          <option value="">Все волны</option>
+          <option v-for="(w, i) in planStore.planWaves" :key="w.id" :value="w.id">{{ waveName(i) }}</option>
+        </select>
+      </div>
+      <span class="vsep" v-if="multiWave" />
+
       <!-- Статистика атак -->
       <div class="tb-group">
         <span class="tb-group-label">Атаки</span>
@@ -385,6 +395,7 @@ import { useVillagesStore } from '@/stores/villagesStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { usePresetsStore, CAT_TARGET_LABELS } from '@/stores/presetsStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
+import { useMassConfigStore } from '@/stores/massConfigStore'
 import { useDateFormat } from '@/composables/useDateFormat'
 import { watchtowerIcon } from '@/utils/unitIcons'
 import type { Village } from '@/stores/villagesStore'
@@ -395,7 +406,16 @@ const villagesStore  = useVillagesStore()
 const worldStore     = useWorldStore()
 const presetsStore   = usePresetsStore()
 const enemyStore     = useEnemyDataStore()
+const massConfigStore = useMassConfigStore()
 const { toDatetimeLocal } = useDateFormat()
+
+// Метка волны («Волна N · конфиг») — как в результатах планера.
+function waveName(i: number): string {
+  const w = planStore.planWaves[i]
+  if (!w) return `Волна ${i + 1}`
+  const cfg = massConfigStore.all.find(c => c.id === w.configId)
+  return `Волна ${i + 1} · ${cfg?.name ?? '—'}`
+}
 
 // ── Display toggles ───────────────────────────────────────────────────
 const showTowers      = ref(true)
@@ -406,6 +426,13 @@ const hideAssigned   = ref(false)
 const showLabels      = ref(true)
 const filterPlayer    = ref('')
 const filterEnemy     = ref('')
+const filterWave      = ref('')   // '' = все волны, иначе id волны
+
+const multiWave = computed(() => planStore.planWaves.length > 1)
+// Проходит ли атака фильтр по волне
+function waveMatch(atk: { target: { waveId?: string } }): boolean {
+  return !filterWave.value || atk.target.waveId === filterWave.value
+}
 
 // ── Village pool filter ───────────────────────────────────────────────
 type VillageFilter = 'all' | 'offs' | 'full_off' | 'mid_off' | 'mini_off' | 'breach' | 'paladin' | 'nobles' | 'cat_wave'
@@ -543,7 +570,6 @@ function atkTypeShort(atk: Attack): string {
   const t = atk.type
   if (t === 'paladin_off')    return 'Пал-Офф'
   if (t === 'off')            return 'Офф'
-  if (t === 'spam_noble')     return 'Спам-двор'
   if (t === 'spam')           return 'Спам'
   if (t === 'mid_off')  return 'Медиум'
   if (t === 'mini_off') return 'Мини'
@@ -598,9 +624,10 @@ const uniquePairs = computed<Pair[]>(() => {
   for (const atk of planStore.attacks) {
     if (filterPlayer.value && atk.fromVillage.player !== filterPlayer.value) continue
     if (filterEnemy.value && atk.target.enemyPlayer !== filterEnemy.value) continue
+    if (!waveMatch(atk)) continue
     const key   = `${atk.fromVillage.coords}→${atk.target.coords}`
     const color = atkTypeColor(atk)
-    const isSpam = atk.type === 'spam' || atk.type === 'spam_noble'
+    const isSpam = atk.type === 'spam' || !!atk.countAsSpam
     const ex = map.get(key)
     if (!ex) {
       map.set(key, {
@@ -671,6 +698,7 @@ const attackingCoords = computed(() => {
   let attacks = filterEnemy.value && filterEnemy.value !== '__none__'
     ? planStore.attacks.filter(a => a.target.enemyPlayer === filterEnemy.value)
     : planStore.attacks
+  if (filterWave.value) attacks = attacks.filter(waveMatch)
   if (!showCatMass.value) {
     // exclude villages whose only attacks are cat mass
     const nonCatCoords = new Set(attacks.filter(a => !a.catMass).map(a => a.fromVillage.coords))
@@ -679,7 +707,7 @@ const attackingCoords = computed(() => {
   if (!showSpam.value) {
     // exclude villages whose only attacks are spam (nothing to show when spam hidden)
     const nonSpamCoords = new Set(
-      attacks.filter(a => a.type !== 'spam' && a.type !== 'spam_noble').map(a => a.fromVillage.coords))
+      attacks.filter(a => a.type !== 'spam' && !a.countAsSpam).map(a => a.fromVillage.coords))
     attacks = attacks.filter(a => nonSpamCoords.has(a.fromVillage.coords))
   }
   return new Set(attacks.map(a => a.fromVillage.coords))
@@ -721,7 +749,7 @@ function targetHasAttacks(id: string): boolean {
 function targetBorderColor(id: string): string {
   const atks = attacksByTarget.value.get(id)
   if (!atks || atks.length === 0) return '#45475a'
-  const hasNoble = atks.some(a => a.type.startsWith('noble') || a.type === 'spam_noble')
+  const hasNoble = atks.some(a => (a.composition.snob ?? 0) > 0)
   return hasNoble ? C_NOBLE : C_OFF
 }
 
@@ -996,7 +1024,9 @@ function drawTargets(ctx: CanvasRenderingContext2D) {
   const r     = VS_R / _scale
   const cellW = img ? img.naturalWidth  / VS_COLS : 0
   const cellH = img ? img.naturalHeight / VS_ROWS : 0
-  const targets    = planStore.targets.filter(t => t.coords && (!filterEnemy.value || t.enemyPlayer === filterEnemy.value))
+  const targets    = planStore.targets.filter(t => t.coords
+    && (!filterEnemy.value || t.enemyPlayer === filterEnemy.value)
+    && (!filterWave.value || t.waveId === filterWave.value))
   const towerCoords = new Set(planStore.watchtowerVillages.map(w => w.coords))
 
   for (const t of targets) {
@@ -1367,7 +1397,7 @@ const selectedTarget = computed(() =>
 )
 
 // Спам в детальной панели скрываем так же, как на карте (тумблер «Спам»).
-const isSpamAtk = (a: Attack) => a.type === 'spam' || a.type === 'spam_noble'
+const isSpamAtk = (a: Attack) => a.type === 'spam' || !!a.countAsSpam
 const passesDetailFilters = (a: Attack) =>
   (showSpam.value || !isSpamAtk(a)) &&
   (showCatMass.value || !a.catMass)
@@ -1455,7 +1485,6 @@ const ATK_TYPE_OPTIONS: Array<{ type: AttackType; label: string; color: string }
   { type: 'paladin_off',    label: 'Пал-Офф',  color: C_OFF   },
   { type: 'mid_off',         label: 'Медиум',    color: C_SPLIT },
   { type: 'mini_off',        label: 'Мини',      color: C_SPLIT },
-  { type: 'spam_noble',      label: 'Спам-двор', color: C_NOBLE },
   { type: 'spam',           label: 'Спам',     color: C_SPAM  },
 ]
 
@@ -1605,7 +1634,8 @@ watchEffect(() => {
   const _il = imgLoaded.value
   const _cm = showCatMass.value
   const _ctl = planStore.catTargets.length
-  void [_vp, _rv, _tl, _al, _sv, _si, _hk, _st, _sl, _il, _cm, _ctl]
+  const _fw = filterWave.value
+  void [_vp, _rv, _tl, _al, _sv, _si, _hk, _st, _sl, _il, _cm, _ctl, _fw]
   scheduleFrame()
 })
 

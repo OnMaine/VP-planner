@@ -1,156 +1,130 @@
 <template>
   <section class="panel active-mass-panel">
 
-    <!-- Row 1: config info + timing + edit -->
+    <!-- Заголовок + тайминг выбранной волны -->
     <div class="panel-row panel-row-main">
-      <span class="section-label">Масс-конфиг</span>
-      <span v-if="store.active" class="active-name">{{ store.active.name }}</span>
-      <span v-else class="active-none">не выбран</span>
-      <div v-if="store.active" class="active-chips">
-        <template v-for="slot in store.active.slots" :key="slot.id">
-          <span
-            v-if="slot.enabled"
-            class="chip"
-            :style="chipCustomStyle(slotCustomColor(slot.presetId)!)"
-          >{{ slotLabel(slot.presetId) }} ×{{ slot.count }}</span>
-        </template>
-      </div>
+      <span class="section-label">Настройки волны</span>
+      <span v-if="curWaveInfo?.multi" class="settings-wave-badge">волна {{ curWaveInfo.ordinal }} · {{ curWaveInfo.name }}</span>
       <div class="row-spacer" />
 
-      <span class="time-label">
-        Тайминг
-        <span class="timing-hint" title="Опорное время для цели. От него считаются все атаки: смещение слота задаёт сдвиг относительно этой точки">?</span>
-      </span>
-      <input v-model="arrivalDatetime" type="datetime-local" class="arrival-input" step="0.001"
-        @change="saveArrivalTime()" />
-      <button class="apply-btn" title="Применить ко всем целям" @click="applyArrivalTime">→ всем</button>
-
-      <div class="v-sep-tall" />
-      <RouterLink to="/mass-configs" class="btn btn-secondary btn-sm">Изменить</RouterLink>
-    </div>
-
-    <!-- Row 2: toggles -->
-    <div class="panel-row panel-row-opts">
-      <button
-        :class="['toggle-btn', { 'toggle-on': worldStore.settings.sendExcludeEnabled }]"
-        title="Без ночных: пропускать атаки, отправка которых попадает в ночное окно. Укажи диапазон часов ниже."
-        @click="worldStore.updateSettings({ sendExcludeEnabled: !worldStore.settings.sendExcludeEnabled })"
-      >🌙 Без ночных</button>
-      <transition name="fade">
-        <span v-if="worldStore.settings.sendExcludeEnabled" class="night-range">
-          <input
-            type="number" min="0" max="23" class="night-input"
-            :value="worldStore.settings.nightFrom"
-            @change="worldStore.updateSettings({ nightFrom: +($event.target as HTMLInputElement).value })"
-          />
-          <span class="night-sep">–</span>
-          <input
-            type="number" min="0" max="23" class="night-input"
-            :value="worldStore.settings.nightTo"
-            @change="worldStore.updateSettings({ nightTo: +($event.target as HTMLInputElement).value })"
-          />
-          <span class="night-unit">ч</span>
+      <template v-if="wsettings">
+        <span class="time-label">
+          Тайминг
+          <span class="timing-hint" title="Опорное время для цели этой волны. От него считаются все атаки: смещение слота задаёт сдвиг относительно этой точки">?</span>
         </span>
-      </transition>
-
-      <div class="v-sep" />
-
-      <button
-        :class="['toggle-btn', { 'toggle-on': worldStore.settings.earliestSendEnabled }]"
-        title="Ранний старт: не генерировать атаки, отправка которых раньше указанного времени"
-        @click="toggleEarliest"
-      >⏰ Старт не ранее</button>
-      <transition name="fade">
-        <input
-          v-if="worldStore.settings.earliestSendEnabled"
-          type="datetime-local"
-          class="input earliest-input"
-          step="60"
-          :value="worldStore.settings.earliestSendTime"
-          @change="worldStore.updateSettings({ earliestSendTime: ($event.target as HTMLInputElement).value })"
-        />
-      </transition>
-
-      <div class="v-sep" />
-
-      <button
-        :class="['toggle-btn', { 'toggle-on': worldStore.settings.moraleEnabled }]"
-        title="Мораль: показывать предупреждение если очки атакующего игрока значительно превышают очки защитника. Средний риск — соотношение < 1.5×, высокий — < 1×."
-        @click="worldStore.updateSettings({ moraleEnabled: !worldStore.settings.moraleEnabled })"
-      >⚖ Мораль</button>
-
-      <div class="v-sep" v-if="worldStore.settings.watchtowerEnabled" />
-
-      <button
-        v-if="worldStore.settings.watchtowerEnabled"
-        :class="['toggle-btn', { 'toggle-on': worldStore.settings.watchtowerAvoidEnabled ?? true }]"
-        title="Учитывать башни при распределении: засвеченные деревни уходят в конец очереди подбора"
-        @click="worldStore.updateSettings({ watchtowerAvoidEnabled: !(worldStore.settings.watchtowerAvoidEnabled ?? true) })"
-      >🗼 Башни</button>
-
-      <template v-if="planStore.targets.length > 0">
-        <div class="v-sep" />
+        <input v-model="arrivalDatetime" type="datetime-local" class="arrival-input" step="0.001" />
         <button
-          :class="['toggle-btn', { 'toggle-on': worldStore.settings.frontReserveEnabled }]"
-          title="Авто-резерв фронтовых: деревни ближе N клеток к врагу исключаются из масса"
-          @click="toggleFrontReserve"
-        >🛡 Резерв фронта</button>
-        <transition name="fade">
-          <input
-            v-if="worldStore.settings.frontReserveEnabled"
-            type="number" min="1" max="200"
-            class="input front-dist-input"
-            :value="worldStore.settings.frontReserveDist"
-            @change="onFrontDistChange(+($event.target as HTMLInputElement).value)"
-          />
-        </transition>
-        <span v-if="worldStore.settings.frontReserveEnabled" class="front-count-hint">
-          {{ frontCount }} дер.
-        </span>
+          class="apply-btn"
+          :title="curWaveInfo?.multi ? `Проставить это время ВСЕМ целям волны ${curWaveInfo.ordinal} (${curWaveInfo.name}) — другие волны не трогает` : 'Проставить это время всем целям'"
+          @click="applyArrivalTime"
+        >{{ curWaveInfo?.multi ? `→ целям волны ${curWaveInfo.ordinal}` : '→ всем целям' }}</button>
       </template>
     </div>
 
-    <!-- Row 3: distribution selects -->
-    <div class="panel-row panel-row-selects">
-      <span class="opts-label">Распределение</span>
-      <select
-        class="input dist-select"
-        :value="planStore.offDistribution"
-        title="Алгоритм распределения офов по целям"
-        @change="planStore.setOffDistribution(($event.target as HTMLSelectElement).value as 'default' | 'fair' | 'far_first' | 'max_coverage')"
-      >
-        <option value="far_first">Дальние вперёд</option>
-        <option value="fair">Справедливо</option>
-        <option value="default">Жадно</option>
-        <option value="max_coverage">Максимальное покрытие</option>
-      </select>
+    <template v-if="wsettings">
+      <!-- Пер-волновые тумблеры -->
+      <div class="panel-row panel-row-opts">
+        <button
+          :class="['toggle-btn', { 'toggle-on': wsettings.sendExcludeEnabled }]"
+          title="Без ночных: пропускать атаки, отправка которых попадает в ночное окно. Укажи диапазон часов ниже."
+          @click="setWS({ sendExcludeEnabled: !wsettings.sendExcludeEnabled })"
+        >🌙 Без ночных</button>
+        <transition name="fade">
+          <span v-if="wsettings.sendExcludeEnabled" class="night-range">
+            <input type="number" min="0" max="23" class="night-input"
+              :value="wsettings.nightFrom"
+              @change="setWS({ nightFrom: +($event.target as HTMLInputElement).value })" />
+            <span class="night-sep">–</span>
+            <input type="number" min="0" max="23" class="night-input"
+              :value="wsettings.nightTo"
+              @change="setWS({ nightTo: +($event.target as HTMLInputElement).value })" />
+            <span class="night-unit">ч</span>
+          </span>
+        </transition>
 
-      <div class="v-sep" />
+        <div class="v-sep" />
 
-      <span class="opts-label">Дворяне</span>
-      <select
-        class="input dist-select"
-        :value="worldStore.settings.noblePollMode ?? 'real'"
-        @change="worldStore.updateSettings({ noblePollMode: ($event.target as HTMLSelectElement).value as 'real' | 'virtual' })"
-        title="Источник дворян для расчёта пула"
-      >
-        <option value="real">Реальные</option>
-        <option value="virtual">Виртуальные</option>
-      </select>
+        <button
+          :class="['toggle-btn', { 'toggle-on': wsettings.earliestSendEnabled }]"
+          title="Ранний старт: не генерировать атаки, отправка которых раньше указанного времени"
+          @click="toggleEarliest"
+        >⏰ Старт не ранее</button>
+        <transition name="fade">
+          <input v-if="wsettings.earliestSendEnabled" type="datetime-local" class="input earliest-input" step="60"
+            :max="wsettings.arrivalTime || undefined"
+            :value="wsettings.earliestSendTime"
+            @change="onEarliestChange(($event.target as HTMLInputElement).value)" />
+        </transition>
 
-      <div class="v-sep" />
+        <div class="v-sep" />
 
-      <span class="opts-label">Паладины</span>
-      <select
-        class="input dist-select"
-        :value="worldStore.settings.paladinMode ?? 'none'"
-        @change="worldStore.updateSettings({ paladinMode: ($event.target as HTMLSelectElement).value as 'auto' | 'manual' | 'none' })"
-        title="Режим определения офф-паладинов"
-      >
-        <option value="none">Не распределять</option>
-        <option value="manual">Вручную</option>
-        <option value="auto">Автоматически</option>
-      </select>
+        <button
+          :class="['toggle-btn', { 'toggle-on': wsettings.moraleEnabled }]"
+          title="Мораль: предупреждать, если очки атакующего значительно превышают очки защитника."
+          @click="setWS({ moraleEnabled: !wsettings.moraleEnabled })"
+        >⚖ Мораль</button>
+
+        <div v-if="worldStore.settings.watchtowerEnabled" class="v-sep" />
+        <button
+          v-if="worldStore.settings.watchtowerEnabled"
+          :class="['toggle-btn', { 'toggle-on': wsettings.watchtowerAvoidEnabled }]"
+          title="Башни: засвеченные деревни уходят в конец очереди подбора — только для этой волны"
+          @click="setWS({ watchtowerAvoidEnabled: !wsettings.watchtowerAvoidEnabled })"
+        >🗼 Башни</button>
+
+        <div class="v-sep" />
+        <button
+          :class="['toggle-btn', { 'toggle-on': wsettings.frontReserveEnabled }]"
+          title="Резерв фронта: деры в радиусе N полей от целей ЭТОЙ волны не берутся как источники"
+          @click="setWS({ frontReserveEnabled: !wsettings.frontReserveEnabled })"
+        >🛡 Резерв фронта</button>
+        <transition name="fade">
+          <span v-if="wsettings.frontReserveEnabled" class="night-range">
+            <input type="number" min="1" max="200" class="input front-dist-input"
+              :value="wsettings.frontReserveDist"
+              @change="setWS({ frontReserveDist: +($event.target as HTMLInputElement).value })" />
+            <span class="night-unit">полей</span>
+          </span>
+        </transition>
+      </div>
+
+      <!-- Пер-волновое распределение -->
+      <div class="panel-row panel-row-selects">
+        <span class="opts-label">Распределение</span>
+        <select class="input dist-select" :value="wsettings.offDistribution"
+          title="Алгоритм распределения офов по целям этой волны"
+          @change="setWS({ offDistribution: ($event.target as HTMLSelectElement).value as 'default' | 'fair' | 'far_first' | 'max_coverage' })">
+          <option value="far_first">Дальние вперёд</option>
+          <option value="fair">Справедливо</option>
+          <option value="default">Жадно</option>
+          <option value="max_coverage">Максимальное покрытие</option>
+        </select>
+      </div>
+    </template>
+    <div v-else class="settings-empty-hint">Добавь волну в «Волны плана», чтобы настроить генерацию.</div>
+
+    <!-- Общие для плана (не пер-волну) -->
+    <div class="global-section">
+      <span class="global-label">Общие для плана</span>
+
+      <div class="global-selects">
+        <span class="opts-label">Дворяне</span>
+        <select class="input dist-select" :value="worldStore.settings.noblePollMode ?? 'real'"
+          @change="worldStore.updateSettings({ noblePollMode: ($event.target as HTMLSelectElement).value as 'real' | 'virtual' })"
+          title="Источник дворян для расчёта пула (глобально для плана)">
+          <option value="real">Реальные</option>
+          <option value="virtual">Виртуальные</option>
+        </select>
+
+        <span class="opts-label">Паладины</span>
+        <select class="input dist-select" :value="worldStore.settings.paladinMode ?? 'none'"
+          @change="worldStore.updateSettings({ paladinMode: ($event.target as HTMLSelectElement).value as 'auto' | 'manual' | 'none' })"
+          title="Режим определения офф-паладинов (глобально для плана)">
+          <option value="none">Не распределять</option>
+          <option value="manual">Вручную</option>
+          <option value="auto">Автоматически</option>
+        </select>
+      </div>
     </div>
 
     <p v-if="virtualNobleFilterIgnored" class="virtual-noble-note">
@@ -167,8 +141,6 @@ import { useMassConfigStore } from '@/stores/massConfigStore'
 import { usePresetsStore, defaultColorForRole } from '@/stores/presetsStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { usePlanStore } from '@/stores/planStore'
-import { useVillagesStore } from '@/stores/villagesStore'
-import { calcDistance } from '@/utils/coords'
 import { useDateFormat } from '@/composables/useDateFormat'
 
 const store = useMassConfigStore()
@@ -176,22 +148,20 @@ const presetsStore = usePresetsStore()
 const worldStore = useWorldStore()
 const planStore = usePlanStore()
 
-// Виртуальный режим + в активном конфиге есть паравоз с фильтром «мин/макс дворов в дере»
+// Виртуальный режим + в каком-либо конфиге волн есть паравоз с фильтром «мин/макс дворов в дере»
 const virtualNobleFilterIgnored = computed(() => {
   if ((worldStore.settings.noblePollMode ?? 'real') === 'real') return false
-  const cfg = store.active
-  if (!cfg) return false
-  return cfg.slots.some(slot => {
-    if (!slot.enabled) return false
-    const role = presetsStore.all.find(p => p.id === slot.presetId)?.role
-    if (!role || role.type !== 'custom_off') return false
-    const snobSpec = (role.customUnits?.snob as number | undefined) ?? -1
-    if (snobSpec <= 0) return false
-    return !!(role.customUnitMin?.snob || role.customUnitMax?.snob)
-  })
+  const usedConfigIds = new Set(planStore.planWaves.map(w => w.configId))
+  return store.all.filter(c => usedConfigIds.has(c.id)).some(cfg =>
+    cfg.slots.some(slot => {
+      if (!slot.enabled) return false
+      const role = presetsStore.all.find(p => p.id === slot.presetId)?.role
+      if (!role || role.type !== 'custom_off') return false
+      const snobSpec = (role.customUnits?.snob as number | undefined) ?? -1
+      if (snobSpec <= 0) return false
+      return !!(role.customUnitMin?.snob || role.customUnitMax?.snob)
+    }))
 })
-const villagesStore = useVillagesStore()
-
 const { toDatetimeLocal } = useDateFormat()
 
 function slotChipClass(presetId: string): string {
@@ -216,78 +186,64 @@ function slotLabel(presetId: string): string {
   return presetsStore.all.find(p => p.id === presetId)?.name ?? presetId
 }
 
-const LS_ARRIVAL = 'vp_mass_arrival_time'
-const arrivalDatetime = ref(localStorage.getItem(LS_ARRIVAL) ?? toDatetimeLocal(new Date(Math.floor((Date.now() + 3600_000) / 1000) * 1000)))
-
-function saveArrivalTime(): void {
-  localStorage.setItem(LS_ARRIVAL, arrivalDatetime.value)
+// ── Выбранная волна и её настройки (пер-волновые) ──────────────────────────
+import type { WaveSettings } from '@/stores/planStore'
+const curWaveId = computed(() => planStore.selectedWaveId ?? planStore.planWaves[0]?.id ?? null)
+const curWave = computed(() => planStore.planWaves.find(w => w.id === curWaveId.value) ?? null)
+const wsettings = computed<WaveSettings | null>(() => curWave.value?.settings ?? null)
+const curWaveInfo = computed(() => {
+  const idx = planStore.planWaves.findIndex(w => w.id === curWaveId.value)
+  if (idx < 0) return null
+  const cfg = store.all.find(c => c.id === planStore.planWaves[idx].configId)
+  return { ordinal: idx + 1, name: cfg?.name ?? '(конфиг удалён)', multi: planStore.planWaves.length > 1 }
+})
+function setWS(partial: Partial<WaveSettings>): void {
+  if (curWaveId.value) planStore.updateWaveSettings(curWaveId.value, partial)
 }
 
+const DEFAULT_ARRIVAL = toDatetimeLocal(new Date(Math.floor((Date.now() + 3600_000) / 1000) * 1000))
+const arrivalDatetime = computed<string>({
+  get: () => wsettings.value?.arrivalTime || DEFAULT_ARRIVAL,
+  set: (v) => setWS({ arrivalTime: v }),
+})
+
+// «→ всем» — применяет опорное время к целям ЭТОЙ волны (или ко всем при одной волне).
 function applyArrivalTime(): void {
   const d = new Date(arrivalDatetime.value)
   if (isNaN(d.getTime())) return
-  for (const t of planStore.targets) planStore.updateTarget(t.id, { arrivalTime: d })
+  const wid = curWaveId.value
+  const multi = planStore.planWaves.length > 1
+  for (const t of planStore.targets) {
+    if (multi && t.waveId !== wid) continue
+    planStore.updateTarget(t.id, { arrivalTime: d })
+  }
 }
 
-// Toggle "старт не ранее"; when enabling with no time set, seed it with the
-// current local time so the filter is immediately active and visible.
+// Toggle "старт не ранее" выбранной волны; при включении без времени — текущее.
 function nowLocalInput(): string {
   const d = new Date()
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 function toggleEarliest(): void {
-  const enabled = !worldStore.settings.earliestSendEnabled
-  const patch: { earliestSendEnabled: boolean; earliestSendTime?: string } = { earliestSendEnabled: enabled }
-  if (enabled && !worldStore.settings.earliestSendTime) patch.earliestSendTime = nowLocalInput()
-  worldStore.updateSettings(patch)
+  const s = wsettings.value
+  if (!s) return
+  const enabled = !s.earliestSendEnabled
+  const patch: Partial<WaveSettings> = { earliestSendEnabled: enabled }
+  if (enabled && !s.earliestSendTime) patch.earliestSendTime = nowLocalInput()
+  setWS(patch)
 }
 
-// ── Front reserve ─────────────────────────────────────────────────────────
-const frontReservedCoords = ref<Set<string>>(new Set())
-
-function computeFront(dist: number): string[] {
-  const mapSize = worldStore.settings.mapSize
-  const targets = planStore.targets
-  const result: string[] = []
-  for (const v of villagesStore.villages) {
-    for (const t of targets) {
-      if (calcDistance({ x: v.x, y: v.y }, { x: t.x, y: t.y }, mapSize) <= dist) {
-        result.push(v.coords); break
-      }
-    }
-  }
-  return result
+// Старт не ранее не может быть позже тайминга (прихода) — атака не отправляется
+// после приземления. Если задали позже — зажимаем к времени прихода.
+function onEarliestChange(val: string): void {
+  const arr = wsettings.value?.arrivalTime
+  const clamped = arr && val && val > arr ? arr : val
+  setWS({ earliestSendTime: clamped })
 }
 
-function applyFront(dist: number): void {
-  const coords = computeFront(dist)
-  frontReservedCoords.value = new Set(coords)
-  const merged = new Set([...planStore.reservedVillages, ...coords])
-  // Remove old front reserved, add new
-  const nonFront = [...planStore.reservedVillages].filter(c => !frontReservedCoords.value.has(c))
-  planStore.setReservedVillages([...new Set([...nonFront, ...coords])])
-}
-
-function clearFront(): void {
-  const remaining = [...planStore.reservedVillages].filter(c => !frontReservedCoords.value.has(c))
-  planStore.setReservedVillages(remaining)
-  frontReservedCoords.value = new Set()
-}
-
-function toggleFrontReserve(): void {
-  const next = !worldStore.settings.frontReserveEnabled
-  worldStore.updateSettings({ frontReserveEnabled: next })
-  if (next) applyFront(worldStore.settings.frontReserveDist)
-  else clearFront()
-}
-
-function onFrontDistChange(dist: number): void {
-  worldStore.updateSettings({ frontReserveDist: dist })
-  if (worldStore.settings.frontReserveEnabled) applyFront(dist)
-}
-
-const frontCount = computed(() => frontReservedCoords.value.size)
+// Резерв фронта теперь пер-волновый и считается в самой генерации
+// (из целей волны + её радиуса), поэтому здесь ничего вычислять не нужно.
 </script>
 
 <style lang="scss" scoped>
@@ -298,6 +254,17 @@ const frontCount = computed(() => frontReservedCoords.value.size)
   flex-direction: column;
   gap: 0;
 }
+
+.mass-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0.2rem;
+}
+.mass-empty-title { font-weight: 700; font-size: 0.95rem; color: $text; }
+.mass-empty-text  { margin: 0; font-size: 0.82rem; color: $text-dim; line-height: 1.4; }
+.mass-empty-btn   { margin-top: 0.2rem; text-decoration: none; }
 
 // ── Row layout ────────────────────────────────────────────────────────────
 .panel-row {
@@ -353,6 +320,33 @@ const frontCount = computed(() => frontReservedCoords.value.size)
 }
 
 .active-none { color: $text-faint; font-style: italic; font-size: 0.85rem; }
+
+.settings-wave-badge {
+  font-size: 0.72rem; font-weight: 600; color: $green;
+  background: a($green, 0.12); border: 1px solid a($green, 0.3);
+  border-radius: 999px; padding: 0.05rem 0.5rem; white-space: nowrap; flex-shrink: 0;
+}
+.settings-empty-hint {
+  margin-top: 0.5rem; padding: 0.5rem 0.2rem; font-size: 0.82rem; color: $text-dim;
+}
+.global-section {
+  border-top: 1px solid a($border, 0.6);
+  margin-top: 0.5rem; padding-top: 0.55rem;
+}
+.global-label {
+  display: block; margin-bottom: 0.1rem;
+  font-size: 0.7rem; font-weight: 700; color: $orange;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.global-toggles { border-top: none; margin-top: 0.35rem; padding-top: 0; }
+.global-selects {
+  margin-top: 0.4rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.6rem;
+  align-items: center;
+  .dist-select { width: 100%; }
+}
 
 .virtual-noble-note {
   margin: 0.6rem 0 0;

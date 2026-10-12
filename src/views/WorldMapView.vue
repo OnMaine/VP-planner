@@ -607,7 +607,7 @@ const uniquePairs = computed<Pair[]>(() => {
   for (const atk of planStore.attacks) {
     const key    = `${atk.fromVillage.coords}→${atk.target.coords}`
     const color  = atkColor(atk)
-    const isSpam = atk.type === 'spam' || atk.type === 'spam_noble'
+    const isSpam = atk.type === 'spam' || !!atk.countAsSpam
     const ex     = map.get(key)
     if (!ex) {
       map.set(key, {

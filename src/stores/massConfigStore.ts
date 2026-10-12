@@ -69,9 +69,9 @@ export const useMassConfigStore = defineStore('massConfig', () => {
   const all      = computed<MassConfig[]>(() => custom.value)
   const activeId = ref<string | null>(localStorage.getItem(LS_ACTIVE))
 
-  const active = computed<MassConfig | null>(
-    () => all.value.find((c) => c.id === activeId.value) ?? all.value[0] ?? null
-  )
+  // Концепт «активного» конфига убран из UI. Конфиг по умолчанию (дефолтная
+  // волна / фолбэк для целей без явной привязки) = первый в списке.
+  const active = computed<MassConfig | null>(() => all.value[0] ?? null)
 
   function setActive(id: string) {
     activeId.value = id

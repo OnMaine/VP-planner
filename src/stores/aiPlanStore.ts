@@ -24,7 +24,6 @@ export interface AIPresetSpec {
   // spam
   spamCount?: number
   spamStrength?: 'weak' | 'strong' | 'full'
-  spamNobleCount?: number
   spamTrainSize?: number
 }
 
@@ -60,7 +59,7 @@ const SYSTEM = `Ты — ИИ-помощник для планирования �
 - Офф (full_off) — все атак. войска: топоры + лёгкая кав + тараны
 - Медиум офф (half_off) — часть оффа, halfMin–halfMax юнитов
 - Кат отряд (cat_squad) — катапульты + сопровождение
-- Спам (spam) — weak=фейки; spamNobleCount=фейк-дворяне; spamTrainSize=паровоз
+- Спам (spam) — weak=фейки; spamTrainSize=паровоз
 - Кастомный (custom_off) — полностью настраиваемый состав
 
 Встроенные пресеты (используй в slots[].preset_ref):
@@ -94,7 +93,6 @@ const PRESET_SPEC_SCHEMA = {
     nobleIncluded: { type: 'boolean', description: 'Включить двор в атаку (full_off)' },
     spamCount:    { type: 'number', description: 'Кол-во спам атак (spam)' },
     spamStrength: { type: 'string', enum: ['weak','strong','full'] },
-    spamNobleCount: { type: 'number' },
     spamTrainSize:  { type: 'number' },
   },
   required: ['ref_id', 'name', 'type'],
@@ -237,7 +235,6 @@ export const useAIPlanStore = defineStore('aiPlan', () => {
           ...(spec.nobleIncluded  != null ? { nobleIncluded:  spec.nobleIncluded }  : {}),
           ...(spec.spamCount      != null ? { spamCount:      spec.spamCount }      : {}),
           ...(spec.spamStrength   != null ? { spamStrength:   spec.spamStrength }   : {}),
-          ...(spec.spamNobleCount != null ? { spamNobleCount: spec.spamNobleCount } : {}),
           ...(spec.spamTrainSize  != null ? { spamTrainSize:  spec.spamTrainSize }  : {}),
         }
         const created = presStore.add({

@@ -115,9 +115,10 @@
                     <td class="mono dur">{{ formatDur(row.representative.sendTime, row.representative.arrivalTime) }}</td>
                     <td class="mono nowrap">
                       <RouterLink :to="`/import?highlight=${row.representative.fromVillage.coords}`" class="coords-link">{{ row.representative.fromVillage.coords }}</RouterLink> → {{ row.representative.target.coords }}
+                      <span v-if="waveOrdinalForTarget(row.representative.target)" class="wave-inline-tag" :title="`Волна ${waveOrdinalForTarget(row.representative.target)}`">в{{ waveOrdinalForTarget(row.representative.target) }}</span>
                       <span v-if="row.representative.target.label" class="muted-small">({{ row.representative.target.label }})</span>
                     </td>
-                    <td class="nowrap">
+                    <td class="units-cell">
                       <span class="wt-icon">
                         <img :src="attackSizeIcon(row.representative.watchtowerColor)" class="attack-size-icon" />
                       </span>
@@ -178,23 +179,37 @@
           <span class="collapse-icon">{{ openResultsPanel ? '▲' : '▼' }}</span>
         </button>
         <template v-if="openResultsPanel">
+        <div v-if="multiWave" class="wave-mode-bar">
+          <span class="wave-mode-label">Показ:</span>
+          <button :class="['wave-mode-btn', { on: resultWaveMode === 'all' }]" @click="resultWaveMode = 'all'">Все волны</button>
+          <button :class="['wave-mode-btn', { on: resultWaveMode === 'byWave' }]" @click="resultWaveMode = 'byWave'">По волнам</button>
+          <span class="wave-mode-sep"></span>
+          <button
+            v-for="(w, i) in planStore.planWaves"
+            :key="w.id"
+            :class="['wave-mode-btn', 'wave-mode-btn--wave', { on: resultWaveMode === w.id }]"
+            :title="`Только ${waveName(i)}`"
+            @click="resultWaveMode = w.id"
+          >{{ waveName(i) }}</button>
+        </div>
+        <template v-for="{ id, coords, attacks: tgtAttacks, waveHeader } in orderedTargetEntries" :key="id">
+        <div v-if="waveHeader" class="wave-result-section-head">{{ waveHeader }}</div>
         <div
-          v-for="[coords, tgtAttacks] in attacksByTarget"
-          :key="coords"
-          :class="['player-block', { 'player-block--shortage': issueCoords.has(coords) }]"
+          :class="['player-block', { 'player-block--shortage': issueIds.has(id) }]"
         >
-          <button :class="['collapse-toggle player-toggle', { 'toggle--shortage': issueCoords.has(coords) }]" @click="toggleTarget(coords)">
+          <button :class="['collapse-toggle player-toggle', { 'toggle--shortage': issueIds.has(id) }]" @click="toggleTarget(id)">
             <span>
               <span class="player-name-label">{{ coords }}</span>
               <span v-if="tgtAttacks[0].target.enemyPlayer" class="target-player-label">{{ tgtAttacks[0].target.enemyPlayer }}</span>
               <span class="player-attack-count">({{ tgtAttacks.filter(a => !a.excluded).length }} / {{ tgtAttacks.length }} атак)</span>
+              <span v-if="resultWaveMode === 'all' && waveLabelForTarget(tgtAttacks[0].target)" class="wave-result-tag">{{ waveLabelForTarget(tgtAttacks[0].target) }}</span>
               <span v-if="tgtAttacks.some(a => a.catMass)" class="cat-wave-tag">кат волна</span>
-              <span v-if="issueCoords.has(coords)" class="shortage-tag" :title="issuesByCoords.get(coords)?.join('\n')">⚠ не хватило</span>
+              <span v-if="issueIds.has(id)" class="shortage-tag" :title="issuesById.get(id)?.join('\n')">⚠ не хватило</span>
             </span>
-            <span class="collapse-icon">{{ openTargets.has(coords) ? '▲' : '▼' }}</span>
+            <span class="collapse-icon">{{ openTargets.has(id) ? '▲' : '▼' }}</span>
           </button>
 
-          <div v-if="openTargets.has(coords)" class="mt">
+          <div v-if="openTargets.has(id)" class="mt">
             <div class="table-wrap">
               <table class="mini-table attack-table">
                 <thead>
@@ -233,7 +248,7 @@
                       <RouterLink :to="`/import?highlight=${row.representative.fromVillage.coords}`" class="coords-link">{{ row.representative.fromVillage.coords }}</RouterLink>
                     </td>
                     <td>{{ row.representative.fromVillage.player }}</td>
-                    <td class="nowrap">
+                    <td class="units-cell">
                       <span class="wt-icon">
                         <img :src="attackSizeIcon(row.representative.watchtowerColor)" class="attack-size-icon" />
                       </span>
@@ -278,8 +293,8 @@
                     </td>
                   </tr>
                   <tr
-                    v-for="(ghost, gi) in ghostRowsFor(coords, tgtAttacks[0].target.arrivalTime)"
-                    :key="`ghost-${coords}-${gi}`"
+                    v-for="(ghost, gi) in ghostRowsFor(id, coords, tgtAttacks[0].target.arrivalTime)"
+                    :key="`ghost-${id}-${gi}`"
                     class="row-ghost"
                   >
                     <td><span class="type-badge badge-ghost">{{ ghost.label }}</span></td>
@@ -300,6 +315,7 @@
             </div>
           </div>
         </div>
+        </template><!-- end v-for orderedTargetEntries -->
         </template><!-- end v-if="openResultsPanel" -->
       </section>
     </template>
@@ -309,18 +325,19 @@
       <section class="panel results-panel">
         <div class="issues-head-row">
           <h3 class="issues-title">Проблемные деревни ({{ problemTargets.length }})</h3>
-          <span class="issues-hint">Для каждой цели — причина нехватки. «Заглушить» — убрать цель: её войска вернутся в пул на след. генерации, а сама цель больше не участвует.</span>
+          <span class="issues-hint">Для каждой цели — причина нехватки. «Заглушить» — выключить цель из генерации (войска свободны). Цель остаётся в списке и помечается «заглушена» — вернуть можно в «Целях».</span>
         </div>
 
         <div v-if="!problemTargets.length" class="issues-empty">Нет проблемных целей — всем хватило войск 🎉</div>
 
-        <div v-for="p in problemTargets" :key="p.coords" class="issue-block">
+        <div v-for="p in problemTargets" :key="p.id" class="issue-block">
           <div class="issue-head">
             <span class="player-name-label">{{ p.coords }}</span>
             <span v-if="p.enemyPlayer" class="target-player-label">{{ p.enemyPlayer }}</span>
             <span class="player-attack-count">({{ p.assigned }} / {{ p.total }} атак)</span>
+            <span v-if="p.waveLabel" class="wave-result-tag">{{ p.waveLabel }}</span>
             <span v-if="p.diag" class="issue-reason" :class="`reason--${p.diag.reason}`">{{ p.diag.label }}</span>
-            <button class="issue-mute-btn" title="Убрать цель из масса — войска вернутся в пул на след. генерации" @click="muteTarget(p.id)">✕ Заглушить</button>
+            <button class="issue-mute-btn" title="Выключить цель из генерации (обратимо) — войска свободны, цель остаётся в списке" @click="muteTarget(p.id)">🔇 Заглушить</button>
           </div>
           <div v-if="p.diag" class="issue-diag">
             <div class="issue-diag-text">{{ p.diag.detail }}</div>
@@ -389,10 +406,34 @@ import type { CatTarget } from '@/stores/presetsStore'
 import { useDateFormat } from '@/composables/useDateFormat'
 import { UNIT_ICONS, attackSmall, attackMedium, attackLarge } from '@/utils/unitIcons'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'
+import { useMassConfigStore } from '@/stores/massConfigStore'
 
 const planStore = usePlanStore()
 const enemyStore = useEnemyDataStore()
+const massConfigStore = useMassConfigStore()
 const { formatDT } = useDateFormat()
+
+// Метка волны цели (показываем только когда волн несколько).
+function waveLabelForTarget(target: { waveId?: string }): string | null {
+  if (planStore.planWaves.length <= 1) return null
+  const idx = planStore.planWaves.findIndex(w => w.id === target.waveId)
+  if (idx < 0) return null
+  const cfg = massConfigStore.all.find(c => c.id === planStore.planWaves[idx].configId)
+  return `волна ${idx + 1} · ${cfg?.name ?? '—'}`
+}
+// Метка волны по индексу — для кнопок фильтра («Волна N · конфиг»).
+function waveName(i: number): string {
+  const w = planStore.planWaves[i]
+  if (!w) return `Волна ${i + 1}`
+  const cfg = massConfigStore.all.find(c => c.id === w.configId)
+  return `Волна ${i + 1} · ${cfg?.name ?? '—'}`
+}
+// Номер волны цели (для компактной метки в строках «По игрокам»).
+function waveOrdinalForTarget(target: { waveId?: string }): number | null {
+  if (planStore.planWaves.length <= 1) return null
+  const i = planStore.planWaves.findIndex(w => w.id === target.waveId)
+  return i < 0 ? null : i + 1
+}
 
 function formatTime(d: Date): string {
   const p2 = (n: number) => String(n).padStart(2, '0')
@@ -418,7 +459,7 @@ interface AttackRow {
   attacks: Attack[]
   representative: Attack
   lastArrival?: Date   // set when trainGroupId groups multiple attacks
-  nobleCount?: number  // number of spam_noble attacks in group
+  nobleCount?: number  // number of noble attacks in group
 }
 
 function groupAttacks(list: Attack[]): AttackRow[] {
@@ -449,53 +490,56 @@ function groupAttacks(list: Attack[]): AttackRow[] {
 const openPlayers = ref<Set<string>>(new Set())
 const openTargets = ref<Set<string>>(new Set())
 
-const issueCoords = computed(() => new Set(planStore.generationIssues.map(i => i.targetCoords)))
+function issueMsg(issue: typeof planStore.generationIssues[number]): string {
+  const slot = issue.slotName ? `[${issue.slotName}] ` : ''
+  if (issue.type === 'OFFS_SHORT') {
+    if (issue.generated > 0) return `${slot}Оффы: нужно ${issue.requested}, получено ${issue.generated}`
+    const reason =
+      issue.offsReason === 'pool_depleted' ? 'пул исчерпан' :
+      issue.offsReason === 'night_excluded' ? 'ночной режим' :
+      issue.offsReason === 'no_eligible'    ? 'нет подходящих деревень' :
+      'нет деревень'
+    return `${slot}Оффы: 0 из ${issue.requested} (${reason})`
+  }
+  if (issue.type === 'NOBLES_SHORT') return `${slot}Дворяне: нужно ${issue.requested}, получено ${issue.generated}`
+  return `${slot}Спам: нужно ${issue.requested}, получено ${issue.generated}`
+}
 
-const issuesByCoords = computed(() => {
+// По конкретной цели (id) — чтобы при дублях кор между волнами проблемы не смешивались.
+const issuesById = computed(() => {
   const m = new Map<string, string[]>()
   for (const issue of planStore.generationIssues) {
-    if (!m.has(issue.targetCoords)) m.set(issue.targetCoords, [])
-    const slot = issue.slotName ? `[${issue.slotName}] ` : ''
-    let msg: string
-    if (issue.type === 'OFFS_SHORT') {
-      if (issue.generated > 0) {
-        msg = `${slot}Оффы: нужно ${issue.requested}, получено ${issue.generated}`
-      } else {
-        const reason =
-          issue.offsReason === 'pool_depleted' ? 'пул исчерпан' :
-          issue.offsReason === 'night_excluded' ? 'ночной режим' :
-          issue.offsReason === 'no_eligible'    ? 'нет подходящих деревень' :
-          'нет деревень'
-        msg = `${slot}Оффы: 0 из ${issue.requested} (${reason})`
-      }
-    } else if (issue.type === 'NOBLES_SHORT') {
-      msg = `${slot}Дворяне: нужно ${issue.requested}, получено ${issue.generated}`
-    } else {
-      msg = `${slot}Спам: нужно ${issue.requested}, получено ${issue.generated}`
-    }
-    m.get(issue.targetCoords)!.push(msg)
+    if (!issue.targetId) continue
+    if (!m.has(issue.targetId)) m.set(issue.targetId, [])
+    m.get(issue.targetId)!.push(issueMsg(issue))
   }
   return m
 })
+const issueIds = computed(() => new Set(issuesById.value.keys()))
 
-// Problem targets: those with generation issues (something ran short).
+// Problem targets: по КОНКРЕТНОЙ цели (id) — дубли кор между волнами разнесены.
 const problemTargets = computed(() => {
-  const coordsList = [...new Set(planStore.generationIssues.map(i => i.targetCoords))]
-  return coordsList
-    .map(coords => {
-      const target = planStore.targets.find(t => t.coords === coords)
-      const atks = attacksByTarget.value.get(coords) ?? []
+  const ids = [...new Set(planStore.generationIssues.map(i => i.targetId).filter((x): x is string => !!x))]
+  return ids
+    .map(id => {
+      const target = planStore.targets.find(t => t.id === id)
+      if (!target) return null
+      const atks = planStore.attacksByTarget.get(id) ?? []
+      // Диагностика пула (off-причина) нужна только для целей с офф/дворянским недобором.
+      const hasOffIssue = planStore.generationIssues.some(i =>
+        i.targetId === id && (i.type === 'OFFS_SHORT' || i.type === 'NOBLES_SHORT'))
       return {
-        coords,
-        id: target?.id,
-        enemyPlayer: target?.enemyPlayer ?? atks[0]?.target.enemyPlayer,
+        coords: target.coords,
+        id,
+        waveLabel: waveLabelForTarget(target),
+        enemyPlayer: target.enemyPlayer ?? atks[0]?.target.enemyPlayer,
         assigned: atks.filter(a => !a.excluded).length,
         total: atks.length,
-        issues: issuesByCoords.value.get(coords) ?? [],
-        diag: planStore.targetShortageDiagnosis.get(coords),
+        issues: issuesById.value.get(id) ?? [],
+        diag: hasOffIssue ? planStore.targetShortageDiagnosis.get(target.coords) : undefined,
       }
     })
-    .filter(p => p.id)   // only targets still present
+    .filter((p): p is NonNullable<typeof p> => !!p)
     // Most problems first; tie-break by coords for stable order.
     .sort((a, b) => b.issues.length - a.issues.length || a.coords.localeCompare(b.coords))
 })
@@ -503,13 +547,14 @@ const problemTargets = computed(() => {
 // Remove a problem target: frees its reserved troops (they return to the pool
 // on the next generation) and drops it from the target list.
 function muteTarget(id?: string): void {
-  if (id) planStore.removeTarget(id)
+  if (id) planStore.setTargetMuted(id, true)
 }
 
 interface GhostRow { label: string; arrivalTime: Date; missing: number; reason: string }
 
-function ghostRowsFor(coords: string, arrivalTime: Date): GhostRow[] {
-  const issues = planStore.generationIssues.filter(i => i.targetCoords === coords)
+function ghostRowsFor(targetId: string, coords: string, arrivalTime: Date): GhostRow[] {
+  // Фильтруем по конкретной цели (id); фолбэк на коры для старых issue без id.
+  const issues = planStore.generationIssues.filter(i => i.targetId ? i.targetId === targetId : i.targetCoords === coords)
   const rows: GhostRow[] = []
   for (const issue of issues) {
     const missing = issue.requested - issue.generated
@@ -535,23 +580,55 @@ const openPlayersPanel = ref(true)
 const openResultsPanel = ref(true)
 const openBBPanel = ref(true)
 
-const attacksByTarget = computed(() => {
-  const map = new Map<string, Attack[]>()
+// Режим отображения результатов «По деревням»: 'all' — все подряд, 'byWave' —
+// секциями по волнам, либо id конкретной волны — только её цели.
+const resultWaveMode = ref<string>('all')
+const multiWave = computed(() => planStore.planWaves.length > 1)
+
+interface TargetEntry { id: string; coords: string; attacks: Attack[]; waveHeader?: string }
+// Группируем по target.id (а не по корам) — одни коры в разных волнах = разные блоки.
+const orderedTargetEntries = computed<TargetEntry[]>(() => {
+  const byId = new Map<string, TargetEntry>()
   for (const atk of planStore.attacks) {
-    const key = atk.target.coords
-    if (!map.has(key)) map.set(key, [])
-    map.get(key)!.push(atk)
+    const id = atk.target.id
+    if (!byId.has(id)) byId.set(id, { id, coords: atk.target.coords, attacks: [] })
+    byId.get(id)!.attacks.push(atk)
   }
-  // Sort each group by arrival time
-  for (const attacks of map.values()) {
-    attacks.sort((a, b) => a.arrivalTime.getTime() - b.arrivalTime.getTime())
+  for (const e of byId.values()) e.attacks.sort((a, b) => a.arrivalTime.getTime() - b.arrivalTime.getTime())
+  const entries = [...byId.values()]
+  const mode = resultWaveMode.value
+  // Фильтр на конкретную волну (mode = её id)
+  if (mode !== 'all' && mode !== 'byWave' && multiWave.value) {
+    return entries.filter(e => (e.attacks[0]?.target.waveId ?? '') === mode)
   }
-  return map
+  if (mode !== 'byWave' || !multiWave.value) return entries
+  const waveIdx = (wid?: string) => {
+    const i = planStore.planWaves.findIndex(w => w.id === wid)
+    return i < 0 ? 999 : i
+  }
+  const sorted = entries
+    .map((e, origIdx) => ({ e, origIdx, wi: waveIdx(e.attacks[0]?.target.waveId) }))
+    .sort((a, b) => a.wi - b.wi || a.origIdx - b.origIdx)
+  const out: TargetEntry[] = []
+  let lastWi = -1
+  for (const { e, wi } of sorted) {
+    if (wi !== lastWi) {
+      if (wi === 999) e.waveHeader = 'Без волны'
+      else {
+        const w = planStore.planWaves[wi]
+        const cfg = massConfigStore.all.find(c => c.id === w.configId)
+        e.waveHeader = `Волна ${wi + 1} · ${cfg?.name ?? '—'}`
+      }
+      lastWi = wi
+    }
+    out.push(e)
+  }
+  return out
 })
 
 function expandAll(players: Iterable<string>): void {
   openPlayers.value = new Set(players)
-  openTargets.value = new Set(attacksByTarget.value.keys())
+  openTargets.value = new Set(planStore.attacks.map(a => a.target.id))  // openTargets ключ = target.id
 }
 defineExpose({ expandAll })
 
@@ -592,7 +669,6 @@ function typeLabel(type: AttackType, catTarget?: CatTarget): string {
     case 'mini_off':       return 'Мини-Офф'
     case 'cat':            return catTarget ? `Каты (${CAT_TARGET_LABELS[catTarget]})` : 'Каты'
     case 'spam':           return 'Спам'
-    case 'spam_noble':     return 'Спам-двор'
   }
 }
 
@@ -608,8 +684,7 @@ function typeBadgeClass(type: AttackType): string {
     case 'mid_off':
     case 'mini_off':       return 'badge-off'
     case 'cat':            return 'badge-cat'
-    case 'spam':
-    case 'spam_noble':     return 'badge-spam'
+    case 'spam':           return 'badge-spam'
   }
 }
 
@@ -698,7 +773,6 @@ function attackBBMeta(atk: Attack): BBMeta {
       return { unit: 'catapult', color: '#89b4fa', label: `КАТЫ${b}` }
     }
     case 'spam':           return { unit: 'spear', color: '#888888', label: 'СПАМ' }
-    case 'spam_noble':     return { unit: 'snob',  color: '#666688', label: 'СПАМ_ДВОР' }
   }
 }
 
@@ -744,6 +818,54 @@ function attackToLine(atk: Attack): string {
 
 function rowToLine(row: AttackRow): string {
   return attackToLine(row.representative)
+}
+
+// ── План атак блоками: по дню отправки → по часу, с нумерацией и статистикой ──
+function isSpamRow(r: AttackRow): boolean {
+  return r.representative.type === 'spam' || !!r.representative.countAsSpam
+}
+function rowNobleCount(r: AttackRow): number {
+  return r.nobleCount ?? (r.representative.composition.snob ?? 0)
+}
+function buildPlanBlocks(rows: AttackRow[]): string {
+  const p2 = (n: number) => String(n).padStart(2, '0')
+  const sorted = [...rows].sort((a, b) => a.representative.sendTime.getTime() - b.representative.sendTime.getTime())
+  // Группировка по дню отправки
+  const byDay = new Map<string, AttackRow[]>()
+  for (const r of sorted) {
+    const d = r.representative.sendTime
+    const key = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+    if (!byDay.has(key)) byDay.set(key, [])
+    byDay.get(key)!.push(r)
+  }
+  const out: string[] = []
+  let num = 0
+  for (const [, dayRows] of byDay) {
+    const d = dayRows[0].representative.sendTime
+    const dayLabel = `${p2(d.getDate())}.${p2(d.getMonth() + 1)}.${d.getFullYear()}`
+    // Непересекающиеся категории: всего = реалок + спама + дворов.
+    const spam = dayRows.filter(isSpamRow).length
+    const nobles = dayRows.filter(r => !isSpamRow(r) && rowNobleCount(r) > 0).length
+    const real = dayRows.length - spam - nobles
+    out.push(`========== Отправки ${dayLabel} — всего ${dayRows.length} / реалок ${real} / спама ${spam} / дворов ${nobles} ==========`)
+    out.push('')
+    // Группировка по часу отправки
+    const byHour = new Map<number, AttackRow[]>()
+    for (const r of dayRows) {
+      const h = r.representative.sendTime.getHours()
+      if (!byHour.has(h)) byHour.set(h, [])
+      byHour.get(h)!.push(r)
+    }
+    for (const h of [...byHour.keys()].sort((a, b) => a - b)) {
+      out.push(`${p2(h)}:00-${p2(h)}:59`)
+      for (const r of byHour.get(h)!) {
+        num++
+        out.push(`#${num} | ${rowToLine(r)}`)
+      }
+      out.push('')
+    }
+  }
+  return out.join('\n').replace(/\n+$/, '')
 }
 
 function openOrdersBlock(player: string): string {
@@ -852,7 +974,6 @@ function attackMapBlock(filterPlayer?: string): string {
 function atkTypeLabelShort(type: string): string {
   if (type === 'paladin_off')    return 'Пал-Офф'
   if (type === 'off')            return 'Офф'
-  if (type === 'spam_noble')     return 'Спам-двор'
   if (type === 'spam')           return 'Спам'
   if (type === 'mid_off')  return 'Медиум'
   if (type === 'mini_off') return 'Мини'
@@ -871,9 +992,7 @@ const bbcodeOutput = computed(() => {
     const orders = openOrdersBlock(bbcodePlayer.value)
     if (orders) { lines.push(orders); lines.push(''); lines.push('') }
     lines.push('[b]══════════ План атак ══════════[/b]')
-    const planLines: string[] = []
-    groupAttacks(active).forEach((row) => planLines.push(rowToLine(row)))
-    lines.push(`[spoiler=Скопировать для вставки в блокнот]\n[code]\n${planLines.join('\n')}\n[/code]\n[/spoiler]`)
+    lines.push(`[spoiler=Скопировать для вставки в блокнот]\n[code]\n${buildPlanBlocks(groupAttacks(active))}\n[/code]\n[/spoiler]`)
     if (includeAttackMap.value) {
       const map = attackMapBlock(bbcodePlayer.value)
       if (map) { lines.push(''); lines.push(map) }
@@ -892,7 +1011,7 @@ const bbcodeOutput = computed(() => {
     const orders = openOrdersBlock(player)
     if (orders) { lines.push(orders); lines.push('') }
     lines.push('[b]══════════ План атак ══════════[/b]')
-    groupAttacks(active).forEach((row) => lines.push(rowToLine(row)))
+    lines.push(buildPlanBlocks(groupAttacks(active)))
     if (includeAttackMap.value) {
       const map = attackMapBlock(player)
       if (map) { lines.push(''); lines.push(map) }
@@ -1089,7 +1208,10 @@ $yellow:       #f0c040;
 
 .attack-table {
   font-size: 0.78rem;
+  table-layout: auto;
   td { vertical-align: middle; }
+  // Колонка «△» (предпоследняя) не должна схлопываться под юнитами.
+  th:nth-last-child(2), td:nth-last-child(2) { min-width: 96px; }
 }
 
 // Type badges
@@ -1152,6 +1274,8 @@ $yellow:       #f0c040;
 .units-sep    { color: $text-faint; margin: 0 0.3rem; font-size: 0.8rem; }
 .train-range  { color: $text-faint; font-size: 0.82rem; }
 .train-count  { color: $text-dim; font-size: 0.75rem; font-weight: 700; margin-right: 0.2rem; }
+.units-cell { white-space: nowrap; vertical-align: middle; }
+.units-cell .units-detail { max-width: 150px; white-space: normal; }
 .units-detail { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 6px; }
 .comp-unit    { display: inline-flex; align-items: center; gap: 2px; color: #7a7a9a; font-size: 0.72rem; }
 .unit-icon-xs { width: 13px; height: 13px; image-rendering: pixelated; }
@@ -1250,6 +1374,54 @@ $yellow:       #f0c040;
   background: rgba(233, 69, 96, 0.15);
   border: 1px solid rgba(233, 69, 96, 0.45);
   color: #e94560;
+}
+
+.wave-result-tag {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  border-radius: 8px;
+  background: a($green, 0.12);
+  border: 1px solid a($green, 0.35);
+  color: $green;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+}
+
+.wave-inline-tag {
+  display: inline-block; margin-left: 0.25rem;
+  font-size: 0.6rem; font-weight: 700;
+  padding: 0 0.3rem; border-radius: 6px;
+  background: a($green, 0.14); border: 1px solid a($green, 0.35); color: $green;
+  vertical-align: middle;
+}
+
+.wave-mode-bar {
+  display: flex; align-items: center; gap: 0.4rem;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+}
+.wave-mode-label { font-size: 0.78rem; color: $text-faint; }
+.wave-mode-sep { width: 1px; height: 16px; background: $border; margin: 0 0.2rem; }
+.wave-mode-btn {
+  font-size: 0.78rem; font-weight: 600; padding: 0.2rem 0.6rem;
+  border-radius: 6px; cursor: pointer;
+  background: a($text-dim, 0.06); border: 1px solid $border; color: $text-dim;
+  &:hover { border-color: $text; color: $text; }
+  &.on { background: a($accent, 0.12); border-color: a($accent, 0.5); color: $accent; }
+  &--wave.on { background: a($green, 0.14); border-color: a($green, 0.5); color: $green; }
+}
+.wave-result-section-head {
+  margin: 0.8rem 0 0.4rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.82rem; font-weight: 700; letter-spacing: 0.02em;
+  color: $green;
+  background: a($green, 0.08);
+  border: 1px solid a($green, 0.3);
+  border-radius: 6px;
+  &:first-child { margin-top: 0; }
 }
 
 .cat-wave-tag {

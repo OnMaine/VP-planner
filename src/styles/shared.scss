@@ -123,7 +123,8 @@ h3 { color: $text-md; font-size: 0.95rem; margin: 0 0 0.5rem; }
 .table-wrap { overflow-x: auto; }
 
 .mini-table {
-  width: 100%;
+  width: auto;
+  min-width: 100%;   // заполняет контейнер, но может расти шире → .table-wrap скроллит
   border-collapse: collapse;
   font-size: 0.8rem;
 

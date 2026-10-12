@@ -34,6 +34,7 @@
         </ul>
         <p><b>Мин. / макс. в деревне для подбора</b> (правая колонка) — фильтр, из каких дер брать: деревня подойдёт, только если её запас этого юнита в диапазоне. Пусто = без ограничения. Так, напр., «фулка» берётся лишь из дер с таранами ≥ N.</p>
         <p><b>Отображение</b> — цвет бейджа (или свой) и иконка пресета (для узнаваемости в списках и на карте).</p>
+        <p><b>⚠️ Считать как спам-атаку</b> — <b>важная галочка, меняет механику</b>. Атаки пресета начинают раздаваться <b>по законам спама</b>: раскидываются по <b>разным игрокам</b> для маскировки источника (обычное распределение офф-дер не применяется), учитывают <b>лимит на деревню</b> и <b>разброс времени</b> из пресета масса, одна дера может уйти в несколько целей, дворяне и паладины в состав не включаются. В статистике BBCode считается в «спама», в фильтрах карты атак — «Спам», даже если по составу это реальный офф.</p>
         <p>У карточек: <b>Изменить</b> / <b>Копия</b> / <b>✕</b>.</p>
 
         <p class="help-note">Дальше эти пресеты выбираются в слотах масс-конфига («Пресеты масса») с указанием количества на цель, приоритета и смещения тайминга.</p>
@@ -56,6 +57,7 @@
           <img v-for="(ico, i) in roleIcons(preset.role)" :key="i" :src="ico" class="card-role-icon" />
           <span class="card-name">{{ preset.name }}</span>
           <span v-if="preset.builtIn" class="badge-builtin">встроенный</span>
+          <span v-if="preset.role.type === 'spam' || preset.role.countAsSpam" class="badge-spam" title="Атаки этого пресета считаются спамом (BBCode-статистика и фильтры карты)">спам</span>
         </div>
         <p class="card-desc">{{ cardDescription(preset) }}</p>
         <p v-if="cardNote(preset)" class="card-note">{{ cardNote(preset) }}</p>
@@ -164,7 +166,11 @@
             <span class="cu-th-left">Состав атаки</span>
             <span class="cu-th-right">Мин. / Макс. в деревне для подбора</span>
           </div>
-          <div v-for="u in CUSTOM_UNITS" :key="u.key" class="cu-row">
+          <div
+            v-for="u in visibleCustomUnits"
+            :key="u.key"
+            class="cu-row"
+          >
             <div class="cu-left">
               <img :src="u.icon" class="cu-icon" :title="u.label" />
               <span class="cu-label">{{ u.label }}</span>
@@ -235,7 +241,7 @@
             </div>
           </div>
           <p
-            v-if="(getCustomUnitMin('snob') || getCustomUnitMax('snob')) && worldStore.settings.noblePollMode !== 'real'"
+            v-if="!form.role.countAsSpam && (getCustomUnitMin('snob') || getCustomUnitMax('snob')) && worldStore.settings.noblePollMode !== 'real'"
             class="cu-virtual-note"
           >
             ⚠ Сейчас выбран режим дворян «Виртуальные» — фильтр «мин/макс дворов в дере» для дворянина <b>игнорируется</b> (дворы берутся из общего пула игрока, а не из деревни). Он действует только в режиме «Реальные».
@@ -273,6 +279,34 @@
               </label>
             </div>
           </label>
+        </div>
+
+        <div class="form-row cu-spam-row" :class="{ 'cu-spam-row--on': form.role.countAsSpam }">
+          <div
+            class="cu-spam-label"
+            role="switch"
+            :aria-checked="!!form.role.countAsSpam"
+            tabindex="0"
+            @click="toggleCountAsSpam"
+            @keydown.enter.prevent="toggleCountAsSpam"
+            @keydown.space.prevent="toggleCountAsSpam"
+          >
+            <span class="cu-switch" :class="{ 'cu-switch--on': form.role.countAsSpam }">
+              <span class="cu-switch-track"><span class="cu-switch-thumb"></span></span>
+            </span>
+            <span class="cu-spam-title">⚠️ Считать как спам-атаку</span>
+            <span v-if="form.role.countAsSpam" class="cu-spam-flag">меняет механику</span>
+          </div>
+          <div class="cu-spam-hint">
+            <p class="cu-spam-warn">Это <b>не косметика</b> — тумблер меняет сам алгоритм раздачи атак этого пресета.</p>
+            <ul class="cu-spam-list">
+              <li><b>Раздача по законам спама:</b> атаки раскидываются по <b>разным игрокам</b> (у кого меньше отправок — тому следующая), чтобы замаскировать реальный источник. Обычный радиус/распределение офф-дер <b>не применяется</b>.</li>
+              <li><b>Лимит на деревню</b> (макс/деру) и <b>разброс времени</b> (диапазон) — как у спама, настраиваются в пресете масса.</li>
+              <li>Одна деревня может уйти в <b>несколько целей</b> (в пределах лимита), дворяне и паладины <b>в состав не включаются</b>.</li>
+              <li>В <b>BBCode</b> считается в «спама», в <b>фильтрах карты атак</b> — «Спам» (даже если по составу это реальный офф).</li>
+            </ul>
+          </div>
+          <p v-if="spamOffWarning" class="cu-spam-heavy">🛑 {{ spamOffWarning }} Эти войска не вернутся в пул для настоящих оффов.</p>
         </div>
       </template>
 
@@ -344,6 +378,8 @@ const customFixedPop = computed((): number | null => {
   for (const [k, v] of Object.entries(units)) {
     const count = v as number
     if (count <= 0) continue
+    // При «считать как спам» дворяне/паладины в состав не идут — не считаем их население.
+    if (form.role.countAsSpam && (k === 'snob' || k === 'knight')) continue
     if (((pct[k] as number | undefined) ?? 0) > 0) continue
     hasFixed = true
     fixedPop += count * (pop[k] ?? 1)
@@ -357,6 +393,25 @@ const customPopWarning = computed((): string | null => {
   const minAtk = worldStore.settings.minAttackSize
   if (fixedPop >= minAtk) return null
   return `Фиксированный состав даёт ${fixedPop} усадьбы — меньше минимума атаки (${minAtk}). Атаки с таким пресетом не будут созданы.`
+})
+
+// countAsSpam + тяжёлый состав → предупреждаем, что «спам» заберёт реальный офф.
+const spamOffWarning = computed((): string | null => {
+  if (!form.role.countAsSpam) return null
+  const units = form.role.customUnits ?? {}
+  const pct   = form.role.customUnitPct ?? {}
+  const combat = ['spear', 'sword', 'axe', 'spy', 'light', 'heavy', 'ram', 'catapult']
+  // «Всё» (-1) или «%» на боевых юнитах — состав не ограничен сверху
+  const unbounded = combat.some(k => ((pct[k] as number | undefined) ?? 0) > 0 || (units[k] as number | undefined) === -1)
+  if (unbounded) {
+    return 'В составе есть юниты в режиме «Всё» или «%» — спам-атака может забрать из деревни много реальных офф-войск.'
+  }
+  const fixedPop = customFixedPop.value ?? 0
+  const threshold = 500
+  if (fixedPop >= threshold) {
+    return `Состав тяжёлый (≈ ${fixedPop} усадьбы) — такие «спам»-атаки расходуют реальные офф-войска.`
+  }
+  return null
 })
 
 const catTargetRequired = computed(() => {
@@ -377,7 +432,7 @@ function roleIcons(role: VillageRole): string[] {
     case 'cat_squad':  return [catapultIcon]
     case 'spam': {
       const base = role.spamStrength === 'full' ? attackLarge : role.spamStrength === 'strong' ? attackMedium : attackSmall
-      return (role.spamNobleCount ?? 0) > 0 ? [base, snobIcon] : [base]
+      return [base]
     }
     case 'custom_off': {
       return [role.customImageUrl ?? customAttIcon]
@@ -452,9 +507,6 @@ function roleDetails(role: VillageRole, builtIn?: true): DetailChip[] {
       if (s === 'strong') { d.push(chip('Медиум офф')); d.push(chip('1001–5001 юн.')) }
       else if (s === 'full') { d.push(chip('Фулл офф')); d.push(chip('5001+ юн.')) }
       else { d.push(chip('Фейк')); d.push(chip('≤1000 юн.')) }
-      if (role.spamNobleCount) {
-        d.push(chip(`${role.spamNobleCount} дворян`))
-      }
       break
     }
     case 'custom_off': {
@@ -491,6 +543,13 @@ const CUSTOM_UNITS = [
   { key: 'knight',   label: 'Паладин',     icon: UNIT_ICONS.knight },
   { key: 'snob',     label: 'Дворянин',    icon: UNIT_ICONS.snob },
 ]
+
+// Спам не возит дворян и паладинов — при включённой галочке убираем их из состава.
+const visibleCustomUnits = computed(() =>
+  form.role.countAsSpam
+    ? CUSTOM_UNITS.filter(u => u.key !== 'knight' && u.key !== 'snob')
+    : CUSTOM_UNITS
+)
 
 // tracks which unit keys are explicitly in "Кол-во" mode (even when value is 0)
 const cuCountModeKeys = ref(new Set<string>())
@@ -597,6 +656,12 @@ function setRoleType(type: VillageRoleType): void {
   form.role = role
 }
 
+function toggleCountAsSpam(): void {
+  // Пересоздаём объект роли целиком — смена идентичности form.role гарантирует
+  // перерисовку v-for строк состава (мутация одного вложенного ключа её не вызывала).
+  form.role = { ...form.role, countAsSpam: !form.role.countAsSpam }
+}
+
 function syncCountModeKeys(): void {
   cuCountModeKeys.value = new Set(
     Object.entries(form.role.customUnits ?? {})
@@ -624,6 +689,7 @@ function openEdit(id: string): void {
   form.color = preset.color ?? (preset.role as { customColor?: string }).customColor ?? undefined
   form.role = {
     ...preset.role,
+    countAsSpam:   !!preset.role.countAsSpam,
     customUnits:   { ...(preset.role.customUnits   ?? {}) },
     customUnitPct: { ...(preset.role.customUnitPct ?? {}) },
     customUnitMin: { ...(preset.role.customUnitMin ?? {}) },
@@ -784,6 +850,18 @@ function scrollToEditor(): void {
   padding: 0.1rem 0.45rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.badge-spam {
+  font-size: 0.65rem;
+  background: a($green, 0.15);
+  color: $green;
+  border: 1px solid a($green, 0.35);
+  border-radius: 10px;
+  padding: 0.1rem 0.45rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: default;
 }
 
 .card-desc {
@@ -1167,6 +1245,67 @@ function scrollToEditor(): void {
   align-items: center;
   gap: 0.5rem;
   margin-top: 0.2rem;
+}
+
+.cu-spam-row {
+  flex-direction: column; align-items: flex-start; gap: 0.5rem; margin-top: 0.6rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid a($orange, 0.4);
+  border-radius: 8px;
+  background: a($orange, 0.06);
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+
+  &--on {
+    border-color: a($green, 0.6);
+    background: a($green, 0.08);
+    box-shadow: 0 0 0 1px a($green, 0.25), 0 0 18px a($green, 0.12);
+  }
+}
+.cu-spam-label {
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  font-size: 0.95rem; font-weight: 700; color: $text; cursor: pointer;
+  user-select: none; outline: none;
+  &:focus-visible .cu-switch-track { box-shadow: 0 0 0 2px a($green, 0.5); }
+}
+.cu-switch {
+  position: relative; flex-shrink: 0;
+  .cu-switch-track {
+    display: block; width: 40px; height: 22px; border-radius: 11px;
+    background: a($border, 0.9); border: 1px solid $border;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .cu-switch-thumb {
+    position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: $text-dim;
+    transition: transform 0.2s, background 0.2s;
+  }
+  &--on {
+    .cu-switch-track { background: a($green, 0.35); border-color: a($green, 0.6); }
+    .cu-switch-thumb { transform: translateX(18px); background: $green; }
+  }
+}
+.cu-spam-title { letter-spacing: 0.01em; }
+.cu-spam-flag {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: $green; background: a($green, 0.15); border: 1px solid a($green, 0.4);
+  border-radius: 10px; padding: 0.1rem 0.5rem;
+}
+.cu-spam-hint {
+  font-size: 0.8rem; color: $text-dim; line-height: 1.5;
+  b { color: $text; }
+  .cu-spam-warn { margin: 0 0 0.4rem; color: $orange; font-weight: 600; b { color: $orange; } }
+  .cu-spam-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.25rem; }
+  .cu-spam-list b { color: $green; }
+}
+.cu-spam-heavy {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.8rem; font-weight: 600; line-height: 1.45;
+  color: $accent;
+  background: a($accent, 0.1);
+  border: 1px solid a($accent, 0.4);
+  border-radius: 6px;
 }
 
 .cu-color-input {
