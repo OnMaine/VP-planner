@@ -188,6 +188,8 @@ export interface Attack {
   travelSeconds: number
   arrivalTime: Date
   sendTime: Date
+  watchtowerSeenSec?: number     // за сколько секунд ДО прихода атака впервые засветилась башней
+  watchtowerInRadiusSec?: number // сколько секунд атака суммарно проведёт в радиусе башни
   warnings: WarningCode[]
   excluded: boolean
   label?: string
@@ -859,14 +861,15 @@ export const usePlanStore = defineStore('plan', () => {
   function calcWatchtowerExposure(
     fromX: number, fromY: number, toX: number, toY: number,
     targetPlayer: string | undefined,
-  ): { detected: boolean; chord: number } {
+  ): { detected: boolean; chord: number; firstEnterT: number } {
     const s = worldStore.settings
-    if (!s.watchtowerEnabled || watchtowerVillages.value.length === 0) return { detected: false, chord: 0 }
+    if (!s.watchtowerEnabled || watchtowerVillages.value.length === 0) return { detected: false, chord: 0, firstEnterT: 1 }
     const dx = toX - fromX
     const dy = toY - fromY
     const segLen2 = dx * dx + dy * dy
     let totalChord = 0
     let detected   = false
+    let firstEnterT = 1   // наименьший t входа в радиус (0=выход из деры, 1=цель)
     const enemyStore = useEnemyDataStore()
     for (const wt of watchtowerVillages.value) {
       if (wt.level <= 0) continue
@@ -877,7 +880,7 @@ export const usePlanStore = defineStore('plan', () => {
       const R  = wt.level
       const fx = fromX - wt.x
       const fy = fromY - wt.y
-      if (segLen2 === 0) { if (fx * fx + fy * fy <= R * R) detected = true; continue }
+      if (segLen2 === 0) { if (fx * fx + fy * fy <= R * R) { detected = true; firstEnterT = 0 } continue }
       const a    = segLen2
       const b    = 2 * (fx * dx + fy * dy)
       const c    = fx * fx + fy * fy - R * R
@@ -891,8 +894,9 @@ export const usePlanStore = defineStore('plan', () => {
       if (tEnter >= tExit) continue
       totalChord += (tExit - tEnter) * Math.sqrt(segLen2)
       detected = true
+      if (tEnter < firstEnterT) firstEnterT = tEnter
     }
-    return { detected, chord: totalChord }
+    return { detected, chord: totalChord, firstEnterT }
   }
 
   // ---------------------------------------------------------------------------
@@ -1037,9 +1041,17 @@ export const usePlanStore = defineStore('plan', () => {
         if (isInNightWindow(arrivalTime, ws.nightFrom, ws.nightTo)) warnings.push('NIGHT_ARRIVAL')
         if (isInNightWindow(sendTime,    ws.nightFrom, ws.nightTo)) warnings.push('NIGHT_SEND')
       }
+      let wtSeenSec: number | undefined
+      let wtInRadiusSec: number | undefined
       if (settings.watchtowerEnabled && watchtowerVillages.value.length > 0) {
-        const { detected } = calcWatchtowerExposure(village.x, village.y, target.x, target.y, target.enemyPlayer)
-        if (detected) warnings.push('WATCHTOWER_HIT')
+        const { detected, chord, firstEnterT } = calcWatchtowerExposure(village.x, village.y, target.x, target.y, target.enemyPlayer)
+        if (detected) {
+          warnings.push('WATCHTOWER_HIT')
+          // Засвет: от первой точки входа в радиус до прихода (1 - tEnter) доли пути.
+          wtSeenSec = Math.round((1 - firstEnterT) * travelSec)
+          // В радиусе: доля пути внутри круга (chord / полная дистанция).
+          wtInRadiusSec = dist > 0 ? Math.round((chord / dist) * travelSec) : 0
+        }
       }
       if (ws.moraleEnabled && target.enemyPlayer) {
         const defPoints = enemyStore.playerByName.get(target.enemyPlayer)?.points ?? 0
@@ -1058,6 +1070,8 @@ export const usePlanStore = defineStore('plan', () => {
         speedUnit, totalUnits: total, watchtowerColor: wtColor, watchtowerIcon: wtIcon,
         distance: dist, travelSeconds: travelSec, arrivalTime, sendTime,
         warnings, excluded: false, label, color,
+        ...(wtSeenSec     !== undefined ? { watchtowerSeenSec: wtSeenSec } : {}),
+        ...(wtInRadiusSec !== undefined ? { watchtowerInRadiusSec: wtInRadiusSec } : {}),
         ...(catTarget      ? { catTarget      } : {}),
         ...(buildNobles    ? { buildNobles    } : {}),
         ...(buildPaladin   ? { buildPaladin   } : {}),
@@ -2070,7 +2084,7 @@ export const usePlanStore = defineStore('plan', () => {
         const SPAM_DEF_PENALTY = 15
         const offMin = presStore.smallOffMinOffFarm
         for (const target of validTargets) {
-          const { byDist, nobleVillages, distMap } = targetDataMap.get(target.id)!
+          const { byDist, nobleVillages, distMap, wtMap } = targetDataMap.get(target.id)!
           const slotArrT = slotArrTMap.get(target.id)!
 
           if ((role.spamTrainSize ?? 0) > 0) {
@@ -2106,11 +2120,15 @@ export const usePlanStore = defineStore('plan', () => {
             // офф-дер: сортируем по расстоянию + штраф деф-дерам. При «Дальние вперёд»
             // инвертируем расстояние — спам уходит с ДАЛЬНИХ дер (ближние/сильные
             // оставляем под реальный офф). Балансировка по игрокам (маскировка) — всегда.
+            // При включённых «Башнях» волны — засвеченные деры уходят в конец (как у оффов):
+            // засвеченный фейк бесполезен (видно, что армия мелкая).
             const spamFarFirst = ws.offDistribution === 'far_first'
+            const spamAvoidWt = settings.watchtowerEnabled && ws.watchtowerAvoidEnabled
             const spamScore = (v: Village): number => {
               const dist = distMap.get(v.coords) ?? 0
               const isOff = calcOffFarm(v.troops, settings.unitPop) >= offMin
-              return (spamFarFirst ? -dist : dist) + (isOff ? 0 : SPAM_DEF_PENALTY)
+              const wtPenalty = spamAvoidWt ? (wtMap.get(v.coords) ?? 0) : 0
+              return wtPenalty + (spamFarFirst ? -dist : dist) + (isOff ? 0 : SPAM_DEF_PENALTY)
             }
             const derasByPlayer = new Map<string, Village[]>()
             for (const v of byDist) {

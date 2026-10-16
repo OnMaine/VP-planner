@@ -85,6 +85,7 @@
               <table class="mini-table attack-table">
                 <thead>
                   <tr>
+                    <th>Искл.</th>
                     <th>Тип</th>
                     <th>Отправка</th>
                     <th>Прибытие</th>
@@ -92,7 +93,7 @@
                     <th>От → До</th>
                     <th>Юниты</th>
                     <th>⚠</th>
-                    <th>Искл.</th>
+                    <th>🗼 Башня</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -101,6 +102,9 @@
                     :class="row.representative.excluded ? 'row-excluded' : ''"
                     :style="rowStyle(row.representative)"
                   >
+                    <td class="center-cell">
+                      <input type="checkbox" :checked="row.representative.excluded" @change="row.attacks.forEach(a => planStore.toggleExclude(a.id))" />
+                    </td>
                     <td>
 
                       <span
@@ -142,7 +146,7 @@
                         </span>
                       </template>
                     </td>
-                    <td>
+                    <td class="warn-cell">
                       <span
                         v-if="row.representative.buildNobles"
                         class="warn-badge badge-build-nobles"
@@ -154,13 +158,21 @@
                         :title="`Завербовать паладина в ${row.representative.fromVillage.coords} до отправки`"
                       >🔨Пал</span>
                       <span
-                        v-for="w in row.representative.warnings" :key="w"
+                        v-for="w in row.representative.warnings.filter(x => x !== 'WATCHTOWER_HIT')" :key="w"
                         :class="['warn-badge', warnBadgeClass(w)]"
                         :title="warnBadgeTitle(w)"
                       >{{ warnBadgeLabel(w) }}</span>
                     </td>
-                    <td class="center-cell">
-                      <input type="checkbox" :checked="row.representative.excluded" @change="row.attacks.forEach(a => planStore.toggleExclude(a.id))" />
+                    <td class="wt-cell">
+                      <template v-if="row.representative.watchtowerSeenSec !== undefined">
+                        <span class="wt-line wt-seen" title="За столько до прихода башня начинает видеть атаку. Близко ко «В пути» — видно почти сразу, маршрут лучше переделать.">
+                          <span class="wt-k">видно за</span> {{ fmtSec(row.representative.watchtowerSeenSec) }}
+                        </span>
+                        <span class="wt-line wt-radius" title="Сколько времени атака летит внутри радиуса башни — столько враг видит её на подлёте и может считать состав/тип. Чем дольше, тем больше времени у защитника среагировать.">
+                          <span class="wt-k">в зоне башни</span> {{ fmtSec(row.representative.watchtowerInRadiusSec ?? 0) }}
+                        </span>
+                      </template>
+                      <span v-else class="wt-none">—</span>
                     </td>
                   </tr>
                 </tbody>
@@ -215,6 +227,7 @@
               <table class="mini-table attack-table">
                 <thead>
                   <tr>
+                    <th>Искл.</th>
                     <th>Тип</th>
                     <th>Отправка</th>
                     <th>Прибытие</th>
@@ -223,7 +236,7 @@
                     <th>Игрок</th>
                     <th>Юниты</th>
                     <th>△</th>
-                    <th>Искл.</th>
+                    <th>🗼 Башня</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -232,6 +245,9 @@
                     :class="row.representative.excluded ? 'row-excluded' : ''"
                     :style="rowStyle(row.representative)"
                   >
+                    <td class="center-cell">
+                      <input type="checkbox" :checked="row.representative.excluded" @change="row.attacks.forEach(a => planStore.toggleExclude(a.id))" />
+                    </td>
                     <td>
 
                       <span
@@ -272,7 +288,7 @@
                         </span>
                       </template>
                     </td>
-                    <td>
+                    <td class="warn-cell">
                       <span
                         v-if="row.representative.buildNobles"
                         class="warn-badge badge-build-nobles"
@@ -284,13 +300,21 @@
                         :title="`Завербовать паладина в ${row.representative.fromVillage.coords} до отправки`"
                       >🔨Пал</span>
                       <span
-                        v-for="w in row.representative.warnings" :key="w"
+                        v-for="w in row.representative.warnings.filter(x => x !== 'WATCHTOWER_HIT')" :key="w"
                         :class="['warn-badge', warnBadgeClass(w)]"
                         :title="warnBadgeTitle(w)"
                       >{{ warnBadgeLabel(w) }}</span>
                     </td>
-                    <td class="center-cell">
-                      <input type="checkbox" :checked="row.representative.excluded" @change="row.attacks.forEach(a => planStore.toggleExclude(a.id))" />
+                    <td class="wt-cell">
+                      <template v-if="row.representative.watchtowerSeenSec !== undefined">
+                        <span class="wt-line wt-seen" title="За столько до прихода башня начинает видеть атаку. Близко ко «В пути» — видно почти сразу, маршрут лучше переделать.">
+                          <span class="wt-k">видно за</span> {{ fmtSec(row.representative.watchtowerSeenSec) }}
+                        </span>
+                        <span class="wt-line wt-radius" title="Сколько времени атака летит внутри радиуса башни — столько враг видит её на подлёте и может считать состав/тип. Чем дольше, тем больше времени у защитника среагировать.">
+                          <span class="wt-k">в зоне башни</span> {{ fmtSec(row.representative.watchtowerInRadiusSec ?? 0) }}
+                        </span>
+                      </template>
+                      <span v-else class="wt-none">—</span>
                     </td>
                   </tr>
                   <tr
@@ -450,6 +474,19 @@ function formatDur(send: Date, arrival: Date): string {
   const m = Math.floor((s % 3600) / 60)
   const ss = s % 60
   return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+}
+
+// Компактная длительность: «10м 39с», «1ч 20м», «45с».
+function fmtSec(sec: number): string {
+  const s = Math.max(0, Math.round(sec))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = s % 60
+  const parts: string[] = []
+  if (h) parts.push(`${h}ч`)
+  if (m) parts.push(`${m}м`)
+  if (ss || parts.length === 0) parts.push(`${ss}с`)
+  return parts.join(' ')
 }
 
 // ── Tab state ──────────────────────────────────────────────────────────────
@@ -1220,8 +1257,10 @@ $yellow:       #f0c040;
   font-size: 0.78rem;
   table-layout: auto;
   td { vertical-align: middle; }
-  // Колонка «△» (предпоследняя) не должна схлопываться под юнитами.
-  th:nth-last-child(2), td:nth-last-child(2) { min-width: 96px; }
+  // Минимумы колонок по классам (не по позиции — чтобы не ломалось при перестановке):
+  .units-cell { min-width: 230px; }  // состав с иконками
+  .warn-cell  { min-width: 104px; }  // бейджи △
+  .wt-cell    { min-width: 140px; }  // две строки времени башни
 }
 
 // Type badges
@@ -1254,6 +1293,21 @@ $yellow:       #f0c040;
 .warn-red    { background: a($accent, 0.2);  color: $accent;  border: 1px solid a($accent,  0.4); }
 .warn-orange { background: a($orange, 0.2);  color: $orange;  border: 1px solid a($orange,  0.4); }
 .warn-yellow { background: a($yellow, 0.18); color: $yellow;  border: 1px solid a($yellow,  0.38); }
+// ── Колонка «Башня» ──
+.wt-cell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.wt-line {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  cursor: help;
+  .wt-k { color: $text-faint; font-weight: 500; margin-right: 0.2rem; }
+}
+.wt-seen   { color: $yellow; font-weight: 600; }
+.wt-radius { color: $orange; font-weight: 600; }
+.wt-none   { color: $text-faint; }
 
 // Attack size icon
 .wt-icon         { display: inline-flex; align-items: center; margin-right: 0.3rem; }
@@ -1285,7 +1339,15 @@ $yellow:       #f0c040;
 .train-range  { color: $text-faint; font-size: 0.82rem; }
 .train-count  { color: $text-dim; font-size: 0.75rem; font-weight: 700; margin-right: 0.2rem; }
 .units-cell { white-space: nowrap; vertical-align: middle; }
-.units-cell .units-detail { max-width: 150px; white-space: normal; }
+.units-cell .units-detail {
+  display: inline-flex;         // flex-wrap переносит иконки по ширине даже без пробелов
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  vertical-align: middle;
+  max-width: 150px;
+  white-space: normal;
+}
 .units-detail { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 6px; }
 .comp-unit    { display: inline-flex; align-items: center; gap: 2px; color: #7a7a9a; font-size: 0.72rem; }
 .unit-icon-xs { width: 13px; height: 13px; image-rendering: pixelated; }
