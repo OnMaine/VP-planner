@@ -1,5 +1,6 @@
 <template>
   <section class="panel">
+    <LoadingOverlay :show="isDeleting" text="Удаляю игрока…" />
     <div class="stats-header-row">
       <h2>Статистика</h2>
       <div class="settings-bar">
@@ -309,11 +310,14 @@ import { usePlanStore } from '@/stores/planStore'
 import { usePresetsStore } from '@/stores/presetsStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { UNIT_ICONS } from '@/utils/unitIcons'
+import { nextPaint } from '@/utils/nextPaint'
+import LoadingOverlay from '@/components/LoadingOverlay.vue'
 
 const props = defineProps<{ highlight?: string }>()
 
 const villagesStore = useVillagesStore()
 const planStore     = usePlanStore()
+const isDeleting    = ref(false)
 const presetsStore  = usePresetsStore()
 const worldStore    = useWorldStore()
 
@@ -528,11 +532,14 @@ async function copyGroup(group: StatGroup) {
   } catch { /* clipboard unavailable */ }
 }
 
-function removePlayer(player: string) {
-  const coords = villagesStore.villages
-    .filter(v => v.player === player)
-    .map(v => v.coords)
-  coords.forEach(c => villagesStore.removeVillage(c))
+async function removePlayer(player: string) {
+  isDeleting.value = true
+  await nextPaint()
+  try {
+    villagesStore.removePlayerVillages(player)
+  } finally {
+    isDeleting.value = false
+  }
 }
 
 function prefillMissing() {

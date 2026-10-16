@@ -135,6 +135,15 @@ export const useVillagesStore = defineStore('villages', () => {
     save()
   }
 
+  /** Удалить все деревни игрока за один проход (одна перезапись + один save). */
+  function removePlayerVillages(player: string): number {
+    const before = villages.value.length
+    villages.value = villages.value.filter(v => v.player !== player)
+    const removed = before - villages.value.length
+    if (removed > 0) save()
+    return removed
+  }
+
   function clear() {
     villages.value = []
     save()
@@ -155,6 +164,7 @@ export const useVillagesStore = defineStore('villages', () => {
     parseCSV,
     upsertVillage,
     removeVillage,
+    removePlayerVillages,
     clear,
     keepOnly,
     save,

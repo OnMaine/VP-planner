@@ -76,7 +76,7 @@
             <template v-if="showTowers && worldStore.settings.watchtowerEnabled">
               <circle
                 v-for="tw in planStore.watchtowerVillages" :key="`tr-${tw.id}`"
-                :cx="tw.x" :cy="tw.y" :r="tw.level"
+                :cx="tw.x" :cy="tw.y" :r="watchtowerRange(tw.level)"
                 fill="#f38ba8" fill-opacity="0.07"
                 stroke="#f38ba8" :stroke-width="0.8 / scale"
                 :stroke-dasharray="`${2 / scale} ${1.5 / scale}`" opacity="0.7"
@@ -91,7 +91,7 @@
                 :x="tw.x" :y="tw.y + 3.5 / scale"
                 text-anchor="middle" :font-size="3.5 / scale"
                 fill="#f38ba8" opacity="0.75"
-              >R={{ tw.level }}</text>
+              >R={{ watchtowerRange(tw.level) }}</text>
             </template>
 
             <!-- Attack arrows -->
@@ -228,7 +228,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watchEffect, watch } from 'vue'
-import { usePlanStore } from '@/stores/planStore'
+import { usePlanStore, watchtowerRange } from '@/stores/planStore'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { useEnemyDataStore } from '@/stores/enemyDataStore'

@@ -123,7 +123,20 @@ export interface WatchtowerVillage {
   x: number
   y: number
   player: string
-  level: number  // 0–20; equals detection radius in fields
+  level: number  // 0–20 уровень здания (НЕ равен радиусу — см. WATCHTOWER_RANGE)
+}
+
+// Реальный радиус засвета вахтурна по уровню (поля) — из вики Tribal Wars.
+// Уровень ≠ радиус: lvl 20 = 15 полей, а не 20.
+export const WATCHTOWER_RANGE: Record<number, number> = {
+  1: 1.1, 2: 1.3, 3: 1.5, 4: 1.7, 5: 2.0, 6: 2.3, 7: 2.6, 8: 3.0, 9: 3.4, 10: 3.9,
+  11: 4.4, 12: 5.1, 13: 5.8, 14: 6.7, 15: 7.6, 16: 8.7, 17: 10.0, 18: 11.5, 19: 13.1, 20: 15.0,
+}
+export function watchtowerRange(level: number): number {
+  const lvl = Math.round(level)
+  if (lvl <= 0) return 0
+  if (lvl >= 20) return WATCHTOWER_RANGE[20]
+  return WATCHTOWER_RANGE[lvl] ?? 0
 }
 
 // ---------------------------------------------------------------------------
@@ -877,7 +890,8 @@ export const usePlanStore = defineStore('plan', () => {
       if (wt.level <= 0) continue
       const wtPlayer = wt.player || enemyStore.lookupCoords(wt.coords)?.player?.name || ''
       if (wtPlayer !== targetPlayer) continue
-      const R  = wt.level
+      const R  = watchtowerRange(wt.level)
+      if (R <= 0) continue
       const fx = fromX - wt.x
       const fy = fromY - wt.y
       if (segLen2 === 0) { if (fx * fx + fy * fy <= R * R) intervals.push([0, 1]); continue }

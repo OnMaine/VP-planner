@@ -195,7 +195,7 @@
                 <span
                   v-if="targetTower(selectedTarget.coords)"
                   class="dp-tower-badge"
-                  :title="`Башня уровня ${targetTower(selectedTarget.coords)!.level} — радиус обнаружения ${targetTower(selectedTarget.coords)!.level} клеток`"
+                  :title="`Башня уровня ${targetTower(selectedTarget.coords)!.level} — радиус обнаружения ${watchtowerRange(targetTower(selectedTarget.coords)!.level)} полей`"
                 >🗼 {{ targetTower(selectedTarget.coords)!.level }} ур.</span>
               </div>
               <div class="dp-head-actions">
@@ -390,7 +390,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watchEffect } from 'vue'
-import { usePlanStore } from '@/stores/planStore'
+import { usePlanStore, watchtowerRange } from '@/stores/planStore'
 import { useVillagesStore } from '@/stores/villagesStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { usePresetsStore, CAT_TARGET_LABELS } from '@/stores/presetsStore'
@@ -846,7 +846,7 @@ function drawTowers(ctx: CanvasRenderingContext2D) {
       if (twPlayer !== filterEnemy.value) continue
     }
     ctx.beginPath()
-    ctx.arc(tw.x, tw.y, tw.level, 0, Math.PI * 2)
+    ctx.arc(tw.x, tw.y, watchtowerRange(tw.level), 0, Math.PI * 2)
     ctx.fillStyle   = '#f38ba8'
     ctx.globalAlpha = 0.04
     ctx.fill()
