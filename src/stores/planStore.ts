@@ -2103,11 +2103,14 @@ export const usePlanStore = defineStore('plan', () => {
             const maxPerVil = (slot.spamMaxPerVillage ?? 0) > 0 ? slot.spamMaxPerVillage! : Infinity
 
             // Все деры игроков к этой цели (siege-способные), с мягким предпочтением
-            // офф-дер: сортируем по расстоянию + штраф деф-дерам.
+            // офф-дер: сортируем по расстоянию + штраф деф-дерам. При «Дальние вперёд»
+            // инвертируем расстояние — спам уходит с ДАЛЬНИХ дер (ближние/сильные
+            // оставляем под реальный офф). Балансировка по игрокам (маскировка) — всегда.
+            const spamFarFirst = ws.offDistribution === 'far_first'
             const spamScore = (v: Village): number => {
               const dist = distMap.get(v.coords) ?? 0
               const isOff = calcOffFarm(v.troops, settings.unitPop) >= offMin
-              return dist + (isOff ? 0 : SPAM_DEF_PENALTY)
+              return (spamFarFirst ? -dist : dist) + (isOff ? 0 : SPAM_DEF_PENALTY)
             }
             const derasByPlayer = new Map<string, Village[]>()
             for (const v of byDist) {
