@@ -864,39 +864,48 @@ export const usePlanStore = defineStore('plan', () => {
   ): { detected: boolean; chord: number; firstEnterT: number } {
     const s = worldStore.settings
     if (!s.watchtowerEnabled || watchtowerVillages.value.length === 0) return { detected: false, chord: 0, firstEnterT: 1 }
+    // Без игрока цели не считаем — непонятно, чьи башни учитывать.
+    if (!targetPlayer) return { detected: false, chord: 0, firstEnterT: 1 }
     const dx = toX - fromX
     const dy = toY - fromY
     const segLen2 = dx * dx + dy * dy
-    let totalChord = 0
-    let detected   = false
-    let firstEnterT = 1   // наименьший t входа в радиус (0=выход из деры, 1=цель)
+    const segLen  = Math.sqrt(segLen2)
     const enemyStore = useEnemyDataStore()
+    // Собираем интервалы [tEnter, tExit] засвета по башням ИГРОКА ЦЕЛИ.
+    const intervals: Array<[number, number]> = []
     for (const wt of watchtowerVillages.value) {
       if (wt.level <= 0) continue
-      if (targetPlayer) {
-        const wtPlayer = wt.player || enemyStore.lookupCoords(wt.coords)?.player?.name || ''
-        if (wtPlayer !== targetPlayer) continue
-      }
+      const wtPlayer = wt.player || enemyStore.lookupCoords(wt.coords)?.player?.name || ''
+      if (wtPlayer !== targetPlayer) continue
       const R  = wt.level
       const fx = fromX - wt.x
       const fy = fromY - wt.y
-      if (segLen2 === 0) { if (fx * fx + fy * fy <= R * R) { detected = true; firstEnterT = 0 } continue }
+      if (segLen2 === 0) { if (fx * fx + fy * fy <= R * R) intervals.push([0, 1]); continue }
       const a    = segLen2
       const b    = 2 * (fx * dx + fy * dy)
       const c    = fx * fx + fy * fy - R * R
       const disc = b * b - 4 * a * c
       if (disc < 0) continue
       const sqrtDisc = Math.sqrt(disc)
-      const t1 = (-b - sqrtDisc) / (2 * a)
-      const t2 = (-b + sqrtDisc) / (2 * a)
-      const tEnter = Math.max(0, t1)
-      const tExit  = Math.min(1, t2)
+      const tEnter = Math.max(0, (-b - sqrtDisc) / (2 * a))
+      const tExit  = Math.min(1, (-b + sqrtDisc) / (2 * a))
       if (tEnter >= tExit) continue
-      totalChord += (tExit - tEnter) * Math.sqrt(segLen2)
-      detected = true
-      if (tEnter < firstEnterT) firstEnterT = tEnter
+      intervals.push([tEnter, tExit])
     }
-    return { detected, chord: totalChord, firstEnterT }
+    if (intervals.length === 0) return { detected: false, chord: 0, firstEnterT: 1 }
+    // Объединяем интервалы — перекрытия радиусов не считаем дважды.
+    intervals.sort((p, q) => p[0] - q[0])
+    const firstEnterT = intervals[0][0]
+    let unionFrac = 0
+    let curS = intervals[0][0]
+    let curE = intervals[0][1]
+    for (let i = 1; i < intervals.length; i++) {
+      const [s2, e2] = intervals[i]
+      if (s2 <= curE) { if (e2 > curE) curE = e2 }
+      else { unionFrac += curE - curS; curS = s2; curE = e2 }
+    }
+    unionFrac += curE - curS
+    return { detected: true, chord: unionFrac * segLen, firstEnterT }
   }
 
   // ---------------------------------------------------------------------------
