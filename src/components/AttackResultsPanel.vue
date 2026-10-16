@@ -1302,7 +1302,7 @@ $yellow:       #f0c040;
   display: block;
   font-size: 0.72rem;
   line-height: 1.5;
-  cursor: help;
+  cursor: default;
   .wt-k { color: $text-faint; font-weight: 500; margin-right: 0.2rem; }
 }
 .wt-seen   { color: $yellow; font-weight: 600; }
